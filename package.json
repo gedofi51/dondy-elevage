@@ -22,7 +22,7 @@
     "prettier": "^3.4.2"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24.15.0"
   },
   "allowScripts": {
     "@prisma/engines@7.9.1": true,

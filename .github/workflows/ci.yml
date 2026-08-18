@@ -46,7 +46,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # jsdom 30 (environnement de test Vitest de apps/web) exige
+          # explicitement Node >=22.22, >=24.15 ou >=26 (voir son champ
+          # engines) : en dessous, node:worker_threads.markAsUncloneable
+          # n'existe pas, ce qu'undici >=8.0.3 (dépendance de jsdom)
+          # appelle désormais sans probe de compatibilité, d'où
+          # "TypeError: webidl.util.markAsUncloneable is not a function"
+          # au démarrage de CacheStorage. Alignée sur la version utilisée
+          # en local (24.18.0).
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
