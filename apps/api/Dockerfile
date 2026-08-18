@@ -4,6 +4,9 @@
 
 FROM node:20-alpine AS base
 WORKDIR /repo
+# python3/make/g++ : requis par node-gyp pour compiler argon2 depuis les
+# sources (aucun binaire precompile musl/Alpine disponible pour ce paquet).
+RUN apk add --no-cache python3 make g++
 
 # ---- deps : installation via le lockfile racine (npm workspaces) ----
 FROM base AS deps
