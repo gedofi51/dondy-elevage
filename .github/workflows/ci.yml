@@ -10,16 +10,35 @@ on:
 # la phase où un environnement de déploiement réel existe.
 
 env:
-  # Placeholder uniquement : `prisma generate` (déclenché par le postinstall
-  # de apps/api) a besoin d'une DATABASE_URL syntaxiquement valide pour
-  # charger prisma.config.ts, mais ne se connecte jamais réellement à une
-  # base durant install/lint/typecheck/test/build. Aucune base n'est
-  # provisionnée dans ce pipeline (Phase 0 : uniquement les tests unitaires).
+  # Utilisée à la fois comme placeholder syntaxique pour `prisma generate`
+  # (postinstall de apps/api, ne se connecte à rien) et comme connexion
+  # réelle des étapes de migration/seed/e2e ci-dessous — les identifiants
+  # correspondent volontairement au service "mysql" déclaré plus bas.
   DATABASE_URL: 'mysql://ci:ci@localhost:3306/ci'
+  # Secrets CI éphémères, sans lien avec un environnement réel : uniquement
+  # utilisés pour signer des jetons pendant la durée d'un run de pipeline.
+  JWT_ACCESS_SECRET: 'ci-only-access-secret-ephemere'
+  JWT_REFRESH_SECRET: 'ci-only-refresh-secret-ephemere'
+  TWO_FACTOR_CHALLENGE_SECRET: 'ci-only-2fa-secret-ephemere'
 
 jobs:
   ci:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci
+          MYSQL_DATABASE: ci
+          MYSQL_USER: ci
+          MYSQL_PASSWORD: ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -u root -pci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,6 +60,17 @@ jobs:
 
       - name: Test
         run: npm run test
+
+      - name: Prisma - appliquer les migrations
+        run: npx prisma migrate deploy
+        working-directory: apps/api
+
+      - name: Prisma - seed rôles/permissions (référentiel RBAC requis par les tests e2e)
+        run: npm run db:seed
+        working-directory: apps/api
+
+      - name: Tests e2e (auth, RBAC, isolation farmId)
+        run: npm run test:e2e --workspace=apps/api
 
       - name: Build
         run: npm run build
