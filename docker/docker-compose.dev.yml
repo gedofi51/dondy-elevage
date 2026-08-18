@@ -38,6 +38,16 @@ services:
     networks:
       - dondy-elevage
 
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: dondy-elevage-mailpit
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_SMTP_HOST_PORT:-1026}:1025"
+      - "${MAILPIT_WEB_HOST_PORT:-8026}:8025"
+    networks:
+      - dondy-elevage
+
   api:
     build:
       context: ..
@@ -52,6 +62,8 @@ services:
       # (distinct du port hôte 3307 publié ci-dessus, utile seulement hors Docker).
       DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
       REDIS_URL: redis://redis:6379
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
       PORT: 3000
     ports:
       - "${API_HOST_PORT:-3011}:3000"
@@ -65,6 +77,8 @@ services:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_started
+      mailpit:
         condition: service_started
     networks:
       - dondy-elevage

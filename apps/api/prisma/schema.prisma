@@ -14,6 +14,9 @@ datasource db {
 }
 
 enum UserStatus {
+  /// Compte créé par un admin, en attente d'activation (email non vérifié,
+  /// aucun mot de passe défini) — voir POST /users puis POST /auth/activer-compte.
+  INVITED
   ACTIVE
   INACTIVE
   SUSPENDED
@@ -36,26 +39,38 @@ model Farm {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users     User[]
-  roles     Role[]
-  buildings Building[]
-  auditLogs AuditLog[]
+  users           User[]
+  roles           Role[]
+  buildings       Building[]
+  auditLogs       AuditLog[]
   settingsEntries Setting[]
 
   @@map("farms")
 }
 
 model User {
-  id               String     @id @default(uuid())
-  farmId           String
-  email            String
-  passwordHash     String
-  name             String
-  status           UserStatus @default(ACTIVE)
-  twoFactorEnabled Boolean    @default(false)
+  id     String @id @default(uuid())
+  farmId String
+  email  String
+  name   String
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  /// Null tant que le compte n'est pas activé (créé par un admin, voir
+  /// UserStatus.INVITED) — jamais de mot de passe placeholder inutilisable.
+  passwordHash String?
+  status       UserStatus @default(INVITED)
+
+  emailVerified              Boolean   @default(false)
+  emailVerificationTokenHash String?
+  emailVerificationExpiresAt DateTime?
+  passwordResetTokenHash     String?
+  passwordResetExpiresAt     DateTime?
+
+  twoFactorEnabled Boolean @default(false)
+  /// Généré à l'activation 2FA, non utilisé tant que twoFactorEnabled = false.
+  twoFactorSecret  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   createdBy String?
 
   farm          Farm           @relation(fields: [farmId], references: [id])
@@ -136,11 +151,15 @@ model RolePermission {
 }
 
 model RefreshToken {
-  id        String    @id @default(uuid())
-  userId    String
-  tokenHash String
-  expiresAt DateTime
-  revokedAt DateTime?
+  id                  String    @id @default(uuid())
+  userId              String
+  tokenHash           String
+  expiresAt           DateTime
+  revokedAt           DateTime?
+  /// Renseigné à la rotation : hash du token émis en remplacement de celui-ci.
+  /// Un refresh révoqué mais réutilisé (replacedByTokenHash déjà renseigné)
+  /// indique un vol probable — toute la famille de tokens est alors révoquée.
+  replacedByTokenHash String?
 
   createdAt DateTime @default(now())
 
@@ -166,7 +185,7 @@ model OauthAccount {
 }
 
 model Building {
-  id       String  @id @default(uuid())
+  id       String @id @default(uuid())
   farmId   String
   name     String
   type     String
@@ -187,7 +206,7 @@ model Building {
 /// convention transversale (finances/santé/audit), réservé à un usage
 /// administratif exceptionnel — jamais utilisé par le flux applicatif normal.
 model AuditLog {
-  id         String   @id @default(uuid())
+  id         String  @id @default(uuid())
   farmId     String
   userId     String?
   entityType String

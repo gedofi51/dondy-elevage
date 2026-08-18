@@ -1,7 +1,8 @@
-# DONDY ELEVAGE — Phase 0 : fondations techniques
+# DONDY ELEVAGE — Phases 0 et 1
 
-Récapitulatif des choix techniques de la Phase 0 (ossature uniquement, aucune
-fonctionnalité métier). Référence complète : [`DONDY_ELEVAGE_GO_PHASE0.md`](./DONDY_ELEVAGE_GO_PHASE0.md).
+Récapitulatif des choix techniques. Référence complète : [`DONDY_ELEVAGE_GO_PHASE0.md`](./DONDY_ELEVAGE_GO_PHASE0.md).
+
+## Phase 0 : fondations techniques (ossature uniquement, aucune fonctionnalité métier)
 
 ## Monorepo
 
@@ -317,10 +318,163 @@ cd docker && docker compose --env-file ../.env -f docker-compose.dev.yml up -d
 cd apps/api && npx prisma migrate dev --name init
 ```
 
+## Phase 1 : Auth, Users, RBAC, Farms, Buildings
+
+### Référentiel de rôles (étape 0, validée avant tout code)
+
+11 rôles : 1 rôle plateforme (**Super Admin**, `isSystem=true`, `farmId=null`)
++ 10 rôles de ferme fusionnant les listes V5 §11 et fichiers projet
+(**Propriétaire / Administrateur**, **Gérant / Responsable ferme**,
+**Responsable élevage**, **Responsable couvoir**, **Responsable eau**,
+**Magasinier / Responsable stocks**, **Vendeur / Caisse**,
+**Comptable / Responsable financier**, **Employé**,
+**Lecteur / Lecture seule**). Coexistence Employé / Responsable élevage sans
+fusion, actée telle quelle — à ajuster plus tard si l'usage réel le
+justifie. Catalogue et mapping rôle→permissions dans
+`apps/api/src/common/rbac/roles.catalog.ts` et `permissions.constants.ts`.
+
+### RBAC piloté par données, pas par enum figé
+
+`PermissionsGuard` (`common/guards/permissions.guard.ts`) vérifie des codes
+de permission (`farms.read`, `buildings.create`...), jamais un nom de rôle
+en dur. **Décision de performance** : les permissions de l'utilisateur sont
+résolues une fois à la connexion et embarquées dans l'access token JWT
+(claim `permissions: string[]`) — évite une requête base à chaque endpoint
+protégé (pertinent vu la connectivité Samba limitée), au prix d'une
+fraîcheur limitée à la durée de vie du token (15 min par défaut) : un
+changement de rôle par un admin ne prend effet qu'au prochain
+login/refresh, jamais en cours de session.
+
+`platform.manage` (Super Admin uniquement) autorise les opérations
+transverses à toutes les fermes ; `common/rbac/farm-scope.util.ts`
+(`assertSameFarm`) impose l'isolation stricte pour tous les autres —
+**404 générique, jamais 403**, pour ne jamais révéler l'existence d'une
+ressource à un tenant tiers (vérifié en test e2e, voir plus bas).
+
+### Modèle de compte — admin-only, pas d'inscription publique
+
+Les fichiers projet imposent "Users : CRUD utilisateur (admin uniquement
+pour création)" — pas d'endpoint d'inscription publique. Le compte est créé
+par un admin (`POST /users`, statut `INVITED`, `passwordHash` **nullable**
+tant que non activé) puis l'utilisateur l'active lui-même
+(`POST /auth/activer-compte`, jeton + choix du mot de passe en une seule
+étape) — fusionne naturellement "vérification email" et "création du mot de
+passe" pour ce modèle de provisioning, plutôt que deux flux séparés.
+
+### Auth
+
+- **Mots de passe** : argon2 (`PasswordService`), jamais bcrypt/MD5/SHA1.
+- **JWT** : access token courte durée (15 min) signé `JWT_ACCESS_SECRET` ;
+  refresh token **opaque** (chaîne aléatoire, pas un JWT) stocké hashé en
+  base (`RefreshToken.tokenHash`) — un refresh opaque + DB-backed permet une
+  révocation immédiate, contrairement à un JWT refresh auto-porteur qui
+  nécessiterait une liste de révocation en plus pour le même résultat.
+- **Rotation + détection de réutilisation** : chaque `POST /auth/rafraichir`
+  révoque l'ancien refresh token et en émet un nouveau
+  (`RefreshToken.replacedByTokenHash` trace la chaîne). Rejouer un token
+  déjà révoqué révoque **toute la famille** immédiatement (vol probable) —
+  vérifié en e2e.
+- **2FA (TOTP)** : `otplib` — v13 installée initialement n'a plus l'API
+  classique `authenticator` (réécriture complète), repassé en v12 (stable,
+  API `authenticator.generateSecret/keyuri/check`). Activation en 2 temps
+  (`POST /auth/2fa/activer` génère le secret, `POST /auth/2fa/confirmer`
+  l'active après vérification d'un vrai code) — jamais activée sur un seul
+  appel. Connexion avec 2FA : `POST /auth/connexion` renvoie un
+  `challengeToken` (JWT à part, secret `TWO_FACTOR_CHALLENGE_SECRET`
+  dédié — jamais réutilisable comme access token), complété par
+  `POST /auth/2fa/verifier`.
+- **OAuth Google/Microsoft** : jamais de création de compte à la volée (même
+  contrainte admin-only) — lien automatique sur email correspondant à un
+  compte existant (`ACTIVE` ou `INVITED`, ce dernier cas activant le compte
+  au passage puisque l'OAuth vaut preuve de possession de l'email). Aucun
+  compte trouvé → rejet explicite. **Piège de démarrage évité** :
+  `passport-oauth2` lève une `TypeError` si `clientID` est vide/absent —
+  sans credentials réelles configurées (cas normal en dev), l'API aurait
+  refusé de démarrer ; repli sur une valeur non vide (`'not-configured'`)
+  pour que les routes existent sans bloquer le bootstrap. **Non testé en
+  conditions réelles** : nécessite de vraies apps OAuth enregistrées chez
+  Google/Microsoft, hors de ce qui est disponible pour cette session.
+- **Rate limiting** : `@nestjs/throttler`, garde globale (100 req/min/IP par
+  défaut) + limites resserrées par endpoint sensible via `@Throttle`
+  (connexion 10/15 min, mot de passe oublié 5/h...). Actuellement **IP
+  uniquement** (pas d'axe email dédié comme envisagé un temps) — limitation
+  assumée pour cette phase, à revoir si le besoin réel apparaît.
+  `app.set('trust proxy', 1)` ajouté pour que `req.ip` reflète le vrai
+  visiteur derrière Nginx.
+- **Audit logs** : `AuditLogService` sur `LOGIN_SUCCESS`/`LOGIN_FAILED`/
+  `LOGIN_2FA_FAILED` et sur les mutations Users/Farms/Buildings. Aucune
+  entrée pour une tentative de connexion sur un email **inconnu** (le
+  modèle `AuditLog.farmId` n'est pas nullable — pas de ferme à laquelle
+  rattacher l'entrée) ; le rate limiting IP reste la protection anti-
+  énumération sur ce cas précis.
+
+### Email — Mailpit ajouté à l'infra dev
+
+Aucune infra mail n'existait en Phase 0. `MailService` (nodemailer) +
+conteneur `mailpit` ajouté à `docker-compose.dev.yml` (ports 1026/8026,
+cohabitation oblige). Envoi **non bloquant** : une panne SMTP ne fait jamais
+échouer l'action métier déclenchante. **Vérifié en conditions réelles** :
+email d'invitation reçu dans Mailpit avec le bon sujet, destinataire et lien
+d'activation fonctionnel (token réel, pas un exemple).
+
+### Schéma Prisma — migration `add_auth_fields`
+
+Purement additif/assouplissant (vérifié dans le SQL généré) : `passwordHash`
+devient nullable, `UserStatus` gagne `INVITED` (nouveau défaut),
+`emailVerified`/jetons de vérification/reset/2FA ajoutés sur `User`,
+`replacedByTokenHash` ajouté sur `RefreshToken`. Aucune perte de données
+possible (colonnes nullables ou avec défaut, table quasi vide en dev).
+
+### Seed (`apps/api/prisma/seed.ts`)
+
+**Piège évité** : `@@unique([farmId, name])` sur `Role` ne protège **pas**
+des doublons quand `farmId = null` — en SQL, `NULL` n'est jamais égal à
+`NULL` pour une contrainte unique, donc un `upsert` classique aurait créé un
+nouveau rôle "Super Admin" à chaque exécution. Recherche manuelle
+(`findFirst` puis `create` conditionnel) à la place — vérifié idempotent
+par double exécution réelle (aucun doublon créé la seconde fois). Seed
+aussi un compte Super Admin de bootstrap (variables d'environnement
+`SEED_SUPER_ADMIN_EMAIL`/`PASSWORD`, aucun compte créé si le mot de passe
+n'est pas défini — sûr par défaut en production) et une ferme de
+démonstration si aucune n'existe encore.
+
+### Tests
+
+- **Unitaires** (`*.spec.ts`) : hashage argon2 (salage aléatoire vérifié),
+  signature/vérification JWT (access token + challenge 2FA, y compris rejet
+  sur mauvais secret), logique `PermissionsGuard` (4 cas : aucune permission
+  requise, permissions suffisantes, permissions insuffisantes, non
+  authentifié).
+- **Intégration** (`test/auth-rbac.e2e-spec.ts`, **contre une vraie base
+  MySQL, aucun mock**) : création admin → activation → connexion → accès
+  protégé → refus 403 si permission insuffisante → 401 sans token ;
+  **isolation farmId** (404 générique sur bâtiment/ferme d'un autre tenant,
+  liste jamais fuitée) ; rotation + réutilisation de refresh token (famille
+  entière révoquée) ; 2FA de bout en bout avec de vrais codes TOTP générés
+  par `otplib`. Le jeton d'activation en clair n'étant jamais récupérable
+  depuis la base (seul son hash est stocké), le test écrit lui-même un hash
+  de jeton connu plutôt que de dépendre de Mailpit joignable pendant les
+  tests — nettoyage complet des données de test en `afterAll`.
+- **Non intégré à la CI** : `test:e2e` a besoin d'une vraie base MySQL, que
+  le pipeline CI ne provisionne pas (décision déjà actée en Phase 0) — reste
+  une vérification manuelle locale pour l'instant.
+
+### Risques / dette technique (Phase 1)
+
+- OAuth Google/Microsoft implémenté mais non testé en conditions réelles
+  (pas de credentials d'app disponibles pour cette session).
+- Rate limiting IP uniquement, pas d'axe email dédié.
+- `test:e2e` non exécuté en CI (pas de MySQL provisionné dans le pipeline).
+- Pas de frontend pour les nouveaux flux (activation, connexion, 2FA,
+  OAuth callback) — hors périmètre backend de cette phase, comme pour les
+  autres pages métier en attente côté `apps/web`.
+- Permissions embarquées dans le JWT : un changement de rôle n'est effectif
+  qu'au prochain login/refresh (15 min max), jamais en cours de session.
+
 ## Prochaine étape proposée
 
-**Phase 1** — Auth, Users, Roles/RBAC unifié, Farms, Buildings (voir
-`DONDY_ELEVAGE_GO_PHASE0.md`, section G). Préalables techniques de la
-Phase 0 désormais tous couverts (migration appliquée, `mysql`/`redis`/`api`/
-`nginx` vérifiés ensemble en Docker, contournement documenté pour `web` sur
-Windows) — rien ne bloque plus le démarrage de la Phase 1.
+**Phase 2** — Suppliers, Customers, Documents, Alerts (moteur),
+Notifications, AuditLogs (voir `DONDY_ELEVAGE_GO_PHASE0.md`, section G).
+Le socle Auth/RBAC/Farms/Buildings de la Phase 1 est posé et vérifié ;
+aucun bloquant technique identifié pour démarrer la Phase 2. Contournement
+Windows (`web` en natif, reste en Docker) toujours en place, voir CLAUDE.md.

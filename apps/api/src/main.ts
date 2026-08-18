@@ -1,9 +1,15 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Nécessaire derrière Nginx pour que req.ip reflète le vrai visiteur —
+  // sans ce réglage, le rate limiting verrait tout le trafic comme une seule
+  // IP (celle du conteneur nginx).
+  app.set('trust proxy', 1);
 
   app.setGlobalPrefix('api/v1');
 
