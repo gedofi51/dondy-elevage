@@ -26,6 +26,24 @@ export const PERMISSIONS = {
 
   ROLES_READ: 'roles.read',
   ROLES_ASSIGN: 'roles.assign',
+
+  SUPPLIERS_CREATE: 'suppliers.create',
+  SUPPLIERS_READ: 'suppliers.read',
+  SUPPLIERS_UPDATE: 'suppliers.update',
+  SUPPLIERS_DELETE: 'suppliers.delete',
+
+  CUSTOMERS_CREATE: 'customers.create',
+  CUSTOMERS_READ: 'customers.read',
+  CUSTOMERS_UPDATE: 'customers.update',
+  CUSTOMERS_DELETE: 'customers.delete',
+
+  DOCUMENTS_CREATE: 'documents.create',
+  DOCUMENTS_READ: 'documents.read',
+  DOCUMENTS_DELETE: 'documents.delete',
+
+  ALERTS_CREATE: 'alerts.create',
+  ALERTS_READ: 'alerts.read',
+  ALERTS_ACKNOWLEDGE: 'alerts.acknowledge',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -46,4 +64,22 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.USERS_UPDATE]: 'Modifier/désactiver un utilisateur',
   [PERMISSIONS.ROLES_READ]: 'Consulter le référentiel de rôles/permissions',
   [PERMISSIONS.ROLES_ASSIGN]: 'Attribuer/retirer un rôle à un utilisateur',
+
+  [PERMISSIONS.SUPPLIERS_CREATE]: 'Créer un fournisseur',
+  [PERMISSIONS.SUPPLIERS_READ]: 'Consulter les fournisseurs',
+  [PERMISSIONS.SUPPLIERS_UPDATE]: 'Modifier un fournisseur',
+  [PERMISSIONS.SUPPLIERS_DELETE]: 'Supprimer un fournisseur',
+
+  [PERMISSIONS.CUSTOMERS_CREATE]: 'Créer un client',
+  [PERMISSIONS.CUSTOMERS_READ]: 'Consulter les clients',
+  [PERMISSIONS.CUSTOMERS_UPDATE]: 'Modifier un client',
+  [PERMISSIONS.CUSTOMERS_DELETE]: 'Supprimer un client',
+
+  [PERMISSIONS.DOCUMENTS_CREATE]: 'Téléverser un document',
+  [PERMISSIONS.DOCUMENTS_READ]: 'Consulter/télécharger les documents',
+  [PERMISSIONS.DOCUMENTS_DELETE]: 'Supprimer un document',
+
+  [PERMISSIONS.ALERTS_CREATE]: 'Créer/déclencher une alerte',
+  [PERMISSIONS.ALERTS_READ]: 'Consulter les alertes',
+  [PERMISSIONS.ALERTS_ACKNOWLEDGE]: 'Acquitter une alerte',
 };
