@@ -44,6 +44,11 @@ model Farm {
   buildings       Building[]
   auditLogs       AuditLog[]
   settingsEntries Setting[]
+  suppliers       Supplier[]
+  customers       Customer[]
+  documents       Document[]
+  alerts          Alert[]
+  notifications   Notification[]
 
   @@map("farms")
 }
@@ -78,6 +83,7 @@ model User {
   refreshTokens RefreshToken[]
   oauthAccounts OauthAccount[]
   auditLogs     AuditLog[]     @relation("AuditLogUser")
+  notifications Notification[]
 
   @@unique([farmId, email])
   @@index([farmId])
@@ -240,4 +246,167 @@ model Setting {
 
   @@unique([farmId, key])
   @@map("settings")
+}
+
+/// Donnée de référence (comme Building) : suppression définitive, tracée par
+/// AuditLog (oldValues), pas de deletedAt — voir docs/reference/BASE_DE-DONNEES.md,
+/// le soft delete est réservé aux données financières/sanitaires/d'audit.
+model Supplier {
+  id          String  @id @default(uuid())
+  farmId      String
+  name        String
+  /// Catégorie paramétrable : texte libre, volontairement pas un enum figé.
+  category    String
+  contactName String?
+  phone       String?
+  address     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm Farm @relation(fields: [farmId], references: [id])
+
+  @@index([farmId])
+  @@map("suppliers")
+}
+
+enum CustomerType {
+  PARTICULIER
+  COMMERCANT
+  RESTAURANT
+  REVENDEUR
+  ENTREPRISE
+  AUTRE
+}
+
+/// Donnée de référence (comme Building) : suppression définitive, tracée par
+/// AuditLog (oldValues), pas de deletedAt.
+model Customer {
+  id     String @id @default(uuid())
+  farmId String
+  /// Auto-généré (ex. "CLI-000123"), dérivé du dernier code émis — voir
+  /// CustomersService.generateCode().
+  code   String
+  /// Couvre "nom/prénom ou raison sociale" en un seul champ libre — `type`
+  /// distingue déjà particulier vs entreprise.
+  name         String
+  phone        String?
+  locality     String?
+  address      String?
+  type         CustomerType @default(AUTRE)
+  observations String?      @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm Farm @relation(fields: [farmId], references: [id])
+
+  @@unique([farmId, code])
+  @@index([farmId])
+  @@map("customers")
+}
+
+/// Rattachement polymorphe (entityType + entityId, pas de FK Prisma — la
+/// cible varie). deletedAt conservé ici (contrairement à Supplier/Customer) :
+/// contrairement à une ligne de données, les octets du fichier ne sont
+/// reconstructibles depuis aucune autre trace — suppression physique jamais
+/// effectuée sur ce chemin, seulement soft-delete de la ligne.
+model Document {
+  id     String @id @default(uuid())
+  farmId String
+  entityType String
+  entityId   String
+  /// Catégorie paramétrable (facture, photo, ordonnance, certificat...),
+  /// texte libre comme Supplier.category.
+  category String?
+  /// Conservé pour affichage uniquement — JAMAIS utilisé pour construire un
+  /// chemin sur disque (voir storedName).
+  originalName String
+  /// Nom UUID réel sur disque, extension dérivée du MIME validé par contenu
+  /// (jamais de l'extension fournie par l'utilisateur).
+  storedName String
+  mimeType   String
+  sizeBytes  Int
+
+  createdAt DateTime  @default(now())
+  createdBy String?
+  deletedAt DateTime?
+
+  farm Farm @relation(fields: [farmId], references: [id])
+
+  @@index([farmId])
+  @@index([entityType, entityId])
+  @@map("documents")
+}
+
+enum AlertSeverity {
+  INFO
+  VIGILANCE
+  IMPORTANT
+  CRITIQUE
+}
+
+/// Cycle de vie à 3 états — voir alert-state-machine.ts pour les transitions
+/// valides (CREATED -> TRIGGERED -> ACKNOWLEDGED, aucune autre).
+enum AlertStatus {
+  CREATED
+  TRIGGERED
+  ACKNOWLEDGED
+}
+
+model Alert {
+  id     String        @id @default(uuid())
+  farmId String
+  /// Code libre (ex. "tache_en_retard") — les futures règles métier
+  /// (mortalité, stock...) ajouteront leurs propres types, pas un enum figé.
+  type     String
+  severity AlertSeverity
+  /// Rattachement polymorphe optionnel : une alerte générique peut ne cibler
+  /// aucune entité précise (ex. démo "tâche en retard").
+  entityType String?
+  entityId   String?
+  title      String
+  message    String?     @db.Text
+  status     AlertStatus @default(CREATED)
+  scheduledAt    DateTime?
+  triggeredAt    DateTime?
+  acknowledgedAt DateTime?
+  /// Convention createdBy : string simple sans relation Prisma, comme partout
+  /// ailleurs dans ce schéma (Building.createdBy, User.createdBy...).
+  acknowledgedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm          Farm           @relation(fields: [farmId], references: [id])
+  notifications Notification[]
+
+  @@index([farmId])
+  @@index([farmId, status])
+  @@index([entityType, entityId])
+  @@map("alerts")
+}
+
+model Notification {
+  id      String  @id @default(uuid())
+  farmId  String
+  userId  String
+  alertId String?
+  title   String
+  message String? @db.Text
+  /// Seul canal cette phase ; champ réservé pour un futur canal email.
+  channel String    @default("in_app")
+  readAt  DateTime?
+
+  createdAt DateTime @default(now())
+
+  farm  Farm   @relation(fields: [farmId], references: [id])
+  user  User   @relation(fields: [userId], references: [id])
+  alert Alert? @relation(fields: [alertId], references: [id])
+
+  @@index([farmId])
+  @@index([userId, readAt])
+  @@map("notifications")
 }
