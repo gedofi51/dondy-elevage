@@ -7,6 +7,11 @@ pondeuses, reproducteurs/couvoir, vente d'eau, stocks, finances, patrimoine,
 IoT). Périmètre fonctionnel de référence : `docs/cahiers-des-charges/` et
 `docs/architecture/DONDY_ELEVAGE_GO_PHASE0.md` (synthèse consolidée V1+V5+V6).
 
+Règles projet détaillées (contraintes, sécurité, base de données, tests,
+performance, Docker/déploiement, journalisation, modules métier, RBAC,
+architecture, CI/CD, etc.) : `docs/reference/` fait foi — ne pas les
+reformuler ici, ce fichier ne fait qu'y renvoyer.
+
 ## Stack imposée (ne pas modifier sans justification technique majeure)
 - Front : Next.js (App Router) + TypeScript + Tailwind CSS + Shadcn UI +
   React Query + React Hook Form + Zod
