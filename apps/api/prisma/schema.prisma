@@ -1,0 +1,224 @@
+// Schéma Prisma — Phase 0 (socle uniquement)
+// Tables métier (bandes, ventes, stocks...) ajoutées à partir de la Phase 3.
+// Toute table métier future doit porter farmId (isolation multi-tenant).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7 : l'URL de connexion n'est plus déclarée ici mais dans
+// prisma.config.ts (CLI/Migrate) et passée explicitement au driver adapter
+// lors de l'instanciation de PrismaClient (voir src/prisma/prisma.service.ts).
+datasource db {
+  provider = "mysql"
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum OauthProvider {
+  GOOGLE
+  MICROSOFT
+}
+
+model Farm {
+  id       String  @id @default(uuid())
+  name     String
+  country  String  @default("CF")
+  locality String?
+  currency String  @default("XAF")
+  timezone String  @default("Africa/Bangui")
+  settings Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     User[]
+  roles     Role[]
+  buildings Building[]
+  auditLogs AuditLog[]
+  settingsEntries Setting[]
+
+  @@map("farms")
+}
+
+model User {
+  id               String     @id @default(uuid())
+  farmId           String
+  email            String
+  passwordHash     String
+  name             String
+  status           UserStatus @default(ACTIVE)
+  twoFactorEnabled Boolean    @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+
+  farm          Farm           @relation(fields: [farmId], references: [id])
+  userRoles     UserRole[]
+  refreshTokens RefreshToken[]
+  oauthAccounts OauthAccount[]
+  auditLogs     AuditLog[]     @relation("AuditLogUser")
+
+  @@unique([farmId, email])
+  @@index([farmId])
+  @@map("users")
+}
+
+/// RBAC piloté par données : les rôles/permissions ne sont jamais un enum figé
+/// dans le code, pour absorber les référentiels de rôles à unifier (voir
+/// docs/architecture/DONDY_ELEVAGE_GO_PHASE0.md, point B.5).
+model Role {
+  id       String  @id @default(uuid())
+  /// null = rôle système global (isSystem = true) ; renseigné = rôle propre à une ferme
+  farmId   String?
+  name     String
+  isSystem Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm            Farm?            @relation(fields: [farmId], references: [id])
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+
+  @@unique([farmId, name])
+  @@index([farmId])
+  @@map("roles")
+}
+
+/// Catalogue système des permissions, non scindé par ferme.
+model Permission {
+  id          String  @id @default(uuid())
+  code        String  @unique
+  description String?
+
+  createdAt DateTime @default(now())
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  id     String @id @default(uuid())
+  userId String
+  roleId String
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String @id @default(uuid())
+  roleId       String
+  permissionId String
+
+  createdAt DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id])
+  permission Permission @relation(fields: [permissionId], references: [id])
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model OauthAccount {
+  id                String        @id @default(uuid())
+  userId            String
+  provider          OauthProvider
+  providerAccountId String
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+model Building {
+  id       String  @id @default(uuid())
+  farmId   String
+  name     String
+  type     String
+  capacity Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm Farm @relation(fields: [farmId], references: [id])
+
+  @@index([farmId])
+  @@map("buildings")
+}
+
+/// Append-only par convention applicative : jamais de mise à jour du contenu
+/// d'une entrée existante. `deletedAt` reste présent pour rester conforme à la
+/// convention transversale (finances/santé/audit), réservé à un usage
+/// administratif exceptionnel — jamais utilisé par le flux applicatif normal.
+model AuditLog {
+  id         String   @id @default(uuid())
+  farmId     String
+  userId     String?
+  entityType String
+  entityId   String
+  action     String
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  farm Farm  @relation(fields: [farmId], references: [id])
+  user User? @relation("AuditLogUser", fields: [userId], references: [id])
+
+  @@index([farmId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+model Setting {
+  id     String @id @default(uuid())
+  farmId String
+  key    String
+  value  Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm Farm @relation(fields: [farmId], references: [id])
+
+  @@unique([farmId, key])
+  @@map("settings")
+}

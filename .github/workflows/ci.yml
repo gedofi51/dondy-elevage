@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un pipeline en échec bloque le déploiement (voir CLAUDE.md, Git / CI-CD).
+# Le déploiement lui-même (image Docker, publication) est ajouté à partir de
+# la phase où un environnement de déploiement réel existe.
+
+env:
+  # Placeholder uniquement : `prisma generate` (déclenché par le postinstall
+  # de apps/api) a besoin d'une DATABASE_URL syntaxiquement valide pour
+  # charger prisma.config.ts, mais ne se connecte jamais réellement à une
+  # base durant install/lint/typecheck/test/build. Aucune base n'est
+  # provisionnée dans ce pipeline (Phase 0 : uniquement les tests unitaires).
+  DATABASE_URL: 'mysql://ci:ci@localhost:3306/ci'
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build

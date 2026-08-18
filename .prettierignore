@@ -1,0 +1,6 @@
+node_modules
+.next
+dist
+coverage
+docs/cahiers-des-charges
+package-lock.json

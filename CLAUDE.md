@@ -104,6 +104,52 @@ primary #2D4A2E · secondary #A0522D · accent #E8891D · background #FAF7EF ·
 foreground #1A1A1A · muted #E8E1D0 · border #D8CFB8 · success #3F7A3E ·
 warning #E8891D · destructive #B03A2E · info #4A6C8C
 
+## Cohabitation Docker avec d'autres projets sur cette machine
+Une autre application (`donexskill-app`) tourne déjà en local via Docker sur
+cette machine et occupe les ports hôte suivants : MySQL 3306, Redis 6379,
+Mailpit 1025/8025. Le `docker-compose.dev.yml` de DONDY ELEVAGE doit donc
+mapper des ports hôte différents pour éviter tout conflit au démarrage :
+- MySQL → 3307:3306
+- Redis → 6380:6379
+- API NestJS → 3011:3000 (ou port interne équivalent)
+- Web Next.js → 3001:3000
+- Nginx → 8080:80 (et 8443:443 si HTTPS local)
+Chaque projet Docker Compose reste isolé (réseaux, volumes nommés propres au
+dossier du projet) : aucun risque pour les données de donexskill-app, mais
+les ports hôte doivent être différenciés explicitement dans le
+docker-compose.dev.yml et le .env.example de DONDY ELEVAGE.
+
+## Mode de développement hybride Windows (web en natif, reste en Docker)
+Sur Windows, le conteneur `web` (`apps/web`, Next.js/Turbopack) échoue de
+façon reproductible : `500` sur toute requête, `CssSyntaxError: Can't
+resolve 'tw-animate-css'`. Le même code fonctionne normalement en natif sur
+l'hôte (`npm run dev --workspace=apps/web`) — cause probable : le résolveur
+CSS de Turbopack, sur le filesystem bind-mount/volumes de Docker Desktop,
+s'arrête au premier `node_modules` rencontré en remontant l'arborescence
+(même incomplet, ex. `apps/web/node_modules` imbriqué par npm workspaces)
+sans continuer vers `node_modules` racine — non reproduit sur l'hôte.
+Diagnostic complet (causes écartées une à une, dont `turbopack.root` déjà
+tenté sans succès) : voir `docs/architecture/README.md`, section "Blocage
+non résolu".
+
+**Contournement retenu, à réévaluer si le bug Turbopack/Windows est corrigé
+en amont (upstream Next.js/Turbopack)** : `web` tourne en natif sur l'hôte,
+tout le reste (`mysql`, `redis`, `api`, `nginx`) reste orchestré via
+`docker-compose.dev.yml`. Démarrage :
+```bash
+# Infra + API (sans web) :
+cd docker && docker compose --env-file ../.env -f docker-compose.dev.yml up -d mysql redis api nginx
+
+# Web, en natif, depuis la racine :
+npm run dev --workspace=apps/web
+```
+Le service `web` reste défini dans `docker-compose.dev.yml` (utile sur
+Linux/macOS, où ce bug n'est a priori pas reproduit) — sur Windows, ne pas
+le démarrer plutôt que le supprimer de la config. Le reverse proxy Nginx
+(`/api/` → conteneur `api`) reste utilisable indépendamment ; sa route `/`
+(→ conteneur `web`) ne fonctionnera pas tant que `web` n'est pas aussi
+conteneurisé — accéder au web natif directement sur son port hôte.
+
 ## Points en attente de confirmation (voir docs/architecture)
 - SGBD : MySQL retenu (fichiers projet) malgré la mention PostgreSQL dans
   le cahier des charges V6 (fonctionnel uniquement).

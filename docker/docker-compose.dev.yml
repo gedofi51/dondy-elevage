@@ -1,0 +1,127 @@
+# Environnement de développement local.
+# Ports hôte volontairement décalés pour cohabiter avec donexskill-app,
+# déjà présent sur cette machine (voir CLAUDE.md, section cohabitation Docker) :
+#   MySQL 3307, Redis 6380, API 3011, Web 3001, Nginx 8080/8443.
+#
+# Usage : depuis ce dossier (docker/), avec un ".env" copié depuis "../.env.example" :
+#   docker compose --env-file ../.env -f docker-compose.dev.yml up -d
+# (--env-file explicite nécessaire : le fichier .env vit à la racine du repo,
+# pas dans ce dossier docker/, seul endroit où Compose le cherche par défaut.)
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: dondy-elevage-mysql
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    ports:
+      - "${MYSQL_HOST_PORT:-3307}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - dondy-elevage
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: dondy-elevage-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_HOST_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - dondy-elevage
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+      target: dev
+    container_name: dondy-elevage-api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      # Depuis le réseau Docker interne : nom de service + port interne du conteneur
+      # (distinct du port hôte 3307 publié ci-dessus, utile seulement hors Docker).
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      REDIS_URL: redis://redis:6379
+      PORT: 3000
+    ports:
+      - "${API_HOST_PORT:-3011}:3000"
+    volumes:
+      - ..:/repo
+      - api_node_modules:/repo/node_modules
+      # npm workspaces peut imbriquer certains paquets dans apps/api/node_modules
+      # (hoisting partiel) — isolé de l'hôte pour la même raison que ci-dessus.
+      - api_app_node_modules:/repo/apps/api/node_modules
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - dondy-elevage
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      target: dev
+    container_name: dondy-elevage-web
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    ports:
+      - "${WEB_HOST_PORT:-3001}:3000"
+    volumes:
+      - ..:/repo
+      - web_node_modules:/repo/node_modules
+      # npm workspaces peut imbriquer certains paquets dans apps/web/node_modules
+      # (hoisting partiel, ex. @hookform/resolvers, @vitejs/plugin-react) —
+      # sans cette isolation, la résolution CSS de tw-animate-css échoue
+      # (contrairement à la résolution Node.js classique, qui remonte
+      # correctement jusqu'à /repo/node_modules).
+      - web_app_node_modules:/repo/apps/web/node_modules
+      # Cache Turbopack isolé de l'hôte : sur bind-mount Windows, le verrou de
+      # fichier de .next échoue avec "Permission denied" depuis le conteneur.
+      - web_next_cache:/repo/apps/web/.next
+    depends_on:
+      - api
+    networks:
+      - dondy-elevage
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: dondy-elevage-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+    depends_on:
+      - web
+      - api
+    networks:
+      - dondy-elevage
+
+volumes:
+  mysql_data:
+  redis_data:
+  api_node_modules:
+  api_app_node_modules:
+  web_node_modules:
+  web_app_node_modules:
+  web_next_cache:
+
+networks:
+  dondy-elevage:
+    name: dondy-elevage-network

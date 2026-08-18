@@ -1,0 +1,8 @@
+{
+  "name": "@dondy-elevage/shared-types",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Types et DTO partagés entre apps/web et apps/api",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts"
+}

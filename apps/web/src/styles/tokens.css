@@ -1,0 +1,121 @@
+/**
+ * Design tokens — palette officielle DONDY ELEVAGE.
+ * Source : docs/architecture/DONDY_ELEVAGE_GO_PHASE0.md, section C.
+ *
+ * Palette brute (--dondy-*) conservée séparément des variables sémantiques
+ * shadcn (--primary, --secondary, ...) pour que la marque reste la seule
+ * source de vérité si les tokens shadcn évoluent plus tard.
+ *
+ * Thème clair par défaut (cohérent avec le fond crème du logo). Le mode
+ * sombre reste à concevoir en Phase 2+ sans toucher primary/accent, pour
+ * préserver l'identité de marque — non traité en Phase 0 (voir doc), le bloc
+ * .dark ci-dessous reprend donc les mêmes valeurs que :root en attendant.
+ */
+
+:root {
+  /* Palette brute DONDY ELEVAGE */
+  --dondy-primary: #2d4a2e;
+  --dondy-primary-foreground: #f5f0e1;
+  --dondy-secondary: #a0522d;
+  --dondy-secondary-foreground: #faf7ef;
+  --dondy-accent: #e8891d;
+  --dondy-accent-foreground: #1a1a1a;
+  --dondy-background: #faf7ef;
+  --dondy-foreground: #1a1a1a;
+  --dondy-muted: #e8e1d0;
+  --dondy-muted-foreground: #5a5346;
+  --dondy-border: #d8cfb8;
+  --dondy-success: #3f7a3e;
+  --dondy-success-foreground: #faf7ef;
+  --dondy-warning: #e8891d;
+  --dondy-warning-foreground: #1a1a1a;
+  --dondy-destructive: #b03a2e;
+  --dondy-destructive-foreground: #faf7ef;
+  --dondy-info: #4a6c8c;
+  --dondy-info-foreground: #faf7ef;
+
+  /* Variables sémantiques attendues par shadcn/Tailwind (@theme inline) */
+  --background: var(--dondy-background);
+  --foreground: var(--dondy-foreground);
+  --card: var(--dondy-background);
+  --card-foreground: var(--dondy-foreground);
+  --popover: var(--dondy-background);
+  --popover-foreground: var(--dondy-foreground);
+  --primary: var(--dondy-primary);
+  --primary-foreground: var(--dondy-primary-foreground);
+  --secondary: var(--dondy-secondary);
+  --secondary-foreground: var(--dondy-secondary-foreground);
+  --muted: var(--dondy-muted);
+  --muted-foreground: var(--dondy-muted-foreground);
+  --accent: var(--dondy-accent);
+  --accent-foreground: var(--dondy-accent-foreground);
+  --destructive: var(--dondy-destructive);
+  --destructive-foreground: var(--dondy-destructive-foreground);
+  --success: var(--dondy-success);
+  --success-foreground: var(--dondy-success-foreground);
+  --warning: var(--dondy-warning);
+  --warning-foreground: var(--dondy-warning-foreground);
+  --info: var(--dondy-info);
+  --info-foreground: var(--dondy-info-foreground);
+  --border: var(--dondy-border);
+  --input: var(--dondy-border);
+  --ring: var(--dondy-primary);
+
+  /* Couleurs de graphiques (dashboards futurs), dérivées de la palette */
+  --chart-1: var(--dondy-primary);
+  --chart-2: var(--dondy-secondary);
+  --chart-3: var(--dondy-accent);
+  --chart-4: var(--dondy-info);
+  --chart-5: var(--dondy-success);
+
+  /* Sidebar (layout applicatif) alignée sur la marque */
+  --sidebar: var(--dondy-primary);
+  --sidebar-foreground: var(--dondy-primary-foreground);
+  --sidebar-primary: var(--dondy-accent);
+  --sidebar-primary-foreground: var(--dondy-accent-foreground);
+  --sidebar-accent: #243924; /* primary légèrement assombri, état actif/hover */
+  --sidebar-accent-foreground: var(--dondy-primary-foreground);
+  --sidebar-border: #1f331f;
+  --sidebar-ring: var(--dondy-accent);
+}
+
+.dark {
+  --background: var(--dondy-background);
+  --foreground: var(--dondy-foreground);
+  --card: var(--dondy-background);
+  --card-foreground: var(--dondy-foreground);
+  --popover: var(--dondy-background);
+  --popover-foreground: var(--dondy-foreground);
+  --primary: var(--dondy-primary);
+  --primary-foreground: var(--dondy-primary-foreground);
+  --secondary: var(--dondy-secondary);
+  --secondary-foreground: var(--dondy-secondary-foreground);
+  --muted: var(--dondy-muted);
+  --muted-foreground: var(--dondy-muted-foreground);
+  --accent: var(--dondy-accent);
+  --accent-foreground: var(--dondy-accent-foreground);
+  --destructive: var(--dondy-destructive);
+  --destructive-foreground: var(--dondy-destructive-foreground);
+  --success: var(--dondy-success);
+  --success-foreground: var(--dondy-success-foreground);
+  --warning: var(--dondy-warning);
+  --warning-foreground: var(--dondy-warning-foreground);
+  --info: var(--dondy-info);
+  --info-foreground: var(--dondy-info-foreground);
+  --border: var(--dondy-border);
+  --input: var(--dondy-border);
+  --ring: var(--dondy-primary);
+  --chart-1: var(--dondy-primary);
+  --chart-2: var(--dondy-secondary);
+  --chart-3: var(--dondy-accent);
+  --chart-4: var(--dondy-info);
+  --chart-5: var(--dondy-success);
+  --sidebar: var(--dondy-primary);
+  --sidebar-foreground: var(--dondy-primary-foreground);
+  --sidebar-primary: var(--dondy-accent);
+  --sidebar-primary-foreground: var(--dondy-accent-foreground);
+  --sidebar-accent: #243924;
+  --sidebar-accent-foreground: var(--dondy-primary-foreground);
+  --sidebar-border: #1f331f;
+  --sidebar-ring: var(--dondy-accent);
+}
