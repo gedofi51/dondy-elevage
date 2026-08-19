@@ -38,23 +38,28 @@ model Farm {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users           User[]
-  roles           Role[]
-  buildings       Building[]
-  auditLogs       AuditLog[]
-  settingsEntries Setting[]
-  suppliers       Supplier[]
-  customers       Customer[]
-  documents       Document[]
-  alerts          Alert[]
-  notifications   Notification[]
-  broilerBatches       BroilerBatch[]
-  broilerDailyRecords  BroilerDailyRecord[]
-  broilerMortalities   BroilerMortality[]
-  broilerHealthEvents  BroilerHealthEvent[]
-  expenses             Expense[]
-  sales                Sale[]
-  payments             Payment[]
+  users               User[]
+  roles               Role[]
+  buildings           Building[]
+  auditLogs           AuditLog[]
+  settingsEntries     Setting[]
+  suppliers           Supplier[]
+  customers           Customer[]
+  documents           Document[]
+  alerts              Alert[]
+  notifications       Notification[]
+  broilerBatches      BroilerBatch[]
+  broilerDailyRecords BroilerDailyRecord[]
+  broilerMortalities  BroilerMortality[]
+  broilerHealthEvents BroilerHealthEvent[]
+  expenses            Expense[]
+  sales               Sale[]
+  payments            Payment[]
+  layerBatches        LayerBatch[]
+  layerDailyRecords   LayerDailyRecord[]
+  layerHealthEvents   LayerHealthEvent[]
+  eggStockLots        EggStockLot[]
+  eggStockMovements   EggStockMovement[]
 
   @@map("farms")
 }
@@ -84,15 +89,17 @@ model User {
   updatedAt DateTime @updatedAt
   createdBy String?
 
-  farm          Farm           @relation(fields: [farmId], references: [id])
-  userRoles     UserRole[]
-  refreshTokens RefreshToken[]
-  oauthAccounts OauthAccount[]
-  auditLogs     AuditLog[]     @relation("AuditLogUser")
-  notifications Notification[]
+  farm                           Farm                 @relation(fields: [farmId], references: [id])
+  userRoles                      UserRole[]
+  refreshTokens                  RefreshToken[]
+  oauthAccounts                  OauthAccount[]
+  auditLogs                      AuditLog[]           @relation("AuditLogUser")
+  notifications                  Notification[]
   broilerBatchesAsPrimaryManager BroilerBatch[]       @relation("BroilerBatchPrimaryManager")
   dailyRecordsAsOperator         BroilerDailyRecord[] @relation("BroilerDailyRecordOperator")
   salesAsSeller                  Sale[]               @relation("SaleSeller")
+  layerBatchesAsPrimaryManager   LayerBatch[]         @relation("LayerBatchPrimaryManager")
+  dailyRecordsAsLayerOperator    LayerDailyRecord[]   @relation("LayerDailyRecordOperator")
 
   @@unique([farmId, email])
   @@index([farmId])
@@ -210,8 +217,9 @@ model Building {
   updatedAt DateTime @updatedAt
   createdBy String?
 
-  farm Farm @relation(fields: [farmId], references: [id])
+  farm           Farm           @relation(fields: [farmId], references: [id])
   broilerBatches BroilerBatch[]
+  layerBatches   LayerBatch[]
 
   @@index([farmId])
   @@map("buildings")
@@ -275,7 +283,7 @@ model Supplier {
   updatedAt DateTime @updatedAt
   createdBy String?
 
-  farm Farm @relation(fields: [farmId], references: [id])
+  farm           Farm           @relation(fields: [farmId], references: [id])
   broilerBatches BroilerBatch[]
   expenses       Expense[]
 
@@ -295,11 +303,11 @@ enum CustomerType {
 /// Donnée de référence (comme Building) : suppression définitive, tracée par
 /// AuditLog (oldValues), pas de deletedAt.
 model Customer {
-  id     String @id @default(uuid())
-  farmId String
+  id           String       @id @default(uuid())
+  farmId       String
   /// Auto-généré (ex. "CLI-000123"), dérivé du dernier code émis — voir
   /// CustomersService.generateCode().
-  code   String
+  code         String
   /// Couvre "nom/prénom ou raison sociale" en un seul champ libre — `type`
   /// distingue déjà particulier vs entreprise.
   name         String
@@ -313,7 +321,7 @@ model Customer {
   updatedAt DateTime @updatedAt
   createdBy String?
 
-  farm Farm @relation(fields: [farmId], references: [id])
+  farm  Farm   @relation(fields: [farmId], references: [id])
   sales Sale[]
 
   @@unique([farmId, code])
@@ -327,21 +335,21 @@ model Customer {
 /// reconstructibles depuis aucune autre trace — suppression physique jamais
 /// effectuée sur ce chemin, seulement soft-delete de la ligne.
 model Document {
-  id     String @id @default(uuid())
-  farmId String
-  entityType String
-  entityId   String
+  id           String  @id @default(uuid())
+  farmId       String
+  entityType   String
+  entityId     String
   /// Catégorie paramétrable (facture, photo, ordonnance, certificat...),
   /// texte libre comme Supplier.category.
-  category String?
+  category     String?
   /// Conservé pour affichage uniquement — JAMAIS utilisé pour construire un
   /// chemin sur disque (voir storedName).
   originalName String
   /// Nom UUID réel sur disque, extension dérivée du MIME validé par contenu
   /// (jamais de l'extension fournie par l'utilisateur).
-  storedName String
-  mimeType   String
-  sizeBytes  Int
+  storedName   String
+  mimeType     String
+  sizeBytes    Int
 
   createdAt DateTime  @default(now())
   createdBy String?
@@ -370,19 +378,19 @@ enum AlertStatus {
 }
 
 model Alert {
-  id     String        @id @default(uuid())
-  farmId String
+  id             String        @id @default(uuid())
+  farmId         String
   /// Code libre (ex. "tache_en_retard") — les futures règles métier
   /// (mortalité, stock...) ajouteront leurs propres types, pas un enum figé.
-  type     String
-  severity AlertSeverity
+  type           String
+  severity       AlertSeverity
   /// Rattachement polymorphe optionnel : une alerte générique peut ne cibler
   /// aucune entité précise (ex. démo "tâche en retard").
-  entityType String?
-  entityId   String?
-  title      String
-  message    String?     @db.Text
-  status     AlertStatus @default(CREATED)
+  entityType     String?
+  entityId       String?
+  title          String
+  message        String?       @db.Text
+  status         AlertStatus   @default(CREATED)
   scheduledAt    DateTime?
   triggeredAt    DateTime?
   acknowledgedAt DateTime?
@@ -403,12 +411,12 @@ model Alert {
 }
 
 model Notification {
-  id      String  @id @default(uuid())
+  id      String    @id @default(uuid())
   farmId  String
   userId  String
   alertId String?
   title   String
-  message String? @db.Text
+  message String?   @db.Text
   /// Seul canal cette phase ; champ réservé pour un futur canal email.
   channel String    @default("in_app")
   readAt  DateTime?
@@ -458,7 +466,7 @@ model BroilerBatch {
   farmId String
   /// Auto-généré, format PC-AAAA-NNN (AAAA = année d'arrivée), dérivé du
   /// dernier code émis pour la ferme+année — voir generateBatchCode().
-  code String
+  code   String
 
   productionType String  @default("poulet_chair")
   /// Texte libre comme Supplier.category — pas de table Breed cette phase.
@@ -483,7 +491,7 @@ model BroilerBatch {
   /// Défaut = arrivalDate + 44 jours à la création, modifiable ensuite. Les
   /// jalons calendaires (J1..J46+) restent TOUJOURS calculés depuis
   /// arrivalDate, jamais depuis plannedSaleDate — notions indépendantes.
-  plannedSaleDate DateTime
+  plannedSaleDate  DateTime
 
   status       BroilerBatchStatus @default(BROUILLON)
   observations String?            @db.Text
@@ -692,10 +700,15 @@ model BroilerHealthEvent {
 /// (charges générales de ferme possibles aussi). category en texte libre
 /// paramétrable (ex. "aliments" pour le coût alimentation §6.3 — Expense EST
 /// déjà le couple quantité×prix=montant générique, pas de mécanisme dédié).
+/// batchId (BroilerBatch) et layerBatchId (LayerBatch) désormais tous deux
+/// nullables : Expense EST le couple quantité×prix=montant générique
+/// (Phase 3, ex. category="aliments") réutilisé tel quel pour les
+/// pondeuses (Phase 4) plutôt qu'un mécanisme dédié — voir MODULE_PONTE.md.
 model Expense {
-  id      String  @id @default(uuid())
-  farmId  String
-  batchId String?
+  id           String  @id @default(uuid())
+  farmId       String
+  batchId      String?
+  layerBatchId String?
 
   date          DateTime
   category      String
@@ -710,12 +723,14 @@ model Expense {
   createdBy String?
   deletedAt DateTime?
 
-  farm     Farm          @relation(fields: [farmId], references: [id])
-  batch    BroilerBatch? @relation(fields: [batchId], references: [id])
-  supplier Supplier?     @relation(fields: [supplierId], references: [id])
+  farm       Farm          @relation(fields: [farmId], references: [id])
+  batch      BroilerBatch? @relation(fields: [batchId], references: [id])
+  layerBatch LayerBatch?   @relation(fields: [layerBatchId], references: [id])
+  supplier   Supplier?     @relation(fields: [supplierId], references: [id])
 
   @@index([farmId])
   @@index([batchId])
+  @@index([layerBatchId])
   @@map("expenses")
 }
 
@@ -735,18 +750,37 @@ enum SaleStatus {
   ANNULEE
 }
 
+/// Phase 4 : distingue quel FK (batchId / layerBatchId) porte la vente —
+/// voir décision "généralisation vs duplication" du plan Phase 4. Exactement
+/// un des deux FK doit être renseigné selon productType, vérifié en service
+/// (pas de CHECK MySQL natif, cohérent avec le reste du code).
+enum SaleProductType {
+  POULET_CHAIR
+  OEUFS
+}
+
 /// Pas de SaleItem : une vente = un lot d'une bande (le cahier §16 propose
 /// une table séparée pour un futur multi-bande, mais rien dans le périmètre
 /// Phase 3 — formulaire §10.3 et exemple §10.5 — ne le justifie ; §10.5 vend
 /// en plusieurs VENTES séparées, pas en lignes d'une même vente). Pas de
 /// delete — §17 "interdire la suppression silencieuse d'une vente payée" :
 /// seule annulation via status=ANNULEE, bloquée si (PARTIELLEMENT_)PAYEE.
+/// Généralisé en Phase 4 (batchId nullable + layerBatchId) plutôt que
+/// dupliqué : Payment.saleId pointe déjà dur sur cette table (dupliquer
+/// aurait forcé soit à dupliquer tout le module Payments, soit une FK
+/// polymorphe, écartée — voir plan Phase 4). Un seul registre VTE-AAAA-NNN
+/// partagé entre poulets et œufs, pas de séquence par productType.
 model Sale {
-  id         String @id @default(uuid())
-  farmId     String
-  batchId    String
+  id           String          @id @default(uuid())
+  farmId       String
+  productType  SaleProductType @default(POULET_CHAIR)
+  /// FK BroilerBatch — nullable depuis Phase 4 (renseigné seulement si
+  /// productType = POULET_CHAIR).
+  batchId      String?
+  /// FK LayerBatch — renseigné seulement si productType = OEUFS.
+  layerBatchId String?
   /// Auto-généré, format VTE-AAAA-NNN, même principe que BroilerBatch.code.
-  saleNumber String
+  saleNumber   String
 
   date       DateTime
   customerId String
@@ -768,15 +802,18 @@ model Sale {
   updatedAt DateTime @updatedAt
   createdBy String?
 
-  farm     Farm         @relation(fields: [farmId], references: [id])
-  batch    BroilerBatch @relation(fields: [batchId], references: [id])
-  customer Customer     @relation(fields: [customerId], references: [id])
-  seller   User         @relation("SaleSeller", fields: [sellerId], references: [id])
-  payments Payment[]
+  farm              Farm               @relation(fields: [farmId], references: [id])
+  batch             BroilerBatch?      @relation(fields: [batchId], references: [id])
+  layerBatch        LayerBatch?        @relation(fields: [layerBatchId], references: [id])
+  customer          Customer           @relation(fields: [customerId], references: [id])
+  seller            User               @relation("SaleSeller", fields: [sellerId], references: [id])
+  payments          Payment[]
+  eggStockMovements EggStockMovement[]
 
   @@unique([farmId, saleNumber])
   @@index([farmId])
   @@index([batchId])
+  @@index([layerBatchId])
   @@index([farmId, status])
   @@map("sales")
 }
@@ -794,7 +831,7 @@ model Payment {
   method      String
   amountFcfa  Int
   reference   String?
-  observation String? @db.Text
+  observation String?  @db.Text
 
   createdAt DateTime  @default(now())
   createdBy String?
@@ -806,4 +843,239 @@ model Payment {
   @@index([farmId])
   @@index([saleId])
   @@map("payments")
+}
+
+// ============================================================================
+// Phase 4 — Pondeuses et production d'œufs (V5 §5)
+// ============================================================================
+
+enum LayerBatchStatus {
+  ELEVAGE
+  PONTE
+  REFORME
+  CLOTURE
+  /// Ajouté au-delà des 4 valeurs du cahier §5.1 : réplique le pattern déjà
+  /// établi côté BroilerBatch (remove() bloque le hard-delete dès qu'une
+  /// activité financière/sanitaire existe, sinon impose ce statut — jamais
+  /// de suppression silencieuse d'une donnée avec activité).
+  ANNULEE
+}
+
+/// Calqué sur BroilerBatch avec deux écarts assumés : pas de champs de coût
+/// d'acquisition (le cahier §5.1 ne les liste pas — un achat de pondeuses
+/// passe par Expense, catégorie libre) ; pas de statut BROUILLON (aucune
+/// phase de planification avant ELEVAGE décrite dans le cahier, contrairement
+/// au poulet qui a un délai achat->arrivée à planifier).
+model LayerBatch {
+  id     String @id @default(uuid())
+  farmId String
+  /// Auto-généré, format PON-AAAA-NNN, retry sur conflit P2002 — pattern
+  /// CustomersService.generateCode (le plus sûr des deux patterns déjà en
+  /// place, contrairement à BroilerBatchesService.generateBatchCode qui n'a
+  /// pas de retry).
+  code   String
+
+  /// Souche, texte libre comme BroilerBatch.breed.
+  strain String?
+
+  entryDate       DateTime
+  initialQuantity Int
+  ageAtEntryWeeks Int?
+  ageAtEntryDays  Int?
+
+  buildingId       String
+  primaryManagerId String
+
+  status       LayerBatchStatus @default(ELEVAGE)
+  observations String?          @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm           Farm               @relation(fields: [farmId], references: [id])
+  building       Building           @relation(fields: [buildingId], references: [id])
+  primaryManager User               @relation("LayerBatchPrimaryManager", fields: [primaryManagerId], references: [id])
+  dailyRecords   LayerDailyRecord[]
+  healthEvents   LayerHealthEvent[]
+  eggStockLots   EggStockLot[]
+  expenses       Expense[]
+  sales          Sale[]
+
+  @@unique([farmId, code])
+  @@index([farmId])
+  @@index([farmId, status])
+  @@map("layer_batches")
+}
+
+/// Contrairement à BroilerDailyRecord (45 lignes pré-générées, update-only),
+/// une ligne par jour créée À LA DEMANDE (pas de durée de cycle fixe pour
+/// une pondeuse en production continue). date immuable une fois créée
+/// (comme dayNumber côté Broiler), pas de DELETE exposé (correction par
+/// PATCH uniquement).
+model LayerDailyRecord {
+  id      String @id @default(uuid())
+  farmId  String
+  batchId String
+
+  date       DateTime
+  /// Auto-rempli avec l'utilisateur courant à l'écriture. Contrairement au
+  /// cron Broiler (operatorId IS NULL sur une ligne pré-générée), l'absence
+  /// de saisie côté pondeuses se détecte par ABSENCE DE LIGNE (pas de
+  /// placeholder), voir LayerAlertsCronService.
+  operatorId String?
+
+  /// Effectif début de journée — §5.2 "calcul + ajustement contrôlé" : le
+  /// service suggère (veille - sorties de la veille), le DTO peut fournir une
+  /// valeur qui la remplace (recomptage physique). PERSISTÉ (contrairement à
+  /// LayerBatch.effectif recalculé à la lecture) : le parallèle correct est
+  /// BroilerDailyRecord.averageWeightG (dérivé à l'écriture, stocké sur une
+  /// ligne immuable du jour), pas BroilerBatch.currentHeadcount — recalculer
+  /// un cumul glissant à chaque lecture d'une liste de mois de lignes serait
+  /// bien plus coûteux qu'un stockage direct.
+  henCount           Int
+  mortalityQuantity  Int @default(0)
+  cullsQuantity      Int @default(0)
+  otherExitsQuantity Int @default(0)
+
+  eggsLaid     Int
+  eggsBroken   Int @default(0)
+  eggsRejected Int @default(0)
+  /// Dérivé à l'écriture = eggsLaid - eggsBroken - eggsRejected (§5.3).
+  eggsSellable Int
+
+  /// Dérivé à l'écriture, safeDivide(eggsLaid, henCount) x 100 (§5.3).
+  layingRatePercent Decimal? @db.Decimal(5, 2)
+  feedDistributedKg Decimal? @db.Decimal(8, 2)
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm        Farm         @relation(fields: [farmId], references: [id])
+  batch       LayerBatch   @relation(fields: [batchId], references: [id])
+  operator    User?        @relation("LayerDailyRecordOperator", fields: [operatorId], references: [id])
+  eggStockLot EggStockLot?
+
+  @@unique([batchId, date])
+  @@index([farmId])
+  @@index([batchId, date])
+  @@map("layer_daily_records")
+}
+
+/// Dupliqué depuis BroilerHealthEvent (PAS généralisé) — décision tranchée
+/// du plan Phase 4 : health-events.service.ts est un CRUD mécanique sans
+/// aucune validation de transition d'état, rien de non trivial à partager ;
+/// généraliser aurait obligé à toucher un module Phase 3 déjà mergé/testé
+/// pour un bénéfice quasi nul. Les enums HealthEventType/Status/Route SONT
+/// réutilisés tels quels (déjà génériques) — seule la table est dupliquée.
+model LayerHealthEvent {
+  id      String @id @default(uuid())
+  farmId  String
+  batchId String
+
+  date   DateTime
+  status HealthEventStatus @default(PREVU)
+  type   HealthEventType
+
+  product  String?
+  motif    String? @db.Text
+  dose     String?
+  quantity String?
+  unit     String?
+
+  durationDays        Int?
+  administrationRoute HealthEventRoute?
+
+  prescribedBy String?
+  performedBy  String?
+  costFcfa     Int?
+  observation  String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm  Farm       @relation(fields: [farmId], references: [id])
+  batch LayerBatch @relation(fields: [batchId], references: [id])
+
+  @@index([farmId])
+  @@index([batchId, date])
+  @@map("layer_health_events")
+}
+
+/// 1 lot créé automatiquement par LayerDailyRecord (relation 1:1 explicite
+/// via dailyRecordId, pas un rapprochement par date), quantityProduced =
+/// eggsSellable du jour, SNAPSHOT PERSISTÉ (contrairement à
+/// BroilerBatch.startedQuantity recalculé à la lecture — ici la stabilité du
+/// point de départ est nécessaire car des EggStockMovement vont le consommer
+/// en FIFO). Pas de lot créé si eggsSellable = 0.
+model EggStockLot {
+  id            String @id @default(uuid())
+  farmId        String
+  batchId       String
+  dailyRecordId String @unique
+
+  productionDate DateTime
+  /// Paramétrable, texte libre comme Supplier.category (le cahier qualifie
+  /// explicitement les calibres de "paramétrable"). Fractionnement d'un lot
+  /// en plusieurs calibres après coup = hors périmètre V1, aucun workflow de
+  /// tri/calibrage décrit dans le cahier.
+  caliber        String   @default("non_calibre")
+
+  /// Snapshot persisté — jamais recalculé rétroactivement si le
+  /// LayerDailyRecord source est corrigé après coup (voir garde-fou 409 dans
+  /// LayerDailyRecordsService.update).
+  quantityProduced Int
+
+  createdAt DateTime @default(now())
+
+  farm        Farm               @relation(fields: [farmId], references: [id])
+  batch       LayerBatch         @relation(fields: [batchId], references: [id])
+  dailyRecord LayerDailyRecord   @relation(fields: [dailyRecordId], references: [id])
+  movements   EggStockMovement[]
+
+  @@index([farmId])
+  @@index([batchId, productionDate])
+  @@map("egg_stock_lots")
+}
+
+enum EggStockMovementType {
+  SORTIE_VENTE
+  /// Compensation d'un SORTIE_VENTE annulé — jamais de suppression/édition
+  /// d'un mouvement existant (append-only, symétrique au pattern Payment).
+  ENTREE_ANNULATION
+  PERTE_CASSE
+  PERTE_SOUILLURE
+  CONSOMMATION_INTERNE
+  DON
+  PERTE_AUTRE
+}
+
+/// Append-only, comme Payment — jamais d'update/delete. La quantité restante
+/// d'un lot n'est jamais une colonne : toujours dérivée à la lecture =
+/// quantityProduced - SUM(mouvements sortants) + SUM(ENTREE_ANNULATION).
+model EggStockMovement {
+  id     String @id @default(uuid())
+  farmId String
+  lotId  String
+
+  type       EggStockMovementType
+  quantity   Int
+  date       DateTime
+  saleId     String?
+  reason     String?              @db.Text
+  recordedBy String
+
+  createdAt DateTime @default(now())
+
+  farm Farm        @relation(fields: [farmId], references: [id])
+  lot  EggStockLot @relation(fields: [lotId], references: [id])
+  sale Sale?       @relation(fields: [saleId], references: [id])
+
+  @@index([farmId])
+  @@index([lotId])
+  @@index([saleId])
+  @@map("egg_stock_movements")
 }

@@ -1,4 +1,4 @@
-import { safeDivide } from './safe-math.util';
+import { safeDivide } from '../../../common/calculations/safe-math.util';
 
 /** §6.4 : "Poids moyen = poids total de l'échantillon / nombre d'animaux pesés." */
 export function computeAverageWeightG(totalSampleWeightG: number, sampleSize: number): number {

@@ -75,6 +75,25 @@ export const PERMISSIONS = {
   PAYMENTS_CREATE: 'payments.create',
   PAYMENTS_READ: 'payments.read',
   PAYMENTS_DELETE: 'payments.delete',
+
+  LAYER_BATCHES_CREATE: 'layer_batches.create',
+  LAYER_BATCHES_READ: 'layer_batches.read',
+  LAYER_BATCHES_UPDATE: 'layer_batches.update',
+  LAYER_BATCHES_DELETE: 'layer_batches.delete',
+  LAYER_BATCHES_CLOSE: 'layer_batches.close',
+
+  LAYER_DAILY_RECORDS_CREATE: 'layer_daily_records.create',
+  LAYER_DAILY_RECORDS_READ: 'layer_daily_records.read',
+  LAYER_DAILY_RECORDS_UPDATE: 'layer_daily_records.update',
+
+  LAYER_HEALTH_EVENTS_CREATE: 'layer_health_events.create',
+  LAYER_HEALTH_EVENTS_READ: 'layer_health_events.read',
+  LAYER_HEALTH_EVENTS_UPDATE: 'layer_health_events.update',
+
+  EGG_STOCK_LOTS_READ: 'egg_stock_lots.read',
+
+  EGG_STOCK_MOVEMENTS_CREATE: 'egg_stock_movements.create',
+  EGG_STOCK_MOVEMENTS_READ: 'egg_stock_movements.read',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -146,4 +165,26 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.PAYMENTS_CREATE]: 'Enregistrer un paiement',
   [PERMISSIONS.PAYMENTS_READ]: 'Consulter les paiements',
   [PERMISSIONS.PAYMENTS_DELETE]: 'Supprimer un paiement (correction)',
+
+  [PERMISSIONS.LAYER_BATCHES_CREATE]: 'Créer un lot de pondeuses',
+  [PERMISSIONS.LAYER_BATCHES_READ]: 'Consulter les lots de pondeuses',
+  [PERMISSIONS.LAYER_BATCHES_UPDATE]: 'Modifier un lot de pondeuses',
+  [PERMISSIONS.LAYER_BATCHES_DELETE]:
+    'Supprimer un lot (sans activité financière/sanitaire liée)',
+  [PERMISSIONS.LAYER_BATCHES_CLOSE]: 'Clôturer un lot de pondeuses',
+
+  [PERMISSIONS.LAYER_DAILY_RECORDS_CREATE]: 'Saisir une nouvelle journée de ponte',
+  [PERMISSIONS.LAYER_DAILY_RECORDS_READ]: 'Consulter le suivi quotidien de ponte',
+  [PERMISSIONS.LAYER_DAILY_RECORDS_UPDATE]: 'Corriger une journée de ponte déjà saisie',
+
+  [PERMISSIONS.LAYER_HEALTH_EVENTS_CREATE]:
+    'Créer un événement sanitaire pondeuses (vaccination, traitement...)',
+  [PERMISSIONS.LAYER_HEALTH_EVENTS_READ]: 'Consulter le calendrier sanitaire pondeuses',
+  [PERMISSIONS.LAYER_HEALTH_EVENTS_UPDATE]: 'Modifier un événement sanitaire pondeuses',
+
+  [PERMISSIONS.EGG_STOCK_LOTS_READ]: "Consulter les lots de stock d'œufs",
+
+  [PERMISSIONS.EGG_STOCK_MOVEMENTS_CREATE]:
+    "Enregistrer un mouvement manuel de stock d'œufs (perte, don, consommation interne...)",
+  [PERMISSIONS.EGG_STOCK_MOVEMENTS_READ]: "Consulter les mouvements de stock d'œufs",
 };

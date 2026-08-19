@@ -1,4 +1,4 @@
-import { safeDivide } from './safe-math.util';
+import { safeDivide } from '../../../common/calculations/safe-math.util';
 
 /** §4.3 : "Effectif démarré = Nombre reçu - morts à l'arrivée." */
 export function computeStartedQuantity(
