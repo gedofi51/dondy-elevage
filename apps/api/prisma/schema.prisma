@@ -1,6 +1,5 @@
-// Schéma Prisma — Phase 0 (socle uniquement)
-// Tables métier (bandes, ventes, stocks...) ajoutées à partir de la Phase 3.
-// Toute table métier future doit porter farmId (isolation multi-tenant).
+// Schéma Prisma — socle (Phase 0-2) + premier module métier (Phase 3,
+// poulets de chair). Toute table métier porte farmId (isolation multi-tenant).
 
 generator client {
   provider = "prisma-client-js"
@@ -49,6 +48,13 @@ model Farm {
   documents       Document[]
   alerts          Alert[]
   notifications   Notification[]
+  broilerBatches       BroilerBatch[]
+  broilerDailyRecords  BroilerDailyRecord[]
+  broilerMortalities   BroilerMortality[]
+  broilerHealthEvents  BroilerHealthEvent[]
+  expenses             Expense[]
+  sales                Sale[]
+  payments             Payment[]
 
   @@map("farms")
 }
@@ -84,6 +90,9 @@ model User {
   oauthAccounts OauthAccount[]
   auditLogs     AuditLog[]     @relation("AuditLogUser")
   notifications Notification[]
+  broilerBatchesAsPrimaryManager BroilerBatch[]       @relation("BroilerBatchPrimaryManager")
+  dailyRecordsAsOperator         BroilerDailyRecord[] @relation("BroilerDailyRecordOperator")
+  salesAsSeller                  Sale[]               @relation("SaleSeller")
 
   @@unique([farmId, email])
   @@index([farmId])
@@ -202,6 +211,7 @@ model Building {
   createdBy String?
 
   farm Farm @relation(fields: [farmId], references: [id])
+  broilerBatches BroilerBatch[]
 
   @@index([farmId])
   @@map("buildings")
@@ -266,6 +276,8 @@ model Supplier {
   createdBy String?
 
   farm Farm @relation(fields: [farmId], references: [id])
+  broilerBatches BroilerBatch[]
+  expenses       Expense[]
 
   @@index([farmId])
   @@map("suppliers")
@@ -302,6 +314,7 @@ model Customer {
   createdBy String?
 
   farm Farm @relation(fields: [farmId], references: [id])
+  sales Sale[]
 
   @@unique([farmId, code])
   @@index([farmId])
@@ -409,4 +422,388 @@ model Notification {
   @@index([farmId])
   @@index([userId, readAt])
   @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Poulets de chair (J1-J45)
+// ---------------------------------------------------------------------------
+
+enum BroilerOrigin {
+  ACHAT
+  NAISSANCE_INTERNE
+}
+
+enum BroilerBatchStatus {
+  BROUILLON
+  PLANIFIEE
+  EN_DEMARRAGE
+  EN_CROISSANCE
+  EN_FINITION
+  PRETE_A_VENDRE
+  EN_VENTE
+  VENDUE
+  CLOTUREE
+  ANNULEE
+}
+
+/// Donnée de référence pour l'effectif/le cycle (comme Building) : hard
+/// delete, mais uniquement si aucune Expense/Sale/Payment liée (règle
+/// appliquée en service, jamais contournée par rôle) — sinon annulation via
+/// status=ANNULEE. startedQuantity/chickCostFcfa/totalAcquisitionCostFcfa
+/// volontairement NON stockés : calculés à la lecture depuis
+/// receivedQuantity/deadOnArrivalQuantity/unitPriceFcfa/... pour ne jamais
+/// diverger d'une correction ultérieure de ces champs sources.
+model BroilerBatch {
+  id     String @id @default(uuid())
+  farmId String
+  /// Auto-généré, format PC-AAAA-NNN (AAAA = année d'arrivée), dérivé du
+  /// dernier code émis pour la ferme+année — voir generateBatchCode().
+  code String
+
+  productionType String  @default("poulet_chair")
+  /// Texte libre comme Supplier.category — pas de table Breed cette phase.
+  breed          String?
+
+  arrivalDate   DateTime
+  arrivalTime   String?
+  origin        BroilerOrigin
+  supplierId    String?
+  invoiceNumber String?
+
+  orderedQuantity       Int
+  receivedQuantity      Int
+  deadOnArrivalQuantity Int @default(0)
+
+  unitPriceFcfa     Int
+  transportCostFcfa Int @default(0)
+  otherCostsFcfa    Int @default(0)
+
+  buildingId       String
+  primaryManagerId String
+  /// Défaut = arrivalDate + 44 jours à la création, modifiable ensuite. Les
+  /// jalons calendaires (J1..J46+) restent TOUJOURS calculés depuis
+  /// arrivalDate, jamais depuis plannedSaleDate — notions indépendantes.
+  plannedSaleDate DateTime
+
+  status       BroilerBatchStatus @default(BROUILLON)
+  observations String?            @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm           Farm                 @relation(fields: [farmId], references: [id])
+  supplier       Supplier?            @relation(fields: [supplierId], references: [id])
+  building       Building             @relation(fields: [buildingId], references: [id])
+  primaryManager User                 @relation("BroilerBatchPrimaryManager", fields: [primaryManagerId], references: [id])
+  dailyRecords   BroilerDailyRecord[]
+  mortalities    BroilerMortality[]
+  healthEvents   BroilerHealthEvent[]
+  expenses       Expense[]
+  sales          Sale[]
+
+  @@unique([farmId, code])
+  @@index([farmId])
+  @@index([farmId, status])
+  @@map("broiler_batches")
+}
+
+/// Une ligne par jour J1..J45+, générée automatiquement (transaction) à la
+/// création de la bande — jamais créée/supprimée manuellement, UPDATE
+/// uniquement. mortalityQuantity/cullsQuantity/otherExitsQuantity restent la
+/// valeur de référence rapide pour les calculs d'effectif (pas de jointure) ;
+/// BroilerMortality est le détail optionnel par cause — toute divergence
+/// entre les deux déclenche une alerte de cohérence plutôt que d'être
+/// esquivée architecturalement (voir BroilerMortality).
+model BroilerDailyRecord {
+  id      String @id @default(uuid())
+  farmId  String
+  batchId String
+
+  dayNumber Int
+  date      DateTime
+
+  /// Auto-rempli avec l'utilisateur courant à la saisie. NULL = "journée non
+  /// saisie" — signal réutilisé tel quel par le cron d'alerte "absence de
+  /// saisie quotidienne" (pas de colonne dédiée supplémentaire).
+  operatorId String?
+  entryTime  String?
+
+  mortalityQuantity  Int @default(0)
+  cullsQuantity      Int @default(0)
+  otherExitsQuantity Int @default(0)
+
+  feedType          String?
+  feedDistributedKg Decimal? @db.Decimal(8, 2)
+  feedRemainingKg   Decimal? @db.Decimal(8, 2)
+  feedBagsUsed      Int?
+
+  waterConsumptionLiters Decimal? @db.Decimal(8, 2)
+  waterObservation       String?  @db.Text
+
+  sampleSize         Int?
+  totalSampleWeightG Int?
+  /// Dérivé de totalSampleWeightG/sampleSize à l'écriture (contrairement au
+  /// coût d'acquisition de BroilerBatch : ici source et résultat vivent sur
+  /// la même ligne immuable du jour, pas de risque de correction rétroactive
+  /// d'un champ séparé).
+  averageWeightG     Int?
+
+  temperatureMinC Decimal? @db.Decimal(4, 1)
+  temperatureMaxC Decimal? @db.Decimal(4, 1)
+  temperatureNowC Decimal? @db.Decimal(4, 1)
+  humidityPercent Decimal? @db.Decimal(4, 1)
+
+  symptoms          String? @db.Text
+  treatment         String? @db.Text
+  vaccination       String?
+  healthProduct     String?
+  healthQuantity    String?
+  healthResponsible String?
+
+  behaviorNormal              Boolean @default(false)
+  behaviorLowConsumption      Boolean @default(false)
+  behaviorAgitation           Boolean @default(false)
+  behaviorFlocking            Boolean @default(false)
+  behaviorLethargy            Boolean @default(false)
+  behaviorDiarrhea            Boolean @default(false)
+  behaviorRespiratoryDistress Boolean @default(false)
+  behaviorOther               String?
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm     Farm         @relation(fields: [farmId], references: [id])
+  batch    BroilerBatch @relation(fields: [batchId], references: [id])
+  operator User?        @relation("BroilerDailyRecordOperator", fields: [operatorId], references: [id])
+
+  @@unique([batchId, dayNumber])
+  @@index([farmId])
+  @@index([batchId, date])
+  @@map("broiler_daily_records")
+}
+
+enum MortalityCause {
+  INCONNUE
+  MALADIE
+  ACCIDENT
+  ETOUFFEMENT
+  CHALEUR
+  FROID
+  PROBLEME_ALIMENTAIRE
+  PROBLEME_EAU
+  PREDATEUR
+  AUTRE
+}
+
+/// Enum fixe (contrairement à Expense.category/Payment.method) : le cahier
+/// des charges ne qualifie jamais cette liste de "paramétrable", contrairement
+/// à Supplier.category — signal explicite retenu tel quel.
+/// deletedAt : donnée sanitaire, pas de suppression définitive (voir
+/// docs/reference/BASE_DE-DONNEES.md).
+model BroilerMortality {
+  id      String @id @default(uuid())
+  farmId  String
+  batchId String
+
+  date        DateTime
+  dayNumber   Int
+  quantity    Int
+  cause       MortalityCause @default(INCONNUE)
+  observation String?        @db.Text
+  recordedBy  String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  farm  Farm         @relation(fields: [farmId], references: [id])
+  batch BroilerBatch @relation(fields: [batchId], references: [id])
+
+  @@index([farmId])
+  @@index([batchId, date])
+  @@map("broiler_mortalities")
+}
+
+enum HealthEventType {
+  VACCINATION
+  TRAITEMENT
+  PROPHYLAXIE
+  DESINFECTION
+  VITAMINE
+  CONSULTATION_VETERINAIRE
+}
+
+enum HealthEventStatus {
+  PREVU
+  REALISE
+  REPORTE
+  ANNULE
+}
+
+enum HealthEventRoute {
+  EAU
+  INJECTION
+  AUTRE
+}
+
+/// Pas de deletedAt : le statut ANNULE (natif) couvre déjà l'annulation, pas
+/// de permission DELETE distincte.
+model BroilerHealthEvent {
+  id      String @id @default(uuid())
+  farmId  String
+  batchId String
+
+  date   DateTime
+  status HealthEventStatus @default(PREVU)
+  type   HealthEventType
+
+  product  String?
+  motif    String? @db.Text
+  dose     String?
+  quantity String?
+  unit     String?
+
+  durationDays        Int?
+  administrationRoute HealthEventRoute?
+
+  prescribedBy String?
+  performedBy  String?
+  costFcfa     Int?
+  observation  String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm  Farm         @relation(fields: [farmId], references: [id])
+  batch BroilerBatch @relation(fields: [batchId], references: [id])
+
+  @@index([farmId])
+  @@index([batchId, date])
+  @@map("broiler_health_events")
+}
+
+/// Donnée financière — deletedAt (pas de suppression définitive, voir
+/// docs/reference/BASE_DE-DONNEES.md). batchId nullable : §12.3 du cahier
+/// des charges V1 précise qu'une dépense PEUT être affectée à une bande
+/// (charges générales de ferme possibles aussi). category en texte libre
+/// paramétrable (ex. "aliments" pour le coût alimentation §6.3 — Expense EST
+/// déjà le couple quantité×prix=montant générique, pas de mécanisme dédié).
+model Expense {
+  id      String  @id @default(uuid())
+  farmId  String
+  batchId String?
+
+  date          DateTime
+  category      String
+  description   String?  @db.Text
+  quantity      Decimal? @db.Decimal(10, 2)
+  unitPriceFcfa Int?
+  amountFcfa    Int
+  supplierId    String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  deletedAt DateTime?
+
+  farm     Farm          @relation(fields: [farmId], references: [id])
+  batch    BroilerBatch? @relation(fields: [batchId], references: [id])
+  supplier Supplier?     @relation(fields: [supplierId], references: [id])
+
+  @@index([farmId])
+  @@index([batchId])
+  @@map("expenses")
+}
+
+enum SaleMode {
+  UNITE
+  POIDS
+  LOT
+}
+
+enum SaleStatus {
+  BROUILLON
+  RESERVEE
+  CONFIRMEE
+  PAYEE
+  PARTIELLEMENT_PAYEE
+  IMPAYEE
+  ANNULEE
+}
+
+/// Pas de SaleItem : une vente = un lot d'une bande (le cahier §16 propose
+/// une table séparée pour un futur multi-bande, mais rien dans le périmètre
+/// Phase 3 — formulaire §10.3 et exemple §10.5 — ne le justifie ; §10.5 vend
+/// en plusieurs VENTES séparées, pas en lignes d'une même vente). Pas de
+/// delete — §17 "interdire la suppression silencieuse d'une vente payée" :
+/// seule annulation via status=ANNULEE, bloquée si (PARTIELLEMENT_)PAYEE.
+model Sale {
+  id         String @id @default(uuid())
+  farmId     String
+  batchId    String
+  /// Auto-généré, format VTE-AAAA-NNN, même principe que BroilerBatch.code.
+  saleNumber String
+
+  date       DateTime
+  customerId String
+  sellerId   String
+
+  saleMode SaleMode
+  quantity Int
+  weightKg Decimal? @db.Decimal(8, 2)
+
+  unitPriceFcfa   Int
+  discountFcfa    Int @default(0)
+  grossAmountFcfa Int
+  netAmountFcfa   Int
+
+  status      SaleStatus @default(BROUILLON)
+  observation String?    @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm     Farm         @relation(fields: [farmId], references: [id])
+  batch    BroilerBatch @relation(fields: [batchId], references: [id])
+  customer Customer     @relation(fields: [customerId], references: [id])
+  seller   User         @relation("SaleSeller", fields: [sellerId], references: [id])
+  payments Payment[]
+
+  @@unique([farmId, saleNumber])
+  @@index([farmId])
+  @@index([batchId])
+  @@index([farmId, status])
+  @@map("sales")
+}
+
+/// Append-only (comme AuditLog) : pas d'updatedAt, correction via deletedAt +
+/// recréation, jamais d'édition en place d'un paiement.
+model Payment {
+  id     String @id @default(uuid())
+  farmId String
+  saleId String
+
+  date        DateTime
+  /// Paramétrable, texte libre — explicitement qualifié "paramétrable" par
+  /// le cahier des charges §10.4.
+  method      String
+  amountFcfa  Int
+  reference   String?
+  observation String? @db.Text
+
+  createdAt DateTime  @default(now())
+  createdBy String?
+  deletedAt DateTime?
+
+  farm Farm @relation(fields: [farmId], references: [id])
+  sale Sale @relation(fields: [saleId], references: [id])
+
+  @@index([farmId])
+  @@index([saleId])
+  @@map("payments")
 }

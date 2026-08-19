@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { Alert } from '@prisma/client';
+import type { Alert, AlertSeverity } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { assertSameFarm } from '../../common/rbac/farm-scope.util';
@@ -48,6 +48,37 @@ export class AlertsService {
       return this.triggerInternal(alert);
     }
     return alert;
+  }
+
+  /**
+   * Création système (cron, règles métier automatiques) — pas d'utilisateur
+   * connecté disponible, contrairement à create(). Toujours déclenchée
+   * immédiatement (aucun scheduledAt : un événement système détecté par le
+   * cron est par définition déjà "dû", pas planifié pour plus tard).
+   */
+  async createSystemAlert(
+    farmId: string,
+    input: {
+      type: string;
+      severity: AlertSeverity;
+      title: string;
+      message?: string;
+      entityType?: string;
+      entityId?: string;
+    },
+  ): Promise<Alert> {
+    const alert = await this.prisma.alert.create({
+      data: {
+        farmId,
+        type: input.type,
+        severity: input.severity,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        title: input.title,
+        message: input.message,
+      },
+    });
+    return this.triggerInternal(alert);
   }
 
   async trigger(actingUser: AccessTokenPayload, id: string): Promise<Alert> {
