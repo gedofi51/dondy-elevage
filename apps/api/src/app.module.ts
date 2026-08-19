@@ -11,6 +11,11 @@ import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { FarmsModule } from './modules/farms/farms.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
+import { CustomersModule } from './modules/customers/customers.module';
+import { DocumentsModule } from './modules/documents/documents.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { AlertsModule } from './modules/alerts/alerts.module';
 
 @Module({
   imports: [
@@ -27,6 +32,11 @@ import { BuildingsModule } from './modules/buildings/buildings.module';
     RolesModule,
     FarmsModule,
     BuildingsModule,
+    SuppliersModule,
+    CustomersModule,
+    DocumentsModule,
+    NotificationsModule,
+    AlertsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
