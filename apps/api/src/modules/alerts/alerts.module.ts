@@ -7,5 +7,6 @@ import { AlertsService } from './alerts.service';
   imports: [NotificationsModule],
   controllers: [AlertsController],
   providers: [AlertsService],
+  exports: [AlertsService],
 })
 export class AlertsModule {}
