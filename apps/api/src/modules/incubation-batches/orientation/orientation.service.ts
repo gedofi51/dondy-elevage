@@ -1,5 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { BatchLineage } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { BatchLineage, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditLogService } from '../../../common/audit/audit-log.service';
 import { assertSameFarm } from '../../../common/rbac/farm-scope.util';
@@ -7,6 +12,13 @@ import type { AccessTokenPayload } from '../../auth/jwt-payload.interface';
 import { BroilerBatchesService } from '../../broiler-batches/broiler-batches.service';
 import { ChickBatchesService } from '../../chick-batches/chick-batches.service';
 import type { CreateOrientationDto } from './dto/create-orientation.dto';
+
+interface ChildAuditPayload {
+  entityType: string;
+  entityId: string;
+  action: string;
+  newValues: Prisma.InputJsonValue;
+}
 
 /**
  * Cœur métier de l'orientation des poussins (§6.5) — action distincte d'un
@@ -23,20 +35,22 @@ import type { CreateOrientationDto } from './dto/create-orientation.dto';
  * Vérification de disponibilité (chicksHatched - déjà orienté) : lecture
  * agrégée puis comparaison, SANS verrou — dette technique transversale
  * assumée, voir docs/architecture/DETTE_TECHNIQUE.md (même schéma que
- * SalesService/POULET_CHAIR depuis la Phase 3, pas un nouveau gap).
+ * SalesService/POULET_CHAIR depuis la Phase 3, pas un nouveau gap ; ce
+ * point ne concerne QUE l'absence de verrou sur la lecture-comparaison,
+ * pas l'atomicité de l'écriture, traitée ci-dessous).
  *
- * Pas de transaction unique englobant la création de l'entité enfant (le
- * cas échéant) + la ligne BatchLineage : BroilerBatchesService.create()
- * possède déjà sa propre transaction interne (bande + 45 journées), et
- * l'imbriquer proprement aurait exigé de faire transiter un client de
- * transaction à travers un service Phase 3 non conçu pour — modification
- * jugée disproportionnée pour ce risque précis (fenêtre d'échec étroite,
- * un seul INSERT après une opération déjà réussie, pas un problème de
- * cohérence sous concurrence comme le FIFO de la Phase 4). Risque résiduel
- * assumé et documenté plutôt qu'ignoré : un crash exactement entre la
- * création de l'entité enfant et celle de BatchLineage laisserait
- * l'entité enfant orpheline (sans ligne de filiation) — signalé en dette
- * technique, pas silencieusement.
+ * Atomicité de l'écriture : la création de l'entité enfant (le cas
+ * échéant) et la ligne BatchLineage sont dans une même transaction Prisma
+ * (`this.prisma.$transaction`), comme la bande de chair + ses 45 journées
+ * en Phase 3 (BroilerBatchesService.create()). BroilerBatchesService.create()
+ * et ChickBatchesService.createInternal() acceptent un `tx` optionnel :
+ * quand il est fourni, ils écrivent avec ce client au lieu d'ouvrir leur
+ * propre transaction, et ne journalisent PAS eux-mêmes (le log serait
+ * visible avant le commit et resterait orphelin si l'écriture suivante,
+ * dans cette même transaction, échouait). Tous les logs d'audit sont donc
+ * émis ici, après le commit — un échec de l'INSERT BatchLineage annule
+ * désormais aussi la création de l'entité enfant (plus d'entité orpheline
+ * possible), et aucun log ne peut référencer une écriture annulée.
  */
 @Injectable()
 export class OrientationService {
@@ -77,63 +91,108 @@ export class OrientationService {
       );
     }
 
-    let childType: string | null = null;
-    let childId: string | null = null;
+    const { lineage, childType, childId, childAuditPayload } = await this.prisma.$transaction(
+      async (tx) => {
+        let childType: string | null = null;
+        let childId: string | null = null;
+        let childAuditPayload: ChildAuditPayload | null = null;
 
-    if (dto.transformationType === 'CHAIR') {
-      if (!dto.buildingId || !dto.primaryManagerId) {
-        throw new BadRequestException(
-          'buildingId et primaryManagerId requis pour orienter vers une bande de chair.',
-        );
-      }
-      const arrivalDate = incubation.actualHatchDate ?? new Date();
-      const broilerBatch = await this.broilerBatchesService.create(
-        actingUser,
-        {
-          arrivalDate: arrivalDate.toISOString(),
-          origin: 'NAISSANCE_INTERNE',
-          orderedQuantity: dto.quantity,
-          receivedQuantity: dto.quantity,
-          unitPriceFcfa: 0,
-          buildingId: dto.buildingId,
-          primaryManagerId: dto.primaryManagerId,
-        },
-        ipAddress,
-      );
-      childType = 'broiler_batch';
-      childId = broilerBatch.id;
-    } else if (dto.transformationType === 'VENTE' || dto.transformationType === 'RENOUVELLEMENT') {
-      if (dto.transformationType === 'RENOUVELLEMENT' && !dto.buildingId) {
-        throw new BadRequestException(
-          "buildingId requis pour orienter vers un lot de renouvellement (housing nécessaire pour l'élevage).",
-        );
-      }
-      const chickBatch = await this.chickBatchesService.createInternal(
-        actingUser,
-        { purpose: dto.transformationType, initialQuantity: dto.quantity, buildingId: dto.buildingId },
-        ipAddress,
-      );
-      childType = 'chick_batch';
-      childId = chickBatch.id;
-    } else {
-      if (!dto.reason) {
-        throw new BadRequestException('reason requis pour une réforme/perte.');
-      }
-    }
+        if (dto.transformationType === 'CHAIR') {
+          if (!dto.buildingId || !dto.primaryManagerId) {
+            throw new BadRequestException(
+              'buildingId et primaryManagerId requis pour orienter vers une bande de chair.',
+            );
+          }
+          const arrivalDate = incubation.actualHatchDate ?? new Date();
+          const broilerBatch = await this.broilerBatchesService.create(
+            actingUser,
+            {
+              arrivalDate: arrivalDate.toISOString(),
+              origin: 'NAISSANCE_INTERNE',
+              orderedQuantity: dto.quantity,
+              receivedQuantity: dto.quantity,
+              unitPriceFcfa: 0,
+              buildingId: dto.buildingId,
+              primaryManagerId: dto.primaryManagerId,
+            },
+            ipAddress,
+            tx,
+          );
+          childType = 'broiler_batch';
+          childId = broilerBatch.id;
+          childAuditPayload = {
+            entityType: 'broiler_batch',
+            entityId: broilerBatch.id,
+            action: 'BROILER_BATCH_CREATED',
+            newValues: {
+              code: broilerBatch.code,
+              receivedQuantity: broilerBatch.receivedQuantity,
+              buildingId: broilerBatch.buildingId,
+            },
+          };
+        } else if (
+          dto.transformationType === 'VENTE' ||
+          dto.transformationType === 'RENOUVELLEMENT'
+        ) {
+          if (dto.transformationType === 'RENOUVELLEMENT' && !dto.buildingId) {
+            throw new BadRequestException(
+              "buildingId requis pour orienter vers un lot de renouvellement (housing nécessaire pour l'élevage).",
+            );
+          }
+          const chickBatch = await this.chickBatchesService.createInternal(
+            actingUser,
+            {
+              purpose: dto.transformationType,
+              initialQuantity: dto.quantity,
+              buildingId: dto.buildingId,
+            },
+            ipAddress,
+            tx,
+          );
+          childType = 'chick_batch';
+          childId = chickBatch.id;
+          childAuditPayload = {
+            entityType: 'chick_batch',
+            entityId: chickBatch.id,
+            action: 'CHICK_BATCH_CREATED',
+            newValues: {
+              code: chickBatch.code,
+              purpose: dto.transformationType,
+              initialQuantity: dto.quantity,
+            },
+          };
+        } else {
+          if (!dto.reason) {
+            throw new BadRequestException('reason requis pour une réforme/perte.');
+          }
+        }
 
-    const lineage = await this.prisma.batchLineage.create({
-      data: {
-        farmId: actingUser.farmId,
-        incubationBatchId,
-        transformationType: dto.transformationType,
-        quantity: dto.quantity,
-        childType,
-        childId,
-        reason: dto.transformationType === 'REFORME_PERTE' ? dto.reason : undefined,
-        date: new Date(),
-        createdBy: actingUser.sub,
+        const lineage = await tx.batchLineage.create({
+          data: {
+            farmId: actingUser.farmId,
+            incubationBatchId,
+            transformationType: dto.transformationType,
+            quantity: dto.quantity,
+            childType,
+            childId,
+            reason: dto.transformationType === 'REFORME_PERTE' ? dto.reason : undefined,
+            date: new Date(),
+            createdBy: actingUser.sub,
+          },
+        });
+
+        return { lineage, childType, childId, childAuditPayload };
       },
-    });
+    );
+
+    if (childAuditPayload) {
+      await this.auditLogService.record({
+        ...childAuditPayload,
+        farmId: actingUser.farmId,
+        userId: actingUser.sub,
+        ipAddress,
+      });
+    }
 
     await this.auditLogService.record({
       farmId: actingUser.farmId,

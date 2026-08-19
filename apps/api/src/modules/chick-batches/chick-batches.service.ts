@@ -40,17 +40,26 @@ export class ChickBatchesService {
     return `${prefix}${String(lastNumber + 1).padStart(CODE_DIGITS, '0')}`;
   }
 
+  /**
+   * `tx` optionnel : voir BroilerBatchesService.create() pour le même
+   * mécanisme (participation à une transaction englobante — orientation
+   * Phase 5). Quand `tx` est fourni, l'écriture utilise ce client au lieu
+   * de `this.prisma`, et le log d'audit n'est PAS écrit ici (l'appelant
+   * journalise après le commit de sa propre transaction).
+   */
   async createInternal(
     actingUser: AccessTokenPayload,
     input: { purpose: ChickBatchPurpose; initialQuantity: number; buildingId?: string },
     ipAddress: string | null,
+    tx?: Prisma.TransactionClient,
   ): Promise<ChickBatch> {
+    const client = tx ?? this.prisma;
     const year = new Date().getFullYear();
     let batch: ChickBatch | undefined;
     for (let attempt = 0; attempt < MAX_CODE_RETRIES; attempt++) {
       const code = await this.generateBatchCode(actingUser.farmId, year);
       try {
-        batch = await this.prisma.chickBatch.create({
+        batch = await client.chickBatch.create({
           data: {
             farmId: actingUser.farmId,
             code,
@@ -72,13 +81,21 @@ export class ChickBatchesService {
       throw new ConflictException('Impossible de générer un code de lot unique — réessayer.');
     }
 
+    if (tx) {
+      return batch;
+    }
+
     await this.auditLogService.record({
       farmId: actingUser.farmId,
       userId: actingUser.sub,
       entityType: 'chick_batch',
       entityId: batch.id,
       action: 'CHICK_BATCH_CREATED',
-      newValues: { code: batch.code, purpose: input.purpose, initialQuantity: input.initialQuantity },
+      newValues: {
+        code: batch.code,
+        purpose: input.purpose,
+        initialQuantity: input.initialQuantity,
+      },
       ipAddress,
     });
 

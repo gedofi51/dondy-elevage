@@ -165,6 +165,51 @@ identifié comme actif dans les phases suivantes.
   rigueur que les autres seuils déjà sourcés dans le projet, mais à
   reconsidérer si une source plus directement applicable apparaît.
 
+## ✅ Corrigé
+
+### `OrientationService.orient()` — absence de transaction unique (Phase 5)
+
+**Signalé puis corrigé dans la même phase**, avant merge — un premier
+commit de la Phase 5 avait laissé la création de l'entité enfant
+(`BroilerBatch`/`ChickBatch`, selon `transformationType`) et la ligne
+`BatchLineage` en deux écritures séparées, chacune validée indépendamment,
+avec le raisonnement suivant (retenu à tort) : `BroilerBatchesService.
+create()` possède déjà sa propre transaction interne (bande + 45 journées,
+héritée de la Phase 3), et la faire participer à une transaction englobante
+semblait exiger une modification disproportionnée d'un service Phase 3 non
+sollicité par ailleurs.
+
+**Risque concret qui aurait résulté de ce choix** : un échec de l'INSERT
+`BatchLineage` — après le succès de la création du `BroilerBatch`/
+`ChickBatch` — aurait laissé cette entité enfant orpheline : un lot de
+poulets ou de poussins existant réellement en base, rattaché à un
+bâtiment et à un responsable, mais sans aucune ligne de filiation le
+reliant à son incubation d'origine. Concrètement : le compteur "poussins
+disponibles" de l'incubation (`chicksHatched - SUM(BatchLineage.quantity)`)
+resterait incorrect (surestimé, puisque la quantité orientée n'aurait pas
+été comptabilisée), permettant d'orienter à nouveau des poussins déjà
+matériellement utilisés — et la traçabilité de filiation (exigée par le
+cahier §6.5, testée en e2e) serait rompue pour ce lot précis.
+
+**Correction retenue** — repérée comme simple avant d'être reportée à tort
+(le précédent direct existait déjà : bande + 45 journées en Phase 3, via
+`prisma.$transaction`) : `BroilerBatchesService.create()` et
+`ChickBatchesService.createInternal()` acceptent désormais un paramètre
+`tx?: Prisma.TransactionClient` optionnel. Quand il est fourni, ils
+écrivent avec ce client au lieu d'ouvrir leur propre transaction (Prisma ne
+supporte pas les transactions interactives imbriquées, mais un
+`Prisma.TransactionClient` s'utilise comme le client normal pour de
+nouvelles écritures dans la même transaction déjà ouverte par l'appelant)
+et ne journalisent plus eux-mêmes l'audit log dans ce cas (un log écrit
+avant le commit de la transaction englobante serait visible en base pour
+une écriture pas encore garantie définitive, et resterait orphelin si
+l'étape suivante échouait). `OrientationService.orient()` ouvre désormais
+une unique transaction (`this.prisma.$transaction`) englobant la création
+de l'entité enfant (le cas échéant) et la ligne `BatchLineage`, et émet
+tous les logs d'audit après le commit. Voir
+`orientation.service.ts`/`broiler-batches.service.ts`/
+`chick-batches.service.ts`.
+
 ## Comment utiliser ce document
 
 - **En fin de mission** : avant de rédiger la section "Risques / dette
@@ -176,7 +221,6 @@ identifié comme actif dans les phases suivantes.
   savoir si le périmètre de la nouvelle phase touche un point déjà connu et
   mérite d'être traité (ou explicitement reporté, avec justification) plutôt
   que redécouvert à zéro.
-- **Une fois un point corrigé** : le déplacer dans une section "Corrigé"
-  (à créer le jour où le premier point sera réellement résolu), avec le
-  commit/PR de correction en référence — jamais de suppression silencieuse
-  d'un point qui a réellement existé.
+- **Une fois un point corrigé** : le déplacer dans la section "✅ Corrigé"
+  ci-dessus, avec le commit/PR de correction en référence — jamais de
+  suppression silencieuse d'un point qui a réellement existé.
