@@ -1,4 +1,4 @@
-import { safeDivide } from './safe-math.util';
+import { safeDivide } from '../../../common/calculations/safe-math.util';
 
 /** §12.1 : "Charges totales = somme des charges affectées à la bande." */
 export function computeTotalExpensesFcfa(amountsFcfa: number[]): number {

@@ -17,12 +17,20 @@ export class ExpensesService {
 
   private async assertReferencesBelongToFarm(
     farmId: string,
-    refs: { batchId?: string; supplierId?: string },
+    refs: { batchId?: string; layerBatchId?: string; supplierId?: string },
   ): Promise<void> {
     if (refs.batchId) {
       const batch = await this.prisma.broilerBatch.findUnique({ where: { id: refs.batchId } });
       if (!batch || batch.farmId !== farmId) {
         throw new NotFoundException('Bande introuvable.');
+      }
+    }
+    if (refs.layerBatchId) {
+      const layerBatch = await this.prisma.layerBatch.findUnique({
+        where: { id: refs.layerBatchId },
+      });
+      if (!layerBatch || layerBatch.farmId !== farmId) {
+        throw new NotFoundException('Lot introuvable.');
       }
     }
     if (refs.supplierId) {
@@ -44,6 +52,7 @@ export class ExpensesService {
       data: {
         farmId: actingUser.farmId,
         batchId: dto.batchId,
+        layerBatchId: dto.layerBatchId,
         date: new Date(dto.date),
         category: dto.category,
         description: dto.description,
@@ -70,7 +79,12 @@ export class ExpensesService {
 
   async findAll(actingUser: AccessTokenPayload, query: ListExpensesQueryDto): Promise<Expense[]> {
     return this.prisma.expense.findMany({
-      where: { farmId: actingUser.farmId, deletedAt: null, batchId: query.batchId },
+      where: {
+        farmId: actingUser.farmId,
+        deletedAt: null,
+        batchId: query.batchId,
+        layerBatchId: query.layerBatchId,
+      },
       orderBy: { date: 'desc' },
     });
   }
