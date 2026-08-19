@@ -44,6 +44,37 @@ export const PERMISSIONS = {
   ALERTS_CREATE: 'alerts.create',
   ALERTS_READ: 'alerts.read',
   ALERTS_ACKNOWLEDGE: 'alerts.acknowledge',
+
+  BROILER_BATCHES_CREATE: 'broiler_batches.create',
+  BROILER_BATCHES_READ: 'broiler_batches.read',
+  BROILER_BATCHES_UPDATE: 'broiler_batches.update',
+  BROILER_BATCHES_DELETE: 'broiler_batches.delete',
+  BROILER_BATCHES_CLOSE: 'broiler_batches.close',
+
+  BROILER_DAILY_RECORDS_READ: 'broiler_daily_records.read',
+  BROILER_DAILY_RECORDS_UPDATE: 'broiler_daily_records.update',
+
+  BROILER_MORTALITY_CREATE: 'broiler_mortality.create',
+  BROILER_MORTALITY_READ: 'broiler_mortality.read',
+  BROILER_MORTALITY_UPDATE: 'broiler_mortality.update',
+  BROILER_MORTALITY_DELETE: 'broiler_mortality.delete',
+
+  BROILER_HEALTH_EVENTS_CREATE: 'broiler_health_events.create',
+  BROILER_HEALTH_EVENTS_READ: 'broiler_health_events.read',
+  BROILER_HEALTH_EVENTS_UPDATE: 'broiler_health_events.update',
+
+  EXPENSES_CREATE: 'expenses.create',
+  EXPENSES_READ: 'expenses.read',
+  EXPENSES_UPDATE: 'expenses.update',
+  EXPENSES_DELETE: 'expenses.delete',
+
+  SALES_CREATE: 'sales.create',
+  SALES_READ: 'sales.read',
+  SALES_UPDATE: 'sales.update',
+
+  PAYMENTS_CREATE: 'payments.create',
+  PAYMENTS_READ: 'payments.read',
+  PAYMENTS_DELETE: 'payments.delete',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -82,4 +113,37 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.ALERTS_CREATE]: 'Créer/déclencher une alerte',
   [PERMISSIONS.ALERTS_READ]: 'Consulter les alertes',
   [PERMISSIONS.ALERTS_ACKNOWLEDGE]: 'Acquitter une alerte',
+
+  [PERMISSIONS.BROILER_BATCHES_CREATE]: 'Créer une bande de poulets de chair',
+  [PERMISSIONS.BROILER_BATCHES_READ]: 'Consulter les bandes de poulets de chair',
+  [PERMISSIONS.BROILER_BATCHES_UPDATE]: 'Modifier une bande de poulets de chair',
+  [PERMISSIONS.BROILER_BATCHES_DELETE]:
+    'Supprimer une bande (sans activité financière/sanitaire liée)',
+  [PERMISSIONS.BROILER_BATCHES_CLOSE]: 'Clôturer une bande',
+
+  [PERMISSIONS.BROILER_DAILY_RECORDS_READ]: 'Consulter le suivi quotidien J1-J45',
+  [PERMISSIONS.BROILER_DAILY_RECORDS_UPDATE]: 'Saisir le suivi quotidien J1-J45',
+
+  [PERMISSIONS.BROILER_MORTALITY_CREATE]: 'Enregistrer une mortalité détaillée',
+  [PERMISSIONS.BROILER_MORTALITY_READ]: 'Consulter la mortalité détaillée',
+  [PERMISSIONS.BROILER_MORTALITY_UPDATE]: 'Modifier une mortalité détaillée',
+  [PERMISSIONS.BROILER_MORTALITY_DELETE]: 'Supprimer une mortalité détaillée',
+
+  [PERMISSIONS.BROILER_HEALTH_EVENTS_CREATE]:
+    'Créer un événement sanitaire (vaccination, traitement...)',
+  [PERMISSIONS.BROILER_HEALTH_EVENTS_READ]: 'Consulter le calendrier sanitaire',
+  [PERMISSIONS.BROILER_HEALTH_EVENTS_UPDATE]: 'Modifier un événement sanitaire',
+
+  [PERMISSIONS.EXPENSES_CREATE]: 'Créer une dépense',
+  [PERMISSIONS.EXPENSES_READ]: 'Consulter les dépenses',
+  [PERMISSIONS.EXPENSES_UPDATE]: 'Modifier une dépense',
+  [PERMISSIONS.EXPENSES_DELETE]: 'Supprimer une dépense',
+
+  [PERMISSIONS.SALES_CREATE]: 'Enregistrer une vente',
+  [PERMISSIONS.SALES_READ]: 'Consulter les ventes',
+  [PERMISSIONS.SALES_UPDATE]: 'Modifier/annuler une vente',
+
+  [PERMISSIONS.PAYMENTS_CREATE]: 'Enregistrer un paiement',
+  [PERMISSIONS.PAYMENTS_READ]: 'Consulter les paiements',
+  [PERMISSIONS.PAYMENTS_DELETE]: 'Supprimer un paiement (correction)',
 };
