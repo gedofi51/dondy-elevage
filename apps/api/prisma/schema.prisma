@@ -60,6 +60,12 @@ model Farm {
   layerHealthEvents   LayerHealthEvent[]
   eggStockLots        EggStockLot[]
   eggStockMovements   EggStockMovement[]
+  incubators          Incubator[]
+  breederBatches      BreederBatch[]
+  breederDailyRecords BreederDailyRecord[]
+  incubationBatches   IncubationBatch[]
+  chickBatches        ChickBatch[]
+  batchLineageRows    BatchLineage[]
 
   @@map("farms")
 }
@@ -100,6 +106,8 @@ model User {
   salesAsSeller                  Sale[]               @relation("SaleSeller")
   layerBatchesAsPrimaryManager   LayerBatch[]         @relation("LayerBatchPrimaryManager")
   dailyRecordsAsLayerOperator    LayerDailyRecord[]   @relation("LayerDailyRecordOperator")
+  breederBatchesAsPrimaryManager BreederBatch[]       @relation("BreederBatchPrimaryManager")
+  dailyRecordsAsBreederOperator  BreederDailyRecord[] @relation("BreederDailyRecordOperator")
 
   @@unique([farmId, email])
   @@index([farmId])
@@ -220,6 +228,8 @@ model Building {
   farm           Farm           @relation(fields: [farmId], references: [id])
   broilerBatches BroilerBatch[]
   layerBatches   LayerBatch[]
+  breederBatches BreederBatch[]
+  chickBatches   ChickBatch[]
 
   @@index([farmId])
   @@map("buildings")
@@ -709,6 +719,10 @@ model Expense {
   farmId       String
   batchId      String?
   layerBatchId String?
+  /// FK ChickBatch (Phase 5) — coûts rattachables à un lot de poussins
+  /// (ex. aliment démarrage avant vente), même généralisation que
+  /// layerBatchId en Phase 4.
+  chickBatchId String?
 
   date          DateTime
   category      String
@@ -726,11 +740,13 @@ model Expense {
   farm       Farm          @relation(fields: [farmId], references: [id])
   batch      BroilerBatch? @relation(fields: [batchId], references: [id])
   layerBatch LayerBatch?   @relation(fields: [layerBatchId], references: [id])
+  chickBatch ChickBatch?   @relation(fields: [chickBatchId], references: [id])
   supplier   Supplier?     @relation(fields: [supplierId], references: [id])
 
   @@index([farmId])
   @@index([batchId])
   @@index([layerBatchId])
+  @@index([chickBatchId])
   @@map("expenses")
 }
 
@@ -757,6 +773,7 @@ enum SaleStatus {
 enum SaleProductType {
   POULET_CHAIR
   OEUFS
+  POUSSINS
 }
 
 /// Pas de SaleItem : une vente = un lot d'une bande (le cahier §16 propose
@@ -779,6 +796,8 @@ model Sale {
   batchId      String?
   /// FK LayerBatch — renseigné seulement si productType = OEUFS.
   layerBatchId String?
+  /// FK ChickBatch (Phase 5) — renseigné seulement si productType = POUSSINS.
+  chickBatchId String?
   /// Auto-généré, format VTE-AAAA-NNN, même principe que BroilerBatch.code.
   saleNumber   String
 
@@ -805,6 +824,7 @@ model Sale {
   farm              Farm               @relation(fields: [farmId], references: [id])
   batch             BroilerBatch?      @relation(fields: [batchId], references: [id])
   layerBatch        LayerBatch?        @relation(fields: [layerBatchId], references: [id])
+  chickBatch        ChickBatch?        @relation(fields: [chickBatchId], references: [id])
   customer          Customer           @relation(fields: [customerId], references: [id])
   seller            User               @relation("SaleSeller", fields: [sellerId], references: [id])
   payments          Payment[]
@@ -814,6 +834,7 @@ model Sale {
   @@index([farmId])
   @@index([batchId])
   @@index([layerBatchId])
+  @@index([chickBatchId])
   @@index([farmId, status])
   @@map("sales")
 }
@@ -1078,4 +1099,260 @@ model EggStockMovement {
   @@index([lotId])
   @@index([saleId])
   @@map("egg_stock_movements")
+}
+
+// ============================================================================
+// Phase 5 — Reproductrices, couvoir et poussins (V5 §6)
+// ============================================================================
+
+/// Équipement technique (capacité en œufs), distinct de Building
+/// (bâtiment, capacité en animaux) — le modèle cible du cahier V5 §12
+/// liste `incubators` séparément de `buildings`, aucune table tierce
+/// n'impose de généraliser Building. Donnée de référence : hard delete,
+/// pas de deletedAt, comme Supplier/Building.
+model Incubator {
+  id           String  @id @default(uuid())
+  farmId       String
+  name         String
+  capacityEggs Int?
+  notes        String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm              Farm              @relation(fields: [farmId], references: [id])
+  incubationBatches IncubationBatch[]
+
+  @@index([farmId])
+  @@map("incubators")
+}
+
+enum BreederBatchStatus {
+  ACTIF
+  REFORME
+  CLOTURE
+  /// Ajouté au-delà des 3 valeurs du cahier §6.1 — même soupape de
+  /// sécurité qu'en Phase 4 (remove() bloque le hard-delete dès qu'une
+  /// activité liée existe, sinon impose ce statut).
+  ANNULEE
+}
+
+/// Pas de suivi d'effectif journalier (femaleCount/maleCount restent des
+/// champs statiques, corrigibles par PATCH) : le cahier §6.2 (production
+/// journalière) ne contient aucun champ mortalité/réforme/autres sorties,
+/// contrairement à LayerDailyRecord — signal net qu'aucune source de
+/// décrément n'existe dans ce périmètre. close() ne bloque donc pas sur un
+/// effectif restant (même raisonnement que LayerBatchesService.close()).
+model BreederBatch {
+  id     String @id @default(uuid())
+  farmId String
+  /// Auto-généré, format REP-AAAA-NNN, retry P2002 — pattern
+  /// CustomersService.generateCode.
+  code   String
+
+  strain           String?
+  constitutionDate DateTime
+  femaleCount      Int
+  maleCount        Int
+
+  buildingId       String
+  primaryManagerId String
+
+  status       BreederBatchStatus @default(ACTIF)
+  observations String?            @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm              Farm                 @relation(fields: [farmId], references: [id])
+  building          Building             @relation(fields: [buildingId], references: [id])
+  primaryManager    User                 @relation("BreederBatchPrimaryManager", fields: [primaryManagerId], references: [id])
+  dailyRecords      BreederDailyRecord[]
+  incubationBatches IncubationBatch[]
+
+  @@unique([farmId, code])
+  @@index([farmId])
+  @@index([farmId, status])
+  @@map("breeder_batches")
+}
+
+/// Créé à la demande (comme LayerDailyRecord) — reproducteurs à cycle
+/// long, pas de génération en masse. eggsSold = compteur brut, PAS de
+/// généralisation Sale/EggStock (le §6.2 ne demande aucun mécanisme de
+/// stock/FIFO/calibres pour ces œufs, contrairement au §5.4 pondeuses).
+/// Pas de champ eggsTransferredToIncubation persisté : voir
+/// BreederBatch — la quantité disponible pour incubation est calculée à
+/// la lecture (cumul eggsSelectedForIncubation - cumul IncubationBatch.
+/// eggCount déjà consommés pour ce lot), jamais stockée.
+model BreederDailyRecord {
+  id      String @id @default(uuid())
+  farmId  String
+  batchId String
+
+  date       DateTime
+  operatorId String?
+
+  eggsLaid                  Int
+  eggsSelectedForIncubation Int @default(0)
+  eggsRejected              Int @default(0)
+  eggsSold                  Int @default(0)
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm     Farm         @relation(fields: [farmId], references: [id])
+  batch    BreederBatch @relation(fields: [batchId], references: [id])
+  operator User?        @relation("BreederDailyRecordOperator", fields: [operatorId], references: [id])
+
+  @@unique([batchId, date])
+  @@index([farmId])
+  @@index([batchId, date])
+  @@map("breeder_daily_records")
+}
+
+enum IncubationBatchStatus {
+  EN_INCUBATION
+  ECLOS
+  CLOTURE
+  ANNULEE
+}
+
+/// expectedHatchDate/expectedCandlingDate : calculés à la lecture depuis
+/// incubationStartDate + Setting (incubation.duration_days=21,
+/// incubation.candling_day_offset=7), jamais persistés — même principe
+/// que plannedSaleDate vs jalons calendaires en Phase 3.
+model IncubationBatch {
+  id     String @id @default(uuid())
+  farmId String
+  /// Auto-généré, format INC-AAAA-NNN, retry P2002.
+  code   String
+
+  /// Filiation obligatoire, non contournable.
+  breederBatchId String
+  incubatorId    String
+
+  incubationStartDate DateTime
+  /// Validé en service contre BreederBatch.availableFertileEggs (calculé
+  /// à la lecture) — égalité acceptée, pas seulement strictement inférieur.
+  eggCount            Int
+
+  actualHatchDate    DateTime?
+  eggsInfertile      Int?
+  eggsInfected       Int?
+  embryonicMortality Int?
+  chicksHatched      Int?
+  remarks            String?   @db.Text
+
+  status IncubationBatchStatus @default(EN_INCUBATION)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm         Farm           @relation(fields: [farmId], references: [id])
+  breederBatch BreederBatch   @relation(fields: [breederBatchId], references: [id])
+  incubator    Incubator      @relation(fields: [incubatorId], references: [id])
+  lineageRows  BatchLineage[]
+
+  @@unique([farmId, code])
+  @@index([farmId])
+  @@index([breederBatchId])
+  @@index([farmId, status])
+  @@map("incubation_batches")
+}
+
+enum ChickBatchPurpose {
+  VENTE
+  RENOUVELLEMENT
+}
+
+enum ChickBatchStatus {
+  ACTIF
+  CLOTURE
+  ANNULE
+}
+
+/// N'existe QUE pour les destinations VENTE et RENOUVELLEMENT (§6.5 :
+/// "Vente poussins -> création d'un STOCK" vs "Chair -> création d'une
+/// nouvelle BANDE", verbes différents délibérément — la destination chair
+/// réutilise directement BroilerBatch, jamais de ChickBatch intermédiaire,
+/// voir orientation.service.ts). Pas de CREATE direct exposé : naît
+/// toujours d'une orientation.
+model ChickBatch {
+  id     String @id @default(uuid())
+  farmId String
+  /// Auto-généré, format POU-AAAA-NNN, retry P2002.
+  code   String
+
+  purpose         ChickBatchPurpose
+  initialQuantity Int
+  /// Requis en service SI purpose=RENOUVELLEMENT (housing nécessaire pour
+  /// l'élevage), optionnel sinon (stock en attente de vente).
+  buildingId      String?
+
+  status ChickBatchStatus @default(ACTIF)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm     Farm      @relation(fields: [farmId], references: [id])
+  building Building? @relation(fields: [buildingId], references: [id])
+  sales    Sale[]
+  expenses Expense[]
+
+  @@unique([farmId, code])
+  @@index([farmId])
+  @@map("chick_batches")
+}
+
+enum ChickTransformationType {
+  VENTE
+  CHAIR
+  RENOUVELLEMENT
+  REFORME_PERTE
+}
+
+/// Polymorphisme ASYMÉTRIQUE (décision retenue après revue) :
+/// incubationBatchId = FK dure, PAS parentType/parentId — dans le
+/// périmètre réellement construit par cette phase, un seul type de parent
+/// existe jamais ("lot d'œufs fécondés" et "lot de poussins" ne sont
+/// volontairement pas matérialisés comme entités, voir BreederDailyRecord/
+/// ChickBatch) ; un champ "polymorphe" à valeur unique observable serait
+/// une indirection sans bénéfice, contraire à "relations explicites"
+/// (BASE_DE-DONNEES.md). childType/childId, eux, restent réellement
+/// polymorphes (2 types d'entité enfant + un cas terminal sans enfant
+/// pour REFORME_PERTE, choisis à l'exécution selon transformationType) —
+/// même style que Document.entityType/entityId. Une même incubation peut
+/// produire PLUSIEURS lignes d'orientation (§16-D), donc une vraie table
+/// de lignes, pas des FK scalaires sur IncubationBatch.
+model BatchLineage {
+  id     String @id @default(uuid())
+  farmId String
+
+  incubationBatchId  String
+  transformationType ChickTransformationType
+  quantity           Int
+
+  /// 'chick_batch' | 'broiler_batch' — null pour REFORME_PERTE.
+  childType String?
+  childId   String?
+  /// Motif, uniquement pour REFORME_PERTE.
+  reason    String? @db.Text
+
+  date      DateTime
+  createdAt DateTime @default(now())
+  createdBy String
+
+  farm            Farm            @relation(fields: [farmId], references: [id])
+  incubationBatch IncubationBatch @relation(fields: [incubationBatchId], references: [id])
+
+  @@index([farmId])
+  @@index([incubationBatchId])
+  @@index([childType, childId])
+  @@map("batch_lineage")
 }

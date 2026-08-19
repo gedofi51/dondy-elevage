@@ -168,11 +168,34 @@ export class BroilerBatchesService {
     }
   }
 
+  /**
+   * `tx` optionnel : permet à un appelant (OrientationService, Phase 5) de
+   * faire participer la création de cette bande + ses 45 journées à une
+   * transaction englobante (bande + BatchLineage atomiques). Quand `tx` est
+   * fourni, aucune transaction n'est ouverte ici (on réutilise celle de
+   * l'appelant — Prisma ne supporte pas les transactions interactives
+   * imbriquées) et le log d'audit n'est PAS écrit ici : il serait visible
+   * avant même le commit de la transaction englobante, et resterait orphelin
+   * si celle-ci échouait ensuite (ex. échec de l'INSERT BatchLineage) — c'est
+   * à l'appelant de journaliser après le commit de sa propre transaction.
+   */
   async create(
     actingUser: AccessTokenPayload,
     dto: CreateBroilerBatchDto,
     ipAddress: string | null,
-  ): Promise<BroilerBatchWithComputed> {
+  ): Promise<BroilerBatchWithComputed>;
+  async create(
+    actingUser: AccessTokenPayload,
+    dto: CreateBroilerBatchDto,
+    ipAddress: string | null,
+    tx: Prisma.TransactionClient,
+  ): Promise<BroilerBatch>;
+  async create(
+    actingUser: AccessTokenPayload,
+    dto: CreateBroilerBatchDto,
+    ipAddress: string | null,
+    tx?: Prisma.TransactionClient,
+  ): Promise<BroilerBatchWithComputed | BroilerBatch> {
     if (dto.origin === 'ACHAT' && !dto.supplierId) {
       throw new BadRequestException("Le fournisseur est requis lorsque l'origine est 'achat'.");
     }
@@ -190,8 +213,8 @@ export class BroilerBatchesService {
       ? new Date(dto.plannedSaleDate)
       : new Date(arrivalDate.getTime() + 44 * MS_PER_DAY);
 
-    const batch = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.broilerBatch.create({
+    const writeBatch = async (client: Prisma.TransactionClient): Promise<BroilerBatch> => {
+      const created = await client.broilerBatch.create({
         data: {
           farmId: actingUser.farmId,
           code,
@@ -224,10 +247,16 @@ export class BroilerBatchesService {
         dayNumber: index + 1,
         date: new Date(arrivalDate.getTime() + index * MS_PER_DAY),
       }));
-      await tx.broilerDailyRecord.createMany({ data: dailyRecordsData });
+      await client.broilerDailyRecord.createMany({ data: dailyRecordsData });
 
       return created;
-    });
+    };
+
+    const batch = tx ? await writeBatch(tx) : await this.prisma.$transaction(writeBatch);
+
+    if (tx) {
+      return batch;
+    }
 
     await this.auditLogService.record({
       farmId: actingUser.farmId,

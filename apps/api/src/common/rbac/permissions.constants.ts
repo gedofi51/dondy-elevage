@@ -94,6 +94,33 @@ export const PERMISSIONS = {
 
   EGG_STOCK_MOVEMENTS_CREATE: 'egg_stock_movements.create',
   EGG_STOCK_MOVEMENTS_READ: 'egg_stock_movements.read',
+
+  BREEDER_BATCHES_CREATE: 'breeder_batches.create',
+  BREEDER_BATCHES_READ: 'breeder_batches.read',
+  BREEDER_BATCHES_UPDATE: 'breeder_batches.update',
+  BREEDER_BATCHES_DELETE: 'breeder_batches.delete',
+  BREEDER_BATCHES_CLOSE: 'breeder_batches.close',
+
+  BREEDER_DAILY_RECORDS_CREATE: 'breeder_daily_records.create',
+  BREEDER_DAILY_RECORDS_READ: 'breeder_daily_records.read',
+  BREEDER_DAILY_RECORDS_UPDATE: 'breeder_daily_records.update',
+
+  INCUBATORS_CREATE: 'incubators.create',
+  INCUBATORS_READ: 'incubators.read',
+  INCUBATORS_UPDATE: 'incubators.update',
+  INCUBATORS_DELETE: 'incubators.delete',
+
+  INCUBATION_BATCHES_CREATE: 'incubation_batches.create',
+  INCUBATION_BATCHES_READ: 'incubation_batches.read',
+  INCUBATION_BATCHES_UPDATE: 'incubation_batches.update',
+  INCUBATION_BATCHES_CLOSE: 'incubation_batches.close',
+
+  CHICK_BATCHES_READ: 'chick_batches.read',
+  CHICK_BATCHES_UPDATE: 'chick_batches.update',
+
+  BATCH_LINEAGE_READ: 'batch_lineage.read',
+
+  ORIENTATION_CREATE: 'orientation.create',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -186,4 +213,32 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.EGG_STOCK_MOVEMENTS_CREATE]:
     "Enregistrer un mouvement manuel de stock d'œufs (perte, don, consommation interne...)",
   [PERMISSIONS.EGG_STOCK_MOVEMENTS_READ]: "Consulter les mouvements de stock d'œufs",
+
+  [PERMISSIONS.BREEDER_BATCHES_CREATE]: 'Créer un lot reproducteur',
+  [PERMISSIONS.BREEDER_BATCHES_READ]: 'Consulter les lots reproducteurs',
+  [PERMISSIONS.BREEDER_BATCHES_UPDATE]: 'Modifier un lot reproducteur',
+  [PERMISSIONS.BREEDER_BATCHES_DELETE]: 'Supprimer un lot reproducteur (sans activité liée)',
+  [PERMISSIONS.BREEDER_BATCHES_CLOSE]: 'Clôturer un lot reproducteur',
+
+  [PERMISSIONS.BREEDER_DAILY_RECORDS_CREATE]: "Saisir une journée de production d'œufs fécondés",
+  [PERMISSIONS.BREEDER_DAILY_RECORDS_READ]: 'Consulter le suivi quotidien reproducteurs',
+  [PERMISSIONS.BREEDER_DAILY_RECORDS_UPDATE]: 'Corriger une journée déjà saisie',
+
+  [PERMISSIONS.INCUBATORS_CREATE]: 'Créer une couveuse',
+  [PERMISSIONS.INCUBATORS_READ]: 'Consulter les couveuses',
+  [PERMISSIONS.INCUBATORS_UPDATE]: 'Modifier une couveuse',
+  [PERMISSIONS.INCUBATORS_DELETE]: 'Supprimer une couveuse',
+
+  [PERMISSIONS.INCUBATION_BATCHES_CREATE]: "Créer un lot d'incubation",
+  [PERMISSIONS.INCUBATION_BATCHES_READ]: "Consulter les lots d'incubation",
+  [PERMISSIONS.INCUBATION_BATCHES_UPDATE]: "Saisir le mirage/l'éclosion d'un lot d'incubation",
+  [PERMISSIONS.INCUBATION_BATCHES_CLOSE]: "Clôturer un lot d'incubation",
+
+  [PERMISSIONS.CHICK_BATCHES_READ]: 'Consulter les lots de poussins',
+  [PERMISSIONS.CHICK_BATCHES_UPDATE]: 'Modifier un lot de poussins',
+
+  [PERMISSIONS.BATCH_LINEAGE_READ]: "Consulter la filiation d'un lot (origine couvoir)",
+
+  [PERMISSIONS.ORIENTATION_CREATE]:
+    'Orienter des poussins éclos (vente, chair, renouvellement, réforme)',
 };

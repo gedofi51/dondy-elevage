@@ -28,14 +28,22 @@ import { LayerBatchesModule } from './modules/layer-batches/layer-batches.module
 import { DailyRecordsModule as LayerDailyRecordsModule } from './modules/layer-batches/daily-records/daily-records.module';
 import { HealthEventsModule as LayerHealthEventsModule } from './modules/layer-batches/health-events/health-events.module';
 import { EggStockModule } from './modules/egg-stock/egg-stock.module';
+import { IncubatorsModule } from './modules/incubators/incubators.module';
+import { BreederBatchesModule } from './modules/breeder-batches/breeder-batches.module';
+import { DailyRecordsModule as BreederDailyRecordsModule } from './modules/breeder-batches/daily-records/daily-records.module';
+import { IncubationBatchesModule } from './modules/incubation-batches/incubation-batches.module';
+import { OrientationModule } from './modules/incubation-batches/orientation/orientation.module';
+import { ChickBatchesModule } from './modules/chick-batches/chick-batches.module';
+import { BatchLineageModule } from './modules/batch-lineage/batch-lineage.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     // Premier ordonnanceur du projet — voir BroilerAlertsCronService
-    // (alertes calendaires J1-J45, Phase 3) et LayerAlertsCronService
-    // (alertes pondeuses, Phase 4 — cron séparé, règles structurellement
-    // différentes).
+    // (alertes calendaires J1-J45, Phase 3), LayerAlertsCronService
+    // (alertes pondeuses, Phase 4) et BreederAlertsCronService (reproduction
+    // + couvoir, Phase 5) — trois crons séparés, règles structurellement
+    // différentes par domaine.
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
@@ -65,6 +73,13 @@ import { EggStockModule } from './modules/egg-stock/egg-stock.module';
     LayerDailyRecordsModule,
     LayerHealthEventsModule,
     EggStockModule,
+    IncubatorsModule,
+    BreederBatchesModule,
+    BreederDailyRecordsModule,
+    IncubationBatchesModule,
+    OrientationModule,
+    ChickBatchesModule,
+    BatchLineageModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

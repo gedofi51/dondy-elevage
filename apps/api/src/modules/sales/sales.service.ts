@@ -12,6 +12,7 @@ import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
 import { BroilerBatchesService } from '../broiler-batches/broiler-batches.service';
 import { LayerBatchesService } from '../layer-batches/layer-batches.service';
 import { EggStockService } from '../egg-stock/egg-stock.service';
+import { ChickBatchesService } from '../chick-batches/chick-batches.service';
 import {
   computeGrossAmountFcfa,
   computeNetAmountFcfa,
@@ -52,6 +53,7 @@ export class SalesService {
     private readonly broilerBatchesService: BroilerBatchesService,
     private readonly layerBatchesService: LayerBatchesService,
     private readonly eggStockService: EggStockService,
+    private readonly chickBatchesService: ChickBatchesService,
   ) {}
 
   /** Dérivé du dernier numéro émis pour la ferme+année (VTE-AAAA-NNN) — un
@@ -114,6 +116,7 @@ export class SalesService {
         productType,
         batchId: productType === 'POULET_CHAIR' ? dto.batchId : null,
         layerBatchId: productType === 'OEUFS' ? dto.layerBatchId : null,
+        chickBatchId: productType === 'POUSSINS' ? dto.chickBatchId : null,
         saleNumber,
         date: new Date(dto.date),
         customerId: dto.customerId,
@@ -143,6 +146,24 @@ export class SalesService {
       if (dto.quantity > computedBatch.currentHeadcount) {
         throw new ConflictException(
           `Quantité vendue (${dto.quantity}) supérieure à l'effectif disponible (${computedBatch.currentHeadcount}).`,
+        );
+      }
+      const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
+      sale = await this.prisma.sale.create({ data: buildData(saleNumber) });
+    } else if (productType === 'POUSSINS') {
+      if (!dto.chickBatchId) {
+        throw new BadRequestException('chickBatchId requis pour une vente de poussins.');
+      }
+      // Même schéma que POULET_CHAIR (effectif simple, pas de FIFO) — un
+      // ChickBatch est un lot unique, pas un stock multi-lots accumulé.
+      const computedChickBatch = await this.chickBatchesService.findOne(
+        actingUser,
+        dto.chickBatchId,
+      );
+      const available = computedChickBatch.currentHeadcount ?? 0;
+      if (dto.quantity > available) {
+        throw new ConflictException(
+          `Quantité vendue (${dto.quantity}) supérieure au stock de poussins disponible (${available}).`,
         );
       }
       const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
@@ -183,6 +204,7 @@ export class SalesService {
         netAmountFcfa,
         batchId: dto.batchId,
         layerBatchId: dto.layerBatchId,
+        chickBatchId: dto.chickBatchId,
       },
       ipAddress,
     });
@@ -273,6 +295,7 @@ export class SalesService {
         farmId: actingUser.farmId,
         batchId: query.batchId,
         layerBatchId: query.layerBatchId,
+        chickBatchId: query.chickBatchId,
         status: query.status,
       },
       orderBy: { date: 'desc' },
@@ -320,6 +343,20 @@ export class SalesService {
         if (newQuantity > availableExcludingThisSale) {
           throw new ConflictException(
             `Quantité vendue (${newQuantity}) supérieure à l'effectif disponible (${availableExcludingThisSale}).`,
+          );
+        }
+      }
+    } else if (existing.productType === 'POUSSINS') {
+      if (willBeCounted) {
+        const computedChickBatch = await this.chickBatchesService.findOne(
+          actingUser,
+          existing.chickBatchId!,
+        );
+        const availableExcludingThisSale =
+          (computedChickBatch.currentHeadcount ?? 0) + (wasCounted ? existing.quantity : 0);
+        if (newQuantity > availableExcludingThisSale) {
+          throw new ConflictException(
+            `Quantité vendue (${newQuantity}) supérieure au stock de poussins disponible (${availableExcludingThisSale}).`,
           );
         }
       }
