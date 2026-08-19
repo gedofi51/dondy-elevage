@@ -37,6 +37,13 @@ function isSerializationFailure(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
 }
 
+/** P2002 : conflit sur l'index unique (farmId, saleNumber) — peut survenir
+ * si deux ventes réellement concurrentes calculent le même numéro avant
+ * que l'une des deux ne commite (generateSaleNumber lit hors verrou). */
+function isUniqueConstraintFailure(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
 @Injectable()
 export class SalesService {
   constructor(
@@ -92,38 +99,40 @@ export class SalesService {
     });
 
     const status = dto.status ?? 'BROUILLON';
+    // Défaut POULET_CHAIR si omis (voir CreateSaleDto.productType) — même
+    // défaut que Sale.productType en base, préserve la compatibilité des
+    // appelants antérieurs à la Phase 4.
+    const productType = dto.productType ?? 'POULET_CHAIR';
     const grossAmountFcfa = computeGrossAmountFcfa(dto.quantity, dto.unitPriceFcfa);
     const netAmountFcfa = computeNetAmountFcfa(grossAmountFcfa, dto.discountFcfa ?? 0);
-    const saleNumber = await this.generateSaleNumber(
-      actingUser.farmId,
-      new Date(dto.date).getFullYear(),
-    );
+    const saleYear = new Date(dto.date).getFullYear();
     const sellerId = dto.sellerId ?? actingUser.sub;
 
-    const baseData = {
-      farmId: actingUser.farmId,
-      productType: dto.productType,
-      batchId: dto.productType === 'POULET_CHAIR' ? dto.batchId : null,
-      layerBatchId: dto.productType === 'OEUFS' ? dto.layerBatchId : null,
-      saleNumber,
-      date: new Date(dto.date),
-      customerId: dto.customerId,
-      sellerId,
-      saleMode: dto.saleMode,
-      quantity: dto.quantity,
-      weightKg: dto.weightKg,
-      unitPriceFcfa: dto.unitPriceFcfa,
-      discountFcfa: dto.discountFcfa ?? 0,
-      grossAmountFcfa,
-      netAmountFcfa,
-      status,
-      observation: dto.observation,
-      createdBy: actingUser.sub,
-    } satisfies Prisma.SaleUncheckedCreateInput;
+    const buildData = (saleNumber: string) =>
+      ({
+        farmId: actingUser.farmId,
+        productType,
+        batchId: productType === 'POULET_CHAIR' ? dto.batchId : null,
+        layerBatchId: productType === 'OEUFS' ? dto.layerBatchId : null,
+        saleNumber,
+        date: new Date(dto.date),
+        customerId: dto.customerId,
+        sellerId,
+        saleMode: dto.saleMode,
+        quantity: dto.quantity,
+        weightKg: dto.weightKg,
+        unitPriceFcfa: dto.unitPriceFcfa,
+        discountFcfa: dto.discountFcfa ?? 0,
+        grossAmountFcfa,
+        netAmountFcfa,
+        status,
+        observation: dto.observation,
+        createdBy: actingUser.sub,
+      }) satisfies Prisma.SaleUncheckedCreateInput;
 
     let sale: Sale;
 
-    if (dto.productType === 'POULET_CHAIR') {
+    if (productType === 'POULET_CHAIR') {
       if (!dto.batchId) {
         throw new BadRequestException('batchId requis pour une vente de poulets de chair.');
       }
@@ -136,7 +145,8 @@ export class SalesService {
           `Quantité vendue (${dto.quantity}) supérieure à l'effectif disponible (${computedBatch.currentHeadcount}).`,
         );
       }
-      sale = await this.prisma.sale.create({ data: baseData });
+      const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
+      sale = await this.prisma.sale.create({ data: buildData(saleNumber) });
     } else {
       if (!dto.layerBatchId) {
         throw new BadRequestException("layerBatchId requis pour une vente d'œufs.");
@@ -147,13 +157,15 @@ export class SalesService {
       if (!countsTowardAvailability(status)) {
         // Brouillon/réservée : aucune consommation physique de stock —
         // création simple, comme pour un poulet de chair en brouillon.
-        sale = await this.prisma.sale.create({ data: baseData });
+        const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
+        sale = await this.prisma.sale.create({ data: buildData(saleNumber) });
       } else {
         sale = await this.createEggSaleAndConsumeStock(
           actingUser,
           dto.layerBatchId,
           dto.quantity,
-          baseData,
+          saleYear,
+          buildData,
         );
       }
     }
@@ -165,8 +177,8 @@ export class SalesService {
       entityId: sale.id,
       action: 'SALE_CREATED',
       newValues: {
-        saleNumber,
-        productType: dto.productType,
+        saleNumber: sale.saleNumber,
+        productType,
         quantity: dto.quantity,
         netAmountFcfa,
         batchId: dto.batchId,
@@ -180,22 +192,39 @@ export class SalesService {
 
   /**
    * Crée la vente ET consomme le FIFO du stock d'œufs dans une seule
-   * transaction Serializable — sinon un échec de consumeFifo après création
-   * de la vente laisserait une vente "fantôme" sans stock derrière elle
+   * transaction — sinon un échec de consumeFifo après création de la vente
+   * laisserait une vente "fantôme" sans stock derrière elle
    * (EggStockMovement.saleId exige que la vente existe déjà, donc la vente
    * doit être créée AVANT la consommation ; les deux doivent réussir ou
-   * échouer ensemble). Retry sur échec de sérialisation (P2034), même
-   * idiome que EggStockService.consumeFifo.
+   * échouer ensemble).
+   *
+   * Pas d'`isolationLevel: Serializable` : voir l'historique de conception
+   * détaillé sur EggStockService.consumeFifo — cette combinaison a produit
+   * un blocage indéfini reproduit en e2e (bug confirmé en amont sur
+   * @prisma/adapter-mariadb 7.9.1), remplacée par un verrouillage
+   * `SELECT ... FOR UPDATE` dans consumeFifoInTransaction, qui garantit à
+   * lui seul l'absence de survente concurrente sous l'isolation par défaut.
+   *
+   * `buildData` reçoit un `saleNumber` FRAIS à CHAQUE tentative (pas
+   * calculé une seule fois avant la boucle) : generateSaleNumber() lit le
+   * dernier numéro hors verrou — deux ventes réellement concurrentes
+   * peuvent calculer le même numéro avant que l'une des deux ne commite
+   * (contrainte unique `farmId+saleNumber`, code P2002). Retenter avec un
+   * nouveau numéro sur P2002 est donc nécessaire en plus du retry sur
+   * P2034 — repéré par le test e2e de concurrence (deux ventes simultanées
+   * calculant le même numéro), corrigé avant de le considérer comme
+   * fiable.
    */
   private async createEggSaleAndConsumeStock(
     actingUser: AccessTokenPayload,
     layerBatchId: string,
     quantity: number,
-    baseData: Prisma.SaleUncheckedCreateInput,
+    saleYear: number,
+    buildData: (saleNumber: string) => Prisma.SaleUncheckedCreateInput,
   ): Promise<Sale> {
     // Pré-vérification rapide (hors transaction) pour un message d'erreur
     // immédiat dans le cas courant non concurrent — la garantie réelle
-    // contre la survente reste la transaction Serializable ci-dessous.
+    // contre la survente reste le verrouillage FOR UPDATE ci-dessous.
     const available = await this.eggStockService.getAvailableQuantity(
       actingUser.farmId,
       layerBatchId,
@@ -208,26 +237,27 @@ export class SalesService {
 
     for (let attempt = 0; attempt < MAX_TRANSACTION_RETRIES; attempt++) {
       try {
-        return await this.prisma.$transaction(
-          async (tx) => {
-            const created = await tx.sale.create({ data: baseData });
-            await this.eggStockService.consumeFifoInTransaction(
-              tx,
-              actingUser.farmId,
-              layerBatchId,
-              quantity,
-              created.id,
-              actingUser.sub,
-            );
-            return created;
-          },
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
-        );
+        const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
+        return await this.prisma.$transaction(async (tx) => {
+          const created = await tx.sale.create({ data: buildData(saleNumber) });
+          await this.eggStockService.consumeFifoInTransaction(
+            tx,
+            actingUser.farmId,
+            layerBatchId,
+            quantity,
+            created.id,
+            actingUser.sub,
+          );
+          return created;
+        });
       } catch (error) {
         if (error instanceof ConflictException) {
           throw error;
         }
-        if (isSerializationFailure(error) && attempt < MAX_TRANSACTION_RETRIES - 1) {
+        if (
+          (isSerializationFailure(error) || isUniqueConstraintFailure(error)) &&
+          attempt < MAX_TRANSACTION_RETRIES - 1
+        ) {
           continue;
         }
         throw error;

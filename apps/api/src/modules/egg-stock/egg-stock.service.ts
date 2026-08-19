@@ -104,12 +104,28 @@ export class EggStockService {
     );
   }
 
-  /** Cœur de l'allocation FIFO, exécuté à l'intérieur d'une transaction déjà
+  /**
+   * Cœur de l'allocation FIFO, exécuté à l'intérieur d'une transaction déjà
    * ouverte par l'appelant — factorisé pour être réutilisable tel quel
    * depuis consumeFifo (transaction dédiée) ET depuis SalesService.create
    * (même transaction que la création de la vente : EggStockMovement.saleId
    * exige que la vente existe déjà, donc vente+consommation doivent réussir
-   * ou échouer ensemble — voir SalesService.createEggSaleAndConsumeStock). */
+   * ou échouer ensemble — voir SalesService.createEggSaleAndConsumeStock).
+   *
+   * Verrouillage `SELECT ... FOR UPDATE` sur les lignes de lot (au lieu
+   * d'une transaction `isolationLevel: Serializable`, voir l'historique de
+   * ce choix ci-dessous sur consumeFifo) : une deuxième transaction
+   * concurrente ciblant le même lot de pondeuses est mise en attente ici
+   * par InnoDB jusqu'au commit/rollback de la première, puis relit la
+   * valeur validée la plus récente (FOR UPDATE ignore l'instantané
+   * repeatable-read de la transaction pour les lignes verrouillées) —
+   * pattern MySQL standard pour "réserver depuis un pool à quantité
+   * limitée", largement éprouvé, sous l'isolation par défaut (pas besoin
+   * de Serializable). Premier SQL brut de ce projet : nécessaire, Prisma
+   * n'expose aucune clause de verrouillage via son query builder ; requête
+   * paramétrée via le tagged template `$queryRaw` (échappement automatique,
+   * aucune concaténation de chaîne).
+   */
   private async consumeFifoInternal(
     tx: Prisma.TransactionClient,
     farmId: string,
@@ -118,14 +134,29 @@ export class EggStockService {
     saleId: string,
     recordedBy: string,
   ): Promise<void> {
-    const lots = await tx.eggStockLot.findMany({
-      where: { farmId, batchId: layerBatchId },
-      include: { movements: true },
+    const lockedLots = await tx.$queryRaw<
+      { id: string; productionDate: Date; quantityProduced: number }[]
+    >`
+      SELECT id, productionDate, quantityProduced FROM egg_stock_lots
+      WHERE farmId = ${farmId} AND batchId = ${layerBatchId}
+      ORDER BY productionDate ASC
+      FOR UPDATE
+    `;
+
+    const movements = await tx.eggStockMovement.findMany({
+      where: { lotId: { in: lockedLots.map((lot) => lot.id) } },
     });
-    const lotsForFifo: EggStockLotForFifo[] = lots.map((lot) => ({
+    const movementsByLot = new Map<string, typeof movements>();
+    for (const movement of movements) {
+      const list = movementsByLot.get(movement.lotId) ?? [];
+      list.push(movement);
+      movementsByLot.set(movement.lotId, list);
+    }
+
+    const lotsForFifo: EggStockLotForFifo[] = lockedLots.map((lot) => ({
       id: lot.id,
       productionDate: lot.productionDate,
-      remaining: computeLotRemaining(lot.quantityProduced, lot.movements),
+      remaining: computeLotRemaining(lot.quantityProduced, movementsByLot.get(lot.id) ?? []),
     }));
     const allocation = computeFifoAllocation(lotsForFifo, quantity);
     if (!allocation) {
@@ -148,10 +179,10 @@ export class EggStockService {
     }
   }
 
-  /** À utiliser depuis une transaction Serializable déjà ouverte par
-   * l'appelant (voir SalesService.createEggSaleAndConsumeStock) — ne gère
-   * pas elle-même le retry, c'est la responsabilité de l'appelant qui
-   * possède la transaction. */
+  /** À utiliser depuis une transaction déjà ouverte par l'appelant (voir
+   * SalesService.createEggSaleAndConsumeStock) — ne gère pas elle-même le
+   * retry, c'est la responsabilité de l'appelant qui possède la
+   * transaction. */
   async consumeFifoInTransaction(
     tx: Prisma.TransactionClient,
     farmId: string,
@@ -164,14 +195,45 @@ export class EggStockService {
   }
 
   /**
-   * Consomme le stock d'œufs d'un lot de pondeuses en FIFO — ouvre sa propre
-   * transaction Serializable + retry. Premier usage dans ce codebase de ce
-   * mécanisme : quantityRemaining étant toujours dérivé (jamais une
-   * colonne), deux ventes concurrentes pourraient sinon lire le même
-   * disponible avant que l'une des deux n'écrive (survente sous charge,
-   * §15). Retry jusqu'à MAX_TRANSACTION_RETRIES sur échec de sérialisation
-   * (P2034) — même idiome que CustomersService.generateCode (retry sur
-   * erreur transitoire connue), jamais de SQL brut introduit pour ce besoin.
+   * Consomme le stock d'œufs d'un lot de pondeuses en FIFO — ouvre sa
+   * propre transaction.
+   *
+   * Historique de conception (important pour un futur mainteneur) :
+   * l'implémentation initiale utilisait `isolationLevel: Serializable` +
+   * retry sur échec de sérialisation (P2034). Un test e2e de concurrence
+   * (deux ventes simultanées) a reproduit un BLOCAGE INDÉFINI (plusieurs
+   * heures) sur cette combinaison précise. Diagnostic (voir résumé de
+   * mission Phase 4 pour le détail complet) :
+   *   - `SHOW FULL PROCESSLIST`/`information_schema.innodb_trx` pendant le
+   *     blocage ne montraient AUCUNE transaction active côté MySQL, ni
+   *     aucun verrou en attente — la base de données elle-même n'était
+   *     jamais bloquée.
+   *   - Un garde-fou applicatif (withTimeout, Promise.race avec un
+   *     setTimeout) n'a PAS résolu le blocage — vérifié séparément que
+   *     withTimeout fonctionne correctement sur une promesse JS bloquée
+   *     ordinaire, ce qui exclut un bug dans le garde-fou lui-même.
+   *   - Conclusion : le blocage empêche l'exécution de tout timer JS
+   *     (starvation de la boucle d'événements ou blocage bas niveau dans
+   *     le driver), donc AUCUN mécanisme basé sur une Promise ne peut s'en
+   *     prémunir côté application.
+   *   - Cause proximale confirmée en amont : bug connu et non résolu de
+   *     @prisma/adapter-mariadb 7.9.1 (seule version stable publiée à ce
+   *     jour) où des connexions ne sont pas rendues au pool et restent
+   *     "Sleep" indéfiniment (prisma/prisma#28964) ; le nombre de
+   *     connexions orphelines observées (10) correspond exactement à
+   *     `connectionLimit` par défaut du driver `mariadb`.
+   * Décision retenue : remplacer `isolationLevel: Serializable` par un
+   * verrouillage `SELECT ... FOR UPDATE` classique (voir
+   * consumeFifoInternal) — un mécanisme MySQL standard, indépendant du
+   * chemin de code manifestement fragile de l'adaptateur pour
+   * l'isolation Serializable. Revérifié : 5 exécutions consécutives du
+   * test de concurrence e2e réussies (~3 s chacune, aucun blocage).
+   *
+   * Le retry sur P2034 est conservé par prudence pour un deadlock InnoDB
+   * classique (toujours possible avec FOR UPDATE, bien que peu probable
+   * ici — verrouillage dans un ordre déterministe), mais la correction
+   * contre la survente concurrente ne dépend plus du tout de ce retry :
+   * FOR UPDATE la garantit dès la première tentative.
    */
   async consumeFifo(
     actingUser: AccessTokenPayload,
@@ -181,17 +243,15 @@ export class EggStockService {
   ): Promise<void> {
     for (let attempt = 0; attempt < MAX_TRANSACTION_RETRIES; attempt++) {
       try {
-        await this.prisma.$transaction(
-          (tx) =>
-            this.consumeFifoInternal(
-              tx,
-              actingUser.farmId,
-              layerBatchId,
-              quantity,
-              saleId,
-              actingUser.sub,
-            ),
-          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+        await this.prisma.$transaction((tx) =>
+          this.consumeFifoInternal(
+            tx,
+            actingUser.farmId,
+            layerBatchId,
+            quantity,
+            saleId,
+            actingUser.sub,
+          ),
         );
         return;
       } catch (error) {
