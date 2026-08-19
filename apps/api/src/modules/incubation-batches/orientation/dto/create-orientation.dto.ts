@@ -1,4 +1,4 @@
-import { IsEnum, IsInt, IsOptional, IsString, IsUUID, Min, MinLength, ValidateIf } from 'class-validator';
+import { IsEnum, IsInt, IsString, IsUUID, Min, MinLength, ValidateIf } from 'class-validator';
 import { ChickTransformationType } from '@prisma/client';
 
 export class CreateOrientationDto {

@@ -30,7 +30,10 @@ export class DailyRecordsService {
 
   async findAll(actingUser: AccessTokenPayload, batchId: string): Promise<BreederDailyRecord[]> {
     await this.assertBatchAccessible(actingUser, batchId);
-    return this.prisma.breederDailyRecord.findMany({ where: { batchId }, orderBy: { date: 'asc' } });
+    return this.prisma.breederDailyRecord.findMany({
+      where: { batchId },
+      orderBy: { date: 'asc' },
+    });
   }
 
   async findOne(
@@ -115,7 +118,8 @@ export class DailyRecordsService {
     const existing = await this.findOne(actingUser, batchId, dateParam);
 
     if (dto.eggsSelectedForIncubation !== undefined) {
-      const currentAvailable = await this.breederBatchesService.computeAvailableFertileEggsForBatch(batchId);
+      const currentAvailable =
+        await this.breederBatchesService.computeAvailableFertileEggsForBatch(batchId);
       const delta = dto.eggsSelectedForIncubation - existing.eggsSelectedForIncubation;
       if (currentAvailable + delta < 0) {
         throw new ConflictException(

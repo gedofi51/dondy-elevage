@@ -30,6 +30,11 @@ export class CreateSaleDto {
   @IsUUID('4')
   layerBatchId?: string;
 
+  /** Requis si productType = POUSSINS. */
+  @ValidateIf((dto: CreateSaleDto) => dto.productType === 'POUSSINS')
+  @IsUUID('4')
+  chickBatchId?: string;
+
   @IsDateString()
   date!: string;
 

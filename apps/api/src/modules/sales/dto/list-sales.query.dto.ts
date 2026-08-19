@@ -11,6 +11,10 @@ export class ListSalesQueryDto {
   layerBatchId?: string;
 
   @IsOptional()
+  @IsUUID('4')
+  chickBatchId?: string;
+
+  @IsOptional()
   @IsEnum(SaleStatus)
   status?: SaleStatus;
 }

@@ -217,8 +217,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.BREEDER_BATCHES_CREATE]: 'Créer un lot reproducteur',
   [PERMISSIONS.BREEDER_BATCHES_READ]: 'Consulter les lots reproducteurs',
   [PERMISSIONS.BREEDER_BATCHES_UPDATE]: 'Modifier un lot reproducteur',
-  [PERMISSIONS.BREEDER_BATCHES_DELETE]:
-    'Supprimer un lot reproducteur (sans activité liée)',
+  [PERMISSIONS.BREEDER_BATCHES_DELETE]: 'Supprimer un lot reproducteur (sans activité liée)',
   [PERMISSIONS.BREEDER_BATCHES_CLOSE]: 'Clôturer un lot reproducteur',
 
   [PERMISSIONS.BREEDER_DAILY_RECORDS_CREATE]: "Saisir une journée de production d'œufs fécondés",
@@ -232,8 +231,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
 
   [PERMISSIONS.INCUBATION_BATCHES_CREATE]: "Créer un lot d'incubation",
   [PERMISSIONS.INCUBATION_BATCHES_READ]: "Consulter les lots d'incubation",
-  [PERMISSIONS.INCUBATION_BATCHES_UPDATE]:
-    "Saisir le mirage/l'éclosion d'un lot d'incubation",
+  [PERMISSIONS.INCUBATION_BATCHES_UPDATE]: "Saisir le mirage/l'éclosion d'un lot d'incubation",
   [PERMISSIONS.INCUBATION_BATCHES_CLOSE]: "Clôturer un lot d'incubation",
 
   [PERMISSIONS.CHICK_BATCHES_READ]: 'Consulter les lots de poussins',

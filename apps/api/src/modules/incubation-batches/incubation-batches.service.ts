@@ -45,7 +45,9 @@ export class IncubationBatchesService {
   }
 
   private async getSettingNumber(farmId: string, key: string, fallback: number): Promise<number> {
-    const setting = await this.prisma.setting.findUnique({ where: { farmId_key: { farmId, key } } });
+    const setting = await this.prisma.setting.findUnique({
+      where: { farmId_key: { farmId, key } },
+    });
     return typeof setting?.value === 'number' ? setting.value : fallback;
   }
 
@@ -98,7 +100,10 @@ export class IncubationBatchesService {
 
     let batch: IncubationBatch | undefined;
     for (let attempt = 0; attempt < MAX_CODE_RETRIES; attempt++) {
-      const code = await this.generateBatchCode(actingUser.farmId, incubationStartDate.getFullYear());
+      const code = await this.generateBatchCode(
+        actingUser.farmId,
+        incubationStartDate.getFullYear(),
+      );
       try {
         batch = await this.prisma.incubationBatch.create({
           data: {
@@ -174,7 +179,9 @@ export class IncubationBatchesService {
       where: { id },
       data: {
         ...dto,
-        incubationStartDate: dto.incubationStartDate ? new Date(dto.incubationStartDate) : undefined,
+        incubationStartDate: dto.incubationStartDate
+          ? new Date(dto.incubationStartDate)
+          : undefined,
         actualHatchDate: dto.actualHatchDate ? new Date(dto.actualHatchDate) : undefined,
       },
     });
@@ -232,7 +239,10 @@ export class IncubationBatchesService {
     action: string,
     ipAddress: string | null,
   ): Promise<IncubationBatch> {
-    const updated = await this.prisma.incubationBatch.update({ where: { id: existing.id }, data: { status } });
+    const updated = await this.prisma.incubationBatch.update({
+      where: { id: existing.id },
+      data: { status },
+    });
     await this.auditLogService.record({
       farmId: existing.farmId,
       userId: actingUser.sub,

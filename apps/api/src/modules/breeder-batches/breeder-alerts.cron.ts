@@ -88,7 +88,11 @@ export class BreederAlertsCronService {
     }
   }
 
-  private async alertAlreadyRaised(farmId: string, type: string, entityId: string): Promise<boolean> {
+  private async alertAlreadyRaised(
+    farmId: string,
+    type: string,
+    entityId: string,
+  ): Promise<boolean> {
     const existing = await this.prisma.alert.findFirst({
       where: { farmId, type, entityId },
       select: { id: true },
@@ -97,14 +101,20 @@ export class BreederAlertsCronService {
   }
 
   private async getSettingNumber(farmId: string, key: string, fallback: number): Promise<number> {
-    const setting = await this.prisma.setting.findUnique({ where: { farmId_key: { farmId, key } } });
+    const setting = await this.prisma.setting.findUnique({
+      where: { farmId_key: { farmId, key } },
+    });
     return typeof setting?.value === 'number' ? setting.value : fallback;
   }
 
   /** Contrairement au cron Broiler (operatorId IS NULL sur une ligne
    * pré-générée) et comme le cron Layer, il n'existe aucun placeholder côté
    * reproducteurs — l'absence de saisie se détecte par ABSENCE DE LIGNE. */
-  private async checkMissingEntry(farmId: string, batchId: string, batchCode: string): Promise<void> {
+  private async checkMissingEntry(
+    farmId: string,
+    batchId: string,
+    batchCode: string,
+  ): Promise<void> {
     const yesterday = new Date(Date.now() - MS_PER_DAY);
     const record = await this.prisma.breederDailyRecord.findUnique({
       where: { batchId_date: { batchId, date: yesterday } },
@@ -141,11 +151,29 @@ export class BreederAlertsCronService {
       SETTING_KEYS.candlingDayOffset,
       DEFAULT_CANDLING_DAY_OFFSET,
     );
-    const expectedHatchDate = computeExpectedHatchDate(incubation.incubationStartDate, durationDays);
-    const expectedCandlingDate = computeExpectedCandlingDate(incubation.incubationStartDate, candlingOffset);
+    const expectedHatchDate = computeExpectedHatchDate(
+      incubation.incubationStartDate,
+      durationDays,
+    );
+    const expectedCandlingDate = computeExpectedCandlingDate(
+      incubation.incubationStartDate,
+      candlingOffset,
+    );
 
-    await this.checkCandlingDue(incubation.farmId, incubation.id, incubation.code, expectedCandlingDate, today);
-    await this.checkHatchDue(incubation.farmId, incubation.id, incubation.code, expectedHatchDate, today);
+    await this.checkCandlingDue(
+      incubation.farmId,
+      incubation.id,
+      incubation.code,
+      expectedCandlingDate,
+      today,
+    );
+    await this.checkHatchDue(
+      incubation.farmId,
+      incubation.id,
+      incubation.code,
+      expectedHatchDate,
+      today,
+    );
 
     // KPI/cohérence : seulement une fois le bilan de mirage/éclosion saisi.
     if (incubation.chicksHatched !== null) {
@@ -252,7 +280,10 @@ export class BreederAlertsCronService {
     embryonicMortality: number | null;
   }): Promise<void> {
     const fertileEggs = computeFertileEggs(incubation.eggCount, incubation.eggsInfertile ?? 0);
-    const rate = computeEmbryonicMortalityRatePercent(incubation.embryonicMortality ?? 0, fertileEggs);
+    const rate = computeEmbryonicMortalityRatePercent(
+      incubation.embryonicMortality ?? 0,
+      fertileEggs,
+    );
     const threshold = await this.getSettingNumber(
       incubation.farmId,
       SETTING_KEYS.embryonicMortalityThreshold,

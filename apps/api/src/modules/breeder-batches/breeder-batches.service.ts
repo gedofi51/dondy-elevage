@@ -211,7 +211,11 @@ export class BreederBatchesService {
    * BreederBatch, contrairement à Broiler/Layer — hors périmètre Phase 5).
    * Dans tous les autres cas : POST /:id/annuler.
    */
-  async remove(actingUser: AccessTokenPayload, id: string, ipAddress: string | null): Promise<void> {
+  async remove(
+    actingUser: AccessTokenPayload,
+    id: string,
+    ipAddress: string | null,
+  ): Promise<void> {
     const existing = await this.getRaw(actingUser, id);
 
     const [dailyRecordCount, incubationCount] = await Promise.all([
@@ -243,7 +247,13 @@ export class BreederBatchesService {
     ipAddress: string | null,
   ): Promise<BreederBatchWithComputed> {
     const existing = await this.getRaw(actingUser, id);
-    const updated = await this.setStatus(existing, 'ANNULEE', actingUser, 'BREEDER_BATCH_CANCELLED', ipAddress);
+    const updated = await this.setStatus(
+      existing,
+      'ANNULEE',
+      actingUser,
+      'BREEDER_BATCH_CANCELLED',
+      ipAddress,
+    );
     return this.attachComputedFields(updated);
   }
 
@@ -256,7 +266,13 @@ export class BreederBatchesService {
     ipAddress: string | null,
   ): Promise<BreederBatchWithComputed> {
     const existing = await this.getRaw(actingUser, id);
-    const updated = await this.setStatus(existing, 'CLOTURE', actingUser, 'BREEDER_BATCH_CLOSED', ipAddress);
+    const updated = await this.setStatus(
+      existing,
+      'CLOTURE',
+      actingUser,
+      'BREEDER_BATCH_CLOSED',
+      ipAddress,
+    );
     return this.attachComputedFields(updated);
   }
 
@@ -267,7 +283,10 @@ export class BreederBatchesService {
     action: string,
     ipAddress: string | null,
   ): Promise<BreederBatch> {
-    const updated = await this.prisma.breederBatch.update({ where: { id: existing.id }, data: { status } });
+    const updated = await this.prisma.breederBatch.update({
+      where: { id: existing.id },
+      data: { status },
+    });
     await this.auditLogService.record({
       farmId: existing.farmId,
       userId: actingUser.sub,

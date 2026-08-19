@@ -1,4 +1,7 @@
-import { computeExpectedCandlingDate, computeExpectedHatchDate } from './incubation-dates.calculations';
+import {
+  computeExpectedCandlingDate,
+  computeExpectedHatchDate,
+} from './incubation-dates.calculations';
 
 describe('computeExpectedHatchDate', () => {
   it('ajoute la durée d’incubation (défaut 21 jours) à la date de mise en incubation', () => {

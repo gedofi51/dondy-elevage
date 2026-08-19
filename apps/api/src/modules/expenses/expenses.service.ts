@@ -17,7 +17,7 @@ export class ExpensesService {
 
   private async assertReferencesBelongToFarm(
     farmId: string,
-    refs: { batchId?: string; layerBatchId?: string; supplierId?: string },
+    refs: { batchId?: string; layerBatchId?: string; chickBatchId?: string; supplierId?: string },
   ): Promise<void> {
     if (refs.batchId) {
       const batch = await this.prisma.broilerBatch.findUnique({ where: { id: refs.batchId } });
@@ -31,6 +31,14 @@ export class ExpensesService {
       });
       if (!layerBatch || layerBatch.farmId !== farmId) {
         throw new NotFoundException('Lot introuvable.');
+      }
+    }
+    if (refs.chickBatchId) {
+      const chickBatch = await this.prisma.chickBatch.findUnique({
+        where: { id: refs.chickBatchId },
+      });
+      if (!chickBatch || chickBatch.farmId !== farmId) {
+        throw new NotFoundException('Lot de poussins introuvable.');
       }
     }
     if (refs.supplierId) {
@@ -53,6 +61,7 @@ export class ExpensesService {
         farmId: actingUser.farmId,
         batchId: dto.batchId,
         layerBatchId: dto.layerBatchId,
+        chickBatchId: dto.chickBatchId,
         date: new Date(dto.date),
         category: dto.category,
         description: dto.description,
@@ -84,6 +93,7 @@ export class ExpensesService {
         deletedAt: null,
         batchId: query.batchId,
         layerBatchId: query.layerBatchId,
+        chickBatchId: query.chickBatchId,
       },
       orderBy: { date: 'desc' },
     });

@@ -73,7 +73,11 @@ export class IncubatorsService {
     return updated;
   }
 
-  async remove(actingUser: AccessTokenPayload, id: string, ipAddress: string | null): Promise<void> {
+  async remove(
+    actingUser: AccessTokenPayload,
+    id: string,
+    ipAddress: string | null,
+  ): Promise<void> {
     const existing = await this.findOne(actingUser, id);
     await this.prisma.incubator.delete({ where: { id } });
     await this.auditLogService.record({

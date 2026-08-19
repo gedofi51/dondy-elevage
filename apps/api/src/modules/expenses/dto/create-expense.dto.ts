@@ -18,6 +18,10 @@ export class CreateExpenseDto {
   @IsUUID('4')
   layerBatchId?: string;
 
+  @IsOptional()
+  @IsUUID('4')
+  chickBatchId?: string;
+
   @IsDateString()
   date!: string;
 
