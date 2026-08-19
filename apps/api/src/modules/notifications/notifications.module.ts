@@ -1,0 +1,12 @@
+import { Module } from '@nestjs/common';
+import { NotificationsController } from './notifications.controller';
+import { NotificationsService } from './notifications.service';
+
+@Module({
+  controllers: [NotificationsController],
+  providers: [NotificationsService],
+  // Consommé par AlertsModule (notifyForAlert, déclenchée sur alerte
+  // IMPORTANT/CRITIQUE).
+  exports: [NotificationsService],
+})
+export class NotificationsModule {}
