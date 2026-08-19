@@ -1,8 +1,20 @@
 import { computeFifoAllocation, type EggStockLotForFifo } from './egg-stock-fifo.calculations';
 
-const lot1: EggStockLotForFifo = { id: 'lot1', productionDate: new Date('2026-08-01'), remaining: 920 };
-const lot2: EggStockLotForFifo = { id: 'lot2', productionDate: new Date('2026-08-02'), remaining: 910 };
-const lot3: EggStockLotForFifo = { id: 'lot3', productionDate: new Date('2026-08-03'), remaining: 910 };
+const lot1: EggStockLotForFifo = {
+  id: 'lot1',
+  productionDate: new Date('2026-08-01'),
+  remaining: 920,
+};
+const lot2: EggStockLotForFifo = {
+  id: 'lot2',
+  productionDate: new Date('2026-08-02'),
+  remaining: 910,
+};
+const lot3: EggStockLotForFifo = {
+  id: 'lot3',
+  productionDate: new Date('2026-08-03'),
+  remaining: 910,
+};
 
 describe('computeFifoAllocation', () => {
   it('consomme un seul lot quand il suffit', () => {

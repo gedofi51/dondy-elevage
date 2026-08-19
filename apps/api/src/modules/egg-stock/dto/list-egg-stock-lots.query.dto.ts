@@ -1,11 +1,7 @@
 import { IsOptional, IsUUID } from 'class-validator';
 
-export class ListExpensesQueryDto {
+export class ListEggStockLotsQueryDto {
   @IsOptional()
   @IsUUID('4')
   batchId?: string;
-
-  @IsOptional()
-  @IsUUID('4')
-  layerBatchId?: string;
 }

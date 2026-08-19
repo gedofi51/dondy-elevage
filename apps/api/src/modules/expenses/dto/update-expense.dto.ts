@@ -15,6 +15,10 @@ export class UpdateExpenseDto {
   batchId?: string;
 
   @IsOptional()
+  @IsUUID('4')
+  layerBatchId?: string;
+
+  @IsOptional()
   @IsDateString()
   date?: string;
 

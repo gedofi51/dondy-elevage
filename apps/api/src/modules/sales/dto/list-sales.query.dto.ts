@@ -7,6 +7,10 @@ export class ListSalesQueryDto {
   batchId?: string;
 
   @IsOptional()
+  @IsUUID('4')
+  layerBatchId?: string;
+
+  @IsOptional()
   @IsEnum(SaleStatus)
   status?: SaleStatus;
 }

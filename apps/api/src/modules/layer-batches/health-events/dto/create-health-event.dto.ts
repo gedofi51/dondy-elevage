@@ -1,0 +1,62 @@
+import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { HealthEventRoute, HealthEventStatus, HealthEventType } from '@prisma/client';
+
+/** Enums réutilisés tels quels depuis le module Broiler (déjà génériques) —
+ * seule la table/le module sont dupliqués, voir plan Phase 4. */
+export class CreateHealthEventDto {
+  @IsDateString()
+  date!: string;
+
+  @IsOptional()
+  @IsEnum(HealthEventStatus)
+  status?: HealthEventStatus;
+
+  @IsEnum(HealthEventType)
+  type!: HealthEventType;
+
+  @IsOptional()
+  @IsString()
+  product?: string;
+
+  @IsOptional()
+  @IsString()
+  motif?: string;
+
+  @IsOptional()
+  @IsString()
+  dose?: string;
+
+  @IsOptional()
+  @IsString()
+  quantity?: string;
+
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  durationDays?: number;
+
+  @IsOptional()
+  @IsEnum(HealthEventRoute)
+  administrationRoute?: HealthEventRoute;
+
+  @IsOptional()
+  @IsString()
+  prescribedBy?: string;
+
+  @IsOptional()
+  @IsString()
+  performedBy?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  costFcfa?: number;
+
+  @IsOptional()
+  @IsString()
+  observation?: string;
+}

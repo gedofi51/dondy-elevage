@@ -18,18 +18,24 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AlertsModule } from './modules/alerts/alerts.module';
 import { BroilerBatchesModule } from './modules/broiler-batches/broiler-batches.module';
-import { DailyRecordsModule } from './modules/broiler-batches/daily-records/daily-records.module';
+import { DailyRecordsModule as BroilerDailyRecordsModule } from './modules/broiler-batches/daily-records/daily-records.module';
 import { MortalityModule } from './modules/broiler-batches/mortality/mortality.module';
-import { HealthEventsModule } from './modules/broiler-batches/health-events/health-events.module';
+import { HealthEventsModule as BroilerHealthEventsModule } from './modules/broiler-batches/health-events/health-events.module';
 import { ExpensesModule } from './modules/expenses/expenses.module';
 import { SalesModule } from './modules/sales/sales.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { LayerBatchesModule } from './modules/layer-batches/layer-batches.module';
+import { DailyRecordsModule as LayerDailyRecordsModule } from './modules/layer-batches/daily-records/daily-records.module';
+import { HealthEventsModule as LayerHealthEventsModule } from './modules/layer-batches/health-events/health-events.module';
+import { EggStockModule } from './modules/egg-stock/egg-stock.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     // Premier ordonnanceur du projet — voir BroilerAlertsCronService
-    // (alertes calendaires J1-J45, Phase 3).
+    // (alertes calendaires J1-J45, Phase 3) et LayerAlertsCronService
+    // (alertes pondeuses, Phase 4 — cron séparé, règles structurellement
+    // différentes).
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
@@ -49,12 +55,16 @@ import { PaymentsModule } from './modules/payments/payments.module';
     NotificationsModule,
     AlertsModule,
     BroilerBatchesModule,
-    DailyRecordsModule,
+    BroilerDailyRecordsModule,
     MortalityModule,
-    HealthEventsModule,
+    BroilerHealthEventsModule,
     ExpensesModule,
     SalesModule,
     PaymentsModule,
+    LayerBatchesModule,
+    LayerDailyRecordsModule,
+    LayerHealthEventsModule,
+    EggStockModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

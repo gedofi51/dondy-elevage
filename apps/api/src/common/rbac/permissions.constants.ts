@@ -169,8 +169,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.LAYER_BATCHES_CREATE]: 'Créer un lot de pondeuses',
   [PERMISSIONS.LAYER_BATCHES_READ]: 'Consulter les lots de pondeuses',
   [PERMISSIONS.LAYER_BATCHES_UPDATE]: 'Modifier un lot de pondeuses',
-  [PERMISSIONS.LAYER_BATCHES_DELETE]:
-    'Supprimer un lot (sans activité financière/sanitaire liée)',
+  [PERMISSIONS.LAYER_BATCHES_DELETE]: 'Supprimer un lot (sans activité financière/sanitaire liée)',
   [PERMISSIONS.LAYER_BATCHES_CLOSE]: 'Clôturer un lot de pondeuses',
 
   [PERMISSIONS.LAYER_DAILY_RECORDS_CREATE]: 'Saisir une nouvelle journée de ponte',
