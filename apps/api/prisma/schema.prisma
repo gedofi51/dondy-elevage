@@ -68,6 +68,13 @@ model Farm {
   batchLineageRows    BatchLineage[]
   waterPoints         WaterPoint[]
   waterReadings       WaterReading[]
+  items               Item[]
+  stockMovements      StockMovement[]
+  purchaseOrders      PurchaseOrder[]
+  purchaseOrderItems  PurchaseOrderItem[]
+  goodsReceipts       GoodsReceipt[]
+  goodsReceiptItems   GoodsReceiptItem[]
+  supplierPayments    SupplierPayment[]
 
   @@map("farms")
 }
@@ -112,6 +119,7 @@ model User {
   dailyRecordsAsBreederOperator  BreederDailyRecord[] @relation("BreederDailyRecordOperator")
   waterPointsAsResponsible       WaterPoint[]         @relation("WaterPointResponsible")
   waterReadingsAsOperator        WaterReading[]       @relation("WaterReadingOperator")
+  goodsReceiptsAsResponsible     GoodsReceipt[]       @relation("GoodsReceiptResponsible")
 
   @@unique([farmId, email])
   @@index([farmId])
@@ -297,9 +305,11 @@ model Supplier {
   updatedAt DateTime @updatedAt
   createdBy String?
 
-  farm           Farm           @relation(fields: [farmId], references: [id])
+  farm           Farm            @relation(fields: [farmId], references: [id])
   broilerBatches BroilerBatch[]
   expenses       Expense[]
+  items          Item[]
+  purchaseOrders PurchaseOrder[]
 
   @@index([farmId])
   @@map("suppliers")
@@ -559,6 +569,11 @@ model BroilerDailyRecord {
   feedDistributedKg Decimal? @db.Decimal(8, 2)
   feedRemainingKg   Decimal? @db.Decimal(8, 2)
   feedBagsUsed      Int?
+  /// Phase 7 — additif : si renseigné, chaque correction de
+  /// feedDistributedKg déclenche un StockMovement SORTIE (delta, pas la
+  /// valeur brute) + une Expense sur la bande. NULL = pas de mouvement de
+  /// stock automatique (comportement historique inchangé).
+  feedItemId        String?
 
   waterConsumptionLiters Decimal? @db.Decimal(8, 2)
   waterObservation       String?  @db.Text
@@ -600,6 +615,7 @@ model BroilerDailyRecord {
   farm     Farm         @relation(fields: [farmId], references: [id])
   batch    BroilerBatch @relation(fields: [batchId], references: [id])
   operator User?        @relation("BroilerDailyRecordOperator", fields: [operatorId], references: [id])
+  feedItem Item?        @relation("BroilerDailyRecordFeedItem", fields: [feedItemId], references: [id])
 
   @@unique([batchId, dayNumber])
   @@index([farmId])
@@ -696,12 +712,21 @@ model BroilerHealthEvent {
   costFcfa     Int?
   observation  String? @db.Text
 
+  /// Phase 7 — additifs, EN PLUS de product/quantity/unit (texte libre,
+  /// conservés tels quels). Quand les deux sont renseignés ET status passe
+  /// à REALISE, déclenche un StockMovement SORTIE + une Expense sanitaire.
+  /// Jamais sur PREVU (un soin planifié ne doit pas déduire le stock avant
+  /// d'être réellement administré).
+  itemId       String?
+  quantityUsed Decimal? @db.Decimal(12, 3)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String?
 
   farm  Farm         @relation(fields: [farmId], references: [id])
   batch BroilerBatch @relation(fields: [batchId], references: [id])
+  item  Item?        @relation("BroilerHealthEventItem", fields: [itemId], references: [id])
 
   @@index([farmId])
   @@index([batchId, date])
@@ -719,14 +744,20 @@ model BroilerHealthEvent {
 /// (Phase 3, ex. category="aliments") réutilisé tel quel pour les
 /// pondeuses (Phase 4) plutôt qu'un mécanisme dédié — voir MODULE_PONTE.md.
 model Expense {
-  id           String  @id @default(uuid())
-  farmId       String
-  batchId      String?
-  layerBatchId String?
+  id                String  @id @default(uuid())
+  farmId            String
+  batchId           String?
+  layerBatchId      String?
   /// FK ChickBatch (Phase 5) — coûts rattachables à un lot de poussins
   /// (ex. aliment démarrage avant vente), même généralisation que
   /// layerBatchId en Phase 4.
-  chickBatchId String?
+  chickBatchId      String?
+  /// Phase 7 — §8.5 : "les dépenses peuvent être affectées à... un lot
+  /// reproducteur, un couvoir, un point d'eau..." — mêmes généralisations
+  /// que les FK ci-dessus, complètent la liste explicite du cahier.
+  breederBatchId    String?
+  incubationBatchId String?
+  waterPointId      String?
 
   date          DateTime
   category      String
@@ -741,16 +772,22 @@ model Expense {
   createdBy String?
   deletedAt DateTime?
 
-  farm       Farm          @relation(fields: [farmId], references: [id])
-  batch      BroilerBatch? @relation(fields: [batchId], references: [id])
-  layerBatch LayerBatch?   @relation(fields: [layerBatchId], references: [id])
-  chickBatch ChickBatch?   @relation(fields: [chickBatchId], references: [id])
-  supplier   Supplier?     @relation(fields: [supplierId], references: [id])
+  farm            Farm             @relation(fields: [farmId], references: [id])
+  batch           BroilerBatch?    @relation(fields: [batchId], references: [id])
+  layerBatch      LayerBatch?      @relation(fields: [layerBatchId], references: [id])
+  chickBatch      ChickBatch?      @relation(fields: [chickBatchId], references: [id])
+  breederBatch    BreederBatch?    @relation(fields: [breederBatchId], references: [id])
+  incubationBatch IncubationBatch? @relation(fields: [incubationBatchId], references: [id])
+  waterPoint      WaterPoint?      @relation(fields: [waterPointId], references: [id])
+  supplier        Supplier?        @relation(fields: [supplierId], references: [id])
 
   @@index([farmId])
   @@index([batchId])
   @@index([layerBatchId])
   @@index([chickBatchId])
+  @@index([breederBatchId])
+  @@index([incubationBatchId])
+  @@index([waterPointId])
   @@map("expenses")
 }
 
@@ -981,6 +1018,8 @@ model LayerDailyRecord {
   /// Dérivé à l'écriture, safeDivide(eggsLaid, henCount) x 100 (§5.3).
   layingRatePercent Decimal? @db.Decimal(5, 2)
   feedDistributedKg Decimal? @db.Decimal(8, 2)
+  /// Phase 7 — additif, même principe que BroilerDailyRecord.feedItemId.
+  feedItemId        String?
 
   observations String? @db.Text
 
@@ -990,6 +1029,7 @@ model LayerDailyRecord {
   farm        Farm         @relation(fields: [farmId], references: [id])
   batch       LayerBatch   @relation(fields: [batchId], references: [id])
   operator    User?        @relation("LayerDailyRecordOperator", fields: [operatorId], references: [id])
+  feedItem    Item?        @relation("LayerDailyRecordFeedItem", fields: [feedItemId], references: [id])
   eggStockLot EggStockLot?
 
   @@unique([batchId, date])
@@ -1027,12 +1067,17 @@ model LayerHealthEvent {
   costFcfa     Int?
   observation  String? @db.Text
 
+  /// Phase 7 — additifs, même principe que BroilerHealthEvent.
+  itemId       String?
+  quantityUsed Decimal? @db.Decimal(12, 3)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdBy String?
 
   farm  Farm       @relation(fields: [farmId], references: [id])
   batch LayerBatch @relation(fields: [batchId], references: [id])
+  item  Item?      @relation("LayerHealthEventItem", fields: [itemId], references: [id])
 
   @@index([farmId])
   @@index([batchId, date])
@@ -1184,6 +1229,7 @@ model BreederBatch {
   primaryManager    User                 @relation("BreederBatchPrimaryManager", fields: [primaryManagerId], references: [id])
   dailyRecords      BreederDailyRecord[]
   incubationBatches IncubationBatch[]
+  expenses          Expense[]
 
   @@unique([farmId, code])
   @@index([farmId])
@@ -1270,6 +1316,7 @@ model IncubationBatch {
   breederBatch BreederBatch   @relation(fields: [breederBatchId], references: [id])
   incubator    Incubator      @relation(fields: [incubatorId], references: [id])
   lineageRows  BatchLineage[]
+  expenses     Expense[]
 
   @@unique([farmId, code])
   @@index([farmId])
@@ -1414,6 +1461,7 @@ model WaterPoint {
   responsible User           @relation("WaterPointResponsible", fields: [responsibleId], references: [id])
   readings    WaterReading[]
   sales       Sale[]
+  expenses    Expense[]
 
   @@unique([farmId, code])
   @@index([farmId])
@@ -1475,4 +1523,261 @@ model WaterReading {
   @@index([farmId])
   @@index([waterPointId, date])
   @@map("water_readings")
+}
+
+/// Catalogue d'articles — donnée de référence permanente (comme Building/
+/// Incubator), PAS de code auto (aucun champ "code article" au §8.1 du
+/// cahier, contrairement à Customer/Supplier/WaterPoint). category/unit
+/// paramétrables (texte libre), comme Supplier.category.
+///
+/// currentStock/averageUnitCostFcfa PERSISTÉS — divergence assumée par
+/// rapport à la convention constante du projet (tout le reste est dérivé
+/// à la lecture : BroilerBatch.currentHeadcount, EggStockLot.remaining,
+/// BreederBatch.availableFertileEggs...) : un article générique consommé
+/// quotidiennement sur toute la durée de vie de la ferme a un volume de
+/// mouvements non borné dans le temps (contrairement à un lot borné à
+/// 45-90 jours) — sommer StockMovement à chaque lecture deviendrait
+/// coûteux. Compensé par un point d'écriture unique
+/// (StockMovementsService.recordMovementInTransaction) : aucun autre
+/// service n'écrit ces deux champs directement.
+model Item {
+  id     String @id @default(uuid())
+  farmId String
+
+  name     String
+  category String
+  unit     String
+
+  minThreshold        Decimal? @db.Decimal(12, 3)
+  currentStock        Decimal  @default(0) @db.Decimal(12, 3)
+  averageUnitCostFcfa Int      @default(0)
+
+  supplierId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm     Farm      @relation(fields: [farmId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  movements           StockMovement[]
+  purchaseOrderItems  PurchaseOrderItem[]
+  broilerDailyRecords BroilerDailyRecord[] @relation("BroilerDailyRecordFeedItem")
+  layerDailyRecords   LayerDailyRecord[]   @relation("LayerDailyRecordFeedItem")
+  broilerHealthEvents BroilerHealthEvent[] @relation("BroilerHealthEventItem")
+  layerHealthEvents   LayerHealthEvent[]   @relation("LayerHealthEventItem")
+
+  @@index([farmId])
+  @@map("items")
+}
+
+enum StockMovementType {
+  ENTREE
+  SORTIE
+}
+
+/// ACHAT/RETOUR/AJUSTEMENT/PRODUCTION_INTERNE : réservés à ENTREE.
+/// DISTRIBUTION_BANDE/VENTE/PERTE/CASSE/CONSOMMATION_INTERNE : réservés à
+/// SORTIE. Un inventaire produisant un surplus/déficit est une ENTREE/
+/// SORTIE avec reason=AJUSTEMENT + justification obligatoire — pas un 3e
+/// type de mouvement séparé.
+enum StockMovementReason {
+  ACHAT
+  RETOUR
+  AJUSTEMENT
+  PRODUCTION_INTERNE
+  DISTRIBUTION_BANDE
+  VENTE
+  PERTE
+  CASSE
+  CONSOMMATION_INTERNE
+}
+
+/// Append-only (comme Payment/EggStockMovement) — pas de deletedAt, pas de
+/// DELETE/UPDATE exposés : une correction est un mouvement compensatoire
+/// inverse avec motif, jamais une édition en place. Écrit EXCLUSIVEMENT
+/// via StockMovementsService.recordMovementInTransaction(tx, ...) — tx
+/// obligatoire (jamais optionnel), verrouillage SELECT ... FOR UPDATE sur
+/// la ligne Item dans la transaction (pattern
+/// EggStockService.consumeFifoInternal, seul mécanisme de concurrence
+/// réel du projet avant cette phase). unitCostFcfaSnapshot : coût saisi
+/// pour ACHAT/PRODUCTION_INTERNE, CUMP courant de l'Item (neutre) pour
+/// RETOUR/AJUSTEMENT — jamais recalculé rétroactivement.
+model StockMovement {
+  id     String @id @default(uuid())
+  farmId String
+  itemId String
+
+  type   StockMovementType
+  reason StockMovementReason
+
+  quantity             Decimal @db.Decimal(12, 3)
+  unitCostFcfaSnapshot Int
+  totalValueFcfa       Int
+
+  /// Requis si reason=AJUSTEMENT (§15 : "un mouvement de stock doit
+  /// toujours avoir une origine métier ou un motif d'ajustement").
+  justification String? @db.Text
+
+  /// Traçabilité polymorphe optionnelle de l'origine automatique — comme
+  /// Document.entityType/entityId. 'broiler_daily_record'|
+  /// 'layer_daily_record'|'broiler_health_event'|'layer_health_event'|
+  /// 'goods_receipt'. NULL = mouvement manuel (ajustement/inventaire).
+  sourceType String?
+  sourceId   String?
+
+  date      DateTime
+  createdAt DateTime @default(now())
+  createdBy String
+
+  farm Farm @relation(fields: [farmId], references: [id])
+  item Item @relation(fields: [itemId], references: [id])
+
+  @@index([farmId])
+  @@index([itemId, date])
+  @@map("stock_movements")
+}
+
+enum PurchaseOrderStatus {
+  BROUILLON
+  COMMANDE
+  PARTIELLEMENT_RECU
+  RECU
+  ANNULE
+}
+
+/// Code auto ACH-AAAA-NNN, retry P2002 (pattern
+/// BroilerBatchesService.generateBatchCode). totalAmountFcfa dérivé à
+/// l'écriture depuis la somme des lignes. "Facture" (§8.4) = un Document
+/// (category="facture") attaché via entityType/entityId — pas de nouvelle
+/// entité Invoice (le §12 cible n'en liste d'ailleurs aucune séparément).
+model PurchaseOrder {
+  id     String @id @default(uuid())
+  farmId String
+  code   String
+
+  supplierId String
+  date       DateTime
+  dueDate    DateTime?
+
+  status          PurchaseOrderStatus @default(BROUILLON)
+  totalAmountFcfa Int                 @default(0)
+  observation     String?             @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm             Farm                @relation(fields: [farmId], references: [id])
+  supplier         Supplier            @relation(fields: [supplierId], references: [id])
+  items            PurchaseOrderItem[]
+  goodsReceipts    GoodsReceipt[]
+  supplierPayments SupplierPayment[]
+
+  @@unique([farmId, code])
+  @@index([farmId])
+  @@index([farmId, status])
+  @@map("purchase_orders")
+}
+
+/// receivedQuantity cumulée CALCULÉE À LA LECTURE (somme des
+/// GoodsReceiptItem liés), jamais persistée ici — même principe que
+/// BreederBatch.availableFertileEggs.
+model PurchaseOrderItem {
+  id              String @id @default(uuid())
+  farmId          String
+  purchaseOrderId String
+  itemId          String
+
+  orderedQuantity Decimal @db.Decimal(12, 3)
+  unitPriceFcfa   Int
+  lineAmountFcfa  Int
+
+  farm              Farm               @relation(fields: [farmId], references: [id])
+  purchaseOrder     PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  item              Item               @relation(fields: [itemId], references: [id])
+  goodsReceiptItems GoodsReceiptItem[]
+
+  @@index([farmId])
+  @@index([purchaseOrderId])
+  @@map("purchase_order_items")
+}
+
+/// Chaque GoodsReceiptItem avec receivedQuantity > 0 déclenche un
+/// StockMovement ENTREE (reason=ACHAT, sourceType='goods_receipt').
+/// Plusieurs GoodsReceiptItem (articles différents) traités dans UNE
+/// SEULE transaction : verrouillage trié par itemId (ordre déterministe)
+/// pour éviter un deadlock InnoDB entre deux réceptions concurrentes
+/// listant les mêmes articles dans un ordre différent.
+model GoodsReceipt {
+  id              String @id @default(uuid())
+  farmId          String
+  purchaseOrderId String
+
+  date          DateTime
+  responsibleId String
+  observation   String?  @db.Text
+
+  createdAt DateTime @default(now())
+  createdBy String?
+
+  farm          Farm               @relation(fields: [farmId], references: [id])
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  responsible   User               @relation("GoodsReceiptResponsible", fields: [responsibleId], references: [id])
+  items         GoodsReceiptItem[]
+
+  @@index([farmId])
+  @@index([purchaseOrderId])
+  @@map("goods_receipts")
+}
+
+model GoodsReceiptItem {
+  id                  String @id @default(uuid())
+  farmId              String
+  goodsReceiptId      String
+  purchaseOrderItemId String
+
+  receivedQuantity Decimal @db.Decimal(12, 3)
+
+  farm              Farm              @relation(fields: [farmId], references: [id])
+  goodsReceipt      GoodsReceipt      @relation(fields: [goodsReceiptId], references: [id])
+  purchaseOrderItem PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id])
+
+  @@index([farmId])
+  @@index([goodsReceiptId])
+  @@map("goods_receipt_items")
+}
+
+/// Entité SÉPARÉE, PAS une généralisation de Payment (voir plan Phase 7,
+/// section G) : Payment.saleId est une FK dure non-nullable et
+/// PaymentsService est étroitement couplé à Sale
+/// (recomputeSaleStatus/computeSaleStatus, non généralisable tel quel à
+/// PurchaseOrder) — le couplage justifie ici la séparation, pas la
+/// fusion. Append-only (deletedAt, comme Payment) — solde restant =
+/// PurchaseOrder.totalAmountFcfa - SUM(non supprimés), calculé à la
+/// lecture. Contrôle "ne peut pas excéder le solde restant" (§15)
+/// implémenté dès la création (voir aussi le même correctif appliqué à
+/// PaymentsService cette même phase, DETTE_TECHNIQUE.md).
+model SupplierPayment {
+  id              String @id @default(uuid())
+  farmId          String
+  purchaseOrderId String
+
+  date        DateTime
+  method      String
+  amountFcfa  Int
+  reference   String?
+  observation String?  @db.Text
+
+  createdAt DateTime  @default(now())
+  createdBy String?
+  deletedAt DateTime?
+
+  farm          Farm          @relation(fields: [farmId], references: [id])
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+
+  @@index([farmId])
+  @@index([purchaseOrderId])
+  @@map("supplier_payments")
 }
