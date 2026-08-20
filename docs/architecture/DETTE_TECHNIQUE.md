@@ -12,64 +12,6 @@ Pour le détail complet Phases 0-1 (Docker, Prisma, Auth/RBAC), voir aussi
 [`README.md`](./README.md) — ce document n'en reproduit que les points
 encore ouverts, sans dupliquer les sections déjà résolues.
 
-## 🔴 Dette transversale (priorité — plusieurs modules concernés)
-
-### Vérification de disponibilité sans verrou (survente concurrente possible)
-
-**Statut : ouvert, non corrigé.** Occurrences connues à ce jour :
-
-| Origine | Emplacement | Nature |
-|---|---|---|
-| Phase 3 | `SalesService.create()` / `.update()`, branche `POULET_CHAIR` | Lecture de `BroilerBatch.currentHeadcount` (agrégation Prisma) puis comparaison à la quantité vendue — aucune transaction, aucun verrou. |
-| Phase 5 | `IncubationBatchesService` (validation `eggCount <= availableFertileEggs`), `OrientationService` (validation poussins disponibles = `chicksHatched - SUM(BatchLineage.quantity)`) | Même schéma exact : lecture agrégée puis comparaison, sans verrou. |
-
-**Pourquoi regrouper ces deux occurrences plutôt que les traiter comme deux
-mentions isolées** : c'est le même défaut structurel, reproduit
-délibérément à l'identique en Phase 5 (voir plan Phase 5, section
-"Concurrence") plutôt que corrigé au passage — corriger silencieusement du
-code Phase 3 non sollicité aurait été hors périmètre de cette phase-là, et
-inventer un nouveau mécanisme de protection uniquement pour Phase 5 aurait
-créé une incohérence (deux standards différents pour le même type de
-problème selon le module). Le bon niveau de correction est donc un
-**chantier de durcissement transversal unique**, pas des correctifs
-dispersés module par module.
-
-**Ce qui existe déjà et qu'un futur chantier peut réutiliser tel quel** :
-Phase 4 a rencontré ce même type de risque pour la consommation FIFO du
-stock d'œufs (`EggStockService.consumeFifoInternal`) et l'a résolu avec un
-verrouillage SQL `SELECT ... FOR UPDATE` sous l'isolation par défaut
-(REPEATABLE READ) — voir le commentaire d'historique détaillé directement
-dans ce fichier, qui documente aussi une tentative écartée
-(`isolationLevel: Serializable`, a produit un blocage indéfini reproduit en
-e2e, cause confirmée : bug amont non résolu de `@prisma/adapter-mariadb`
-7.9.1, [prisma/prisma#28964](https://github.com/prisma/prisma/issues/28964)).
-**Ne pas retenter Serializable** pour ce chantier — `FOR UPDATE` est le
-pattern validé et éprouvé sur ce projet.
-
-**Pourquoi ce n'est pas bloquant à ce jour** : les points concernés sont
-des actions ponctuelles/rares dans l'usage réel (une vente de poulets n'est
-pas un flux à très haute fréquence comparé aux ventes d'œufs déjà
-protégées ; la création d'un lot d'incubation ou une orientation de
-poussins sont des événements de l'ordre de quelques-uns par mois). Le
-risque est réel mais improbable en usage normal — à traiter avant toute
-montée en charge significative ou avant l'ouverture d'un accès multi-
-utilisateurs simultanés élargi sur ces modules précis.
-
-**Action future recommandée** : un chantier dédié qui reprend `FOR UPDATE`
-sur les trois points listés ci-dessus en une seule passe cohérente, avec sa
-propre suite de tests de concurrence réelle (pattern déjà établi en
-Phase 4 : `Promise.all` sur deux requêtes simultanées, pas seulement
-séquentielles).
-
-**Précision Phase 7** : `Item.currentStock` (nouveau compteur partagé,
-voir section Phase 7 ci-dessous) n'est **pas** une quatrième occurrence de
-cette dette — mécanisme structurellement différent (un compteur de stock
-générique écrit par plusieurs flux automatiques, pas une vérification de
-disponibilité lecture-puis-comparaison sur un effectif animal/couvain) et
-déjà protégé par `SELECT ... FOR UPDATE` dès l'origine, avec son propre
-test de concurrence dédié (`items-stock.e2e-spec.ts`). Ne pas fusionner
-les deux chantiers par erreur lors d'une future revue.
-
 ## Phase 0 — Fondations techniques
 
 - **Conteneur `web` non fonctionnel sur Windows** (erreur de résolution
@@ -92,9 +34,17 @@ les deux chantiers par erreur lors d'une future revue.
   réelles** — aucune credentials d'app disponible au moment du
   développement.
 - **Rate limiting IP uniquement**, pas d'axe email dédié.
-- **`test:e2e` non intégré à la CI** (pas de MySQL provisionné dans le
-  pipeline GitHub Actions) — reste une vérification manuelle locale à
-  chaque phase, à froid, avant chaque push.
+- ~~**`test:e2e` non intégré à la CI**~~ — **corrigé depuis, entrée
+  laissée en trace plutôt que supprimée silencieusement** (principe de ce
+  registre). C'était une dette réelle au moment de la rédaction de cette
+  ligne (2026-08-20), mais `.github/workflows/ci.yml` provisionne en
+  réalité un service `mysql:8.4` et exécute
+  `npm run test:e2e --workspace=apps/api` depuis le commit `c4846fa`
+  (2026-08-18) — **antérieur** à la rédaction de cette entrée. Signalé
+  comme incohérence par le bilan de complétude V1-V5 (Phase 8,
+  `docs/architecture/BILAN_COMPLETUDE_V1_V5.md`) : dette **documentaire**
+  (le registre affirmait un état déjà faux), pas dette réelle du pipeline
+  lui-même.
 - **Permissions embarquées dans le JWT à la connexion** : un changement de
   rôle par un admin n'est effectif qu'au prochain login/refresh (15 min
   maximum), jamais en cours de session.
@@ -110,8 +60,8 @@ identifié comme actif dans les phases suivantes.
 
 ## Phase 3 — Poulets de chair (J1-J45)
 
-- **Vérification de disponibilité `SalesService`/`POULET_CHAIR` sans
-  verrou** — voir "Dette transversale" en tête de ce document.
+- ~~**Vérification de disponibilité `SalesService`/`POULET_CHAIR` sans
+  verrou**~~ — **corrigé en Phase 8**, voir "✅ Corrigé".
 - **`remove()` étendu au-delà du périmètre initialement prévu** :
   `BroilerBatchesService.remove()` bloque le hard-delete dès qu'une
   activité liée existe, y compris `BroilerMortality`/`BroilerHealthEvent`
@@ -157,9 +107,9 @@ identifié comme actif dans les phases suivantes.
 
 ## Phase 5 — Reproductrices, couvoir et poussins
 
-- **Vérification de disponibilité `IncubationBatch`/`OrientationService`
-  sans verrou** — voir "Dette transversale" en tête de ce document (même
-  point que Phase 3, reconduit délibérément, pas un nouveau gap).
+- ~~**Vérification de disponibilité `IncubationBatch`/`OrientationService`
+  sans verrou**~~ — même point que Phase 3, reconduit délibérément, pas un
+  nouveau gap à l'époque. **Corrigé en Phase 8**, voir "✅ Corrigé".
 - **Température/humidité de couveuse hors périmètre** : aucune saisie de
   ce type n'existe dans le périmètre donné à cette phase (pas de capteurs
   IoT — cohérent avec le cahier V6, qui classe explicitement l'IoT couveuse
@@ -177,7 +127,7 @@ identifié comme actif dans les phases suivantes.
 ## Phase 6 — Vente et distribution d'eau
 
 - **Pas d'occurrence de la dette transversale "vérification de
-  disponibilité sans verrou"** (voir tête de ce document) : la vente d'eau
+  disponibilité sans verrou"** (voir "✅ Corrigé", Phase 8) : la vente d'eau
   (`Sale`, productType=EAU) n'a, structurellement, **aucune** vérification
   de disponibilité/stock à faire (l'eau n'est pas un lot fini avec
   effectif, contrairement à `POULET_CHAIR`/`OEUFS`/`POUSSINS`) — donc
@@ -264,11 +214,184 @@ identifié comme actif dans les phases suivantes.
   compte de trésorerie à solde persistant) — à revisiter si un besoin de
   solde cumulé émerge.
 - **Confirmation explicite** : la dette transversale "vérification de
-  disponibilité sans verrou" (tête de ce document) reste inchangée par
-  cette phase — voir la précision ajoutée dans cette section, `Item.
-  currentStock` est un mécanisme distinct, déjà protégé.
+  disponibilité sans verrou" (POULET_CHAIR/Incubation/Orientation, ouverte
+  depuis les Phases 3/5) reste inchangée par cette phase — `Item.
+  currentStock` est un mécanisme structurellement différent (compteur de
+  stock générique écrit par plusieurs flux automatiques, pas une
+  vérification de disponibilité lecture-puis-comparaison sur un effectif
+  animal/couvain), déjà protégé par `SELECT ... FOR UPDATE` dès l'origine
+  avec son propre test de concurrence dédié (`items-stock.e2e-spec.ts`).
+  La dette transversale elle-même a depuis été corrigée en Phase 8, voir
+  "✅ Corrigé" — ne pas confondre les deux mécanismes lors d'une future
+  revue.
+
+## Phase 8 — Durcissement (concurrence, alertes, couverture de test)
+
+Phase issue du bilan de complétude V1-V5
+(`docs/architecture/BILAN_COMPLETUDE_V1_V5.md`) — corrige les points les
+plus critiques identifiés avant V6/frontend. Le correctif de concurrence
+(seul point 🔴 du bilan) est détaillé dans "✅ Corrigé" ci-dessous ; les
+points suivants sont des décisions de périmètre prises **sans code**
+cette phase, documentées explicitement plutôt que silencieusement
+laissées de côté.
+
+- **`SalesService.update()` (POULET_CHAIR/POUSSINS) non corrigé,
+  décision explicite** : ces deux branches ont exactement le même défaut
+  de concurrence que `create()` (lecture-comparaison-écriture sans
+  verrou) — non traité cette phase, avec le même raisonnement déjà écrit
+  dans le code pour `OEUFS.update()` : un seul utilisateur authentifié à
+  la fois modifie une vente déjà créée (une correction, pas une nouvelle
+  vente), risque sans commune mesure avec la création (où deux
+  utilisateurs différents peuvent légitimement viser la même ressource au
+  même instant). Avant cette phase, seule la branche OEUFS avait cette
+  justification écrite ; POULET_CHAIR/POUSSINS.update() partageaient le
+  même choix sans jamais le documenter — corrigé ici (documentation
+  seule, aucun code).
+- **`close()` sans contrôle de cohérence sur `IncubationBatch`/
+  `BreederBatch`** — contrairement à `BroilerBatchesService.close()` (qui
+  bloque explicitement si `currentHeadcount > 0`), `IncubationBatchesService.
+  close()` et `BreederBatchesService.close()` changent le statut sans
+  aucune vérification préalable. **Risque concret** : rien n'empêche de
+  clôturer un lot d'incubation dont tous les poussins éclos n'ont pas été
+  orientés (poussins "perdus" comptablement, ni vendus ni affectés à une
+  bande, sans qu'aucune alerte ne le signale), ou un lot reproducteur
+  encore en pleine activité de ponte. Violation potentielle non détectée
+  de la règle §15 ("une clôture de lot doit vérifier les incohérences
+  d'effectif, de stock et de finance"). **Différé** : corriger
+  proprement demanderait de définir ce que "cohérent" signifie pour ces
+  deux entités (aucun équivalent direct à "effectif vivant" pour un
+  couvoir) — à trancher lors de la construction du frontend, qui
+  révélera l'usage réel de la clôture sur ces modules, plutôt qu'à
+  deviner maintenant.
+- **Concept multi-magasin/`Transfert` absent (Phase 7, cahier V5 §8),
+  décision jamais documentée avant cette phase** : le modèle de données
+  du cahier (§12) liste une table `warehouses` dédiée, et le §8.2 liste
+  explicitement "Transfert" (entrée entre magasins/bâtiments) comme
+  fonction de stock. `Item.currentStock` est un nombre unique par ferme,
+  sans notion de lieu de stockage ; `StockMovementType` n'a que
+  `ENTREE`/`SORTIE`, aucun `TRANSFERT`. Décision prise pendant la
+  conception de la Phase 7 (single-entrepôt implicite, cohérent avec une
+  exploitation de la taille de Samba) mais jamais écrite — corrigé ici
+  (documentation seule). À revisiter si un usage multi-bâtiment/
+  multi-site réel émerge.
+- **Points du bilan V1-V5 explicitement différés, sans code cette
+  phase** (périmètre jugé trop large pour un chantier de durcissement
+  ciblé — à trancher par l'usage réel lors de la construction du
+  frontend plutôt qu'à l'aveugle) :
+  - GMQ (Broiler) calculé et testé unitairement mais jamais exposé par
+    aucune route (`computeGmqGramsPerDay`).
+  - Aucun filtre/pagination/recherche sur `GET /broiler-batches` —
+    écart réel avec CLAUDE.md, à traiter avec les autres endpoints de
+    liste au moment de construire les écrans qui en ont besoin.
+  - 2 KPI couvoir calculés et testés unitairement mais jamais exposés
+    (`computeFertilityRatePercent`, `computeInfectedRatePercent`).
+  - Calibre d'œufs non réglable via l'API (`EggStockLot.caliber` existe
+    en base, jamais dans un DTO), concept plateaux totalement absent.
+  - Aucun module Rapports/Exports transversal (§14/§18 des deux
+    cahiers) — bloc fonctionnel entier non entamé, pas spécifique à une
+    phase précise.
+  - Les crons d'alerte restent testés au niveau "s'exécute sans erreur"
+    pour tous les crons **antérieurs** à cette phase (Broiler/Layer/
+    Breeder-Incubation/Water) — seuls les deux nouveaux crons de cette
+    phase (`ItemsAlertsCronService`, `PurchaseOrdersAlertsCronService`)
+    ont une couverture allant jusqu'au contenu réel de l'alerte
+    déclenchée (voir "✅ Corrigé").
 
 ## ✅ Corrigé
+
+### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
+
+**Le seul point classé 🔴 (priorité) du bilan de complétude V1-V5.**
+Trois occurrences du même défaut structurel — lecture agrégée d'une
+disponibilité, comparaison, écriture, sans transaction ni verrou :
+
+| Origine | Emplacement | Nature |
+|---|---|---|
+| Phase 3 | `SalesService.create()`, branche `POULET_CHAIR` | Lecture de `BroilerBatch.currentHeadcount` (agrégation Prisma) puis comparaison à la quantité vendue. |
+| Phase 8 (découverte) | `SalesService.create()`, branche `POUSSINS` | Même schéma exact — jamais inventoriée séparément dans ce registre avant cette phase, malgré un commentaire de code ("même schéma que POULET_CHAIR") présent depuis la Phase 5. |
+| Phase 5 | `IncubationBatchesService.create()` (`eggCount <= availableFertileEggs`), `OrientationService.orient()` (poussins disponibles = `chicksHatched - SUM(BatchLineage.quantity)`) | Même schéma exact. |
+
+**Correction retenue** — pattern déjà validé deux fois sur ce projet
+(Phase 4, `EggStockService.consumeFifoInternal` ; Phase 7,
+`StockMovementsService.recordMovementInTransaction`), jamais appliqué ici
+jusqu'à présent : verrouiller `SELECT ... FOR UPDATE` la ligne parente
+dans une transaction, recalculer l'agrégat de disponibilité via ce même
+client transactionnel, comparer, puis écrire. Jamais
+`isolationLevel: Serializable` (bug amont `@prisma/adapter-mariadb`
+confirmé, voir Phase 4 ci-dessous).
+
+- `BroilerBatchesService`/`ChickBatchesService` : `computeCurrentHeadcount`/
+  calcul équivalent acceptent un client Prisma optionnel
+  (`tx ?? this.prisma`) ; nouvelle méthode publique
+  `assertAvailableHeadcountInTransaction` (verrou + recalcul +
+  comparaison, seul endroit où `FOR UPDATE` est pris — jamais dans les
+  méthodes de lecture pure réutilisées par `findAll`/`findOne`).
+- `SalesService` : branches POULET_CHAIR et POUSSINS restructurées sur
+  le gabarit déjà existant `createEggSaleAndConsumeStock` (pré-check
+  hors transaction + boucle retry P2034/P2002 + transaction verrouillée).
+  **Comportement préservé à l'identique** : contrairement à OEUFS, ces
+  deux branches vérifient la disponibilité pour tous les statuts (y
+  compris BROUILLON, §17 — "vérifié dès la création, même en brouillon,
+  pour ne jamais laisser promettre plus que l'effectif réel") ; ce
+  correctif rend cette vérification atomique, il ne change pas quand
+  elle s'applique.
+- `BreederBatchesService` : `computeAvailableFertileEggsForBatch` accepte
+  un client optionnel ; nouvelle méthode publique
+  `assertAvailableFertileEggsInTransaction`.
+- `IncubationBatchesService.create()` : fusionne l'ancienne boucle retry
+  (P2002, collision de code) avec un retry P2034 — une transaction par
+  tentative, verrou+validation en premier.
+- `OrientationService.orient()` : verrou déplacé en tête de la
+  transaction déjà existante (Phase 5, atomicité entité-enfant +
+  `BatchLineage`) ; boucle retry P2034/P2002 ajoutée (absente jusqu'ici
+  — nécessaire car `BroilerBatchesService.create()` appelé avec `tx`
+  n'a aucun retry P2002 interne sur la génération de code).
+
+**Tests de concurrence dédiés** (`Promise.all` sur deux requêtes
+simultanées dépassant la ressource disponible, `[201,409]` attendu, état
+final vérifié cohérent — même gabarit que la Phase 4) :
+`broiler-batches.e2e-spec.ts` (ventes poulets),
+`incubation-batches.e2e-spec.ts` (ventes poussins, création de lot
+d'incubation, orientation) — 4 nouveaux tests.
+
+**Non corrigé, décision explicite** : `SalesService.update()`
+(POULET_CHAIR/POUSSINS) garde le même défaut — voir section "Phase 8"
+ci-dessus pour le raisonnement complet (même justification que
+`OEUFS.update()`, désormais documentée pour les trois branches).
+
+Voir `sales.service.ts`, `broiler-batches.service.ts`,
+`chick-batches.service.ts`, `breeder-batches.service.ts`,
+`incubation-batches.service.ts`, `orientation/orientation.service.ts`.
+
+### Absence d'alerte stock/finance (Phase 7, corrigé en Phase 8)
+
+Le bilan de complétude V1-V5 a signalé qu'aucune alerte stock/finance
+n'existait pour la Phase 7, contrairement à **tous** les autres modules
+métier (Broiler/Layer/Breeder-Incubation/Water ont chacun leur cron
+dédié) — malgré le cahier §10 ("Alertes de stock : seuil minimum,
+rupture" / "Alertes financières : facture impayée"). Corrigé :
+`ItemsAlertsCronService` (réutilise `computeStockStatus` déjà existant,
+VIGILANCE si ORANGE / CRITIQUE si ROUGE) et
+`PurchaseOrdersAlertsCronService` (facture fournisseur en retard de
+paiement, réutilise `PurchaseOrder.dueDate` déjà existant, IMPORTANT).
+"Dépense inhabituelle" (détection d'anomalie statistique) explicitement
+exclue — aucune définition dans le cahier, périmètre V6/IA. Les deux
+crons ont une couverture e2e allant jusqu'au contenu réel de l'alerte
+déclenchée (type/sévérité + idempotence), au-delà du niveau "s'exécute
+sans erreur" du reste du projet — logique de seuil neuve, plus de valeur
+qu'un simple smoke test.
+
+### Couverture de test nulle sur `TreasuryService` et rentabilité Layer/Incubation/Eau (Phase 7, corrigé en Phase 8)
+
+Le bilan de complétude V1-V5 a signalé que `TreasuryService` (journal,
+créances/dettes, vue consolidée) n'avait aucun test — ni unitaire, ni
+e2e — et que seul `GET /broiler-batches/:id/profitability` était
+exercé parmi les 4 endpoints de rentabilité Phase 7. Corrigé : nouveau
+`treasury.e2e-spec.ts` (scénario d'acceptation G du cahier — ventes,
+dépenses, paiements, marge par activité puis globale) ; nouveaux tests
+dans `layer-batches.e2e-spec.ts`/`incubation-batches.e2e-spec.ts`/
+`water-points.e2e-spec.ts` pour leurs endpoints/champs de rentabilité
+respectifs.
 
 ### `PaymentsService.create()` — absence de plafond de paiement (§15, angle mort pré-existant depuis Phase 3, corrigé en Phase 7)
 
@@ -315,12 +438,14 @@ lecture-puis-comparaison classique (agrégat `Payment` non supprimés pour
 la vente, puis comparaison à `netAmountFcfa`) — action ponctuelle par un
 utilisateur unique sur une vente précise, jamais un compteur partagé à
 haute fréquence comme `Item.currentStock`. Ce schéma reste dans la même
-catégorie de risque "faible" que les vérifications de disponibilité déjà
-répertoriées comme dette transversale non urgente en tête de ce document —
-pas incohérent avec elles, juste corrigé ici parce que la correction était
-triviale et le bénéfice réel, alors que la dette transversale
-disponibilité/verrou nécessite un chantier plus large (trois points
-distincts, protection cohérente à construire d'un coup).
+catégorie de risque "faible" qu'étaient alors (Phase 7) les vérifications
+de disponibilité sans verrou (POULET_CHAIR/Incubation/Orientation, non
+urgentes à l'époque, depuis corrigées en Phase 8, voir "✅ Corrigé"
+ci-dessus) — pas incohérent avec elles, juste corrigé ici parce que la
+correction était triviale et le bénéfice réel, alors que cette dette-là
+nécessitait un chantier plus large (trois points distincts, protection
+cohérente à construire d'un coup — ce qui a fini par être fait en
+Phase 8).
 
 Voir `payments.service.ts` (méthode privée `assertDoesNotExceedBalance`,
 appelée en tête de `create()`) et `supplier-payments.service.ts` (même
@@ -374,13 +499,13 @@ tous les logs d'audit après le commit. Voir
 
 - **En fin de mission** : avant de rédiger la section "Risques / dette
   technique" du rapport, relire ce fichier pour vérifier si un point signalé
-  est en réalité la ré-occurrence d'une dette déjà connue (comme le point
-  transversal ci-dessus) plutôt qu'une nouveauté — le documenter comme tel
-  ici plutôt que comme une mention isolée dans la seule PR de la phase.
-- **En début de mission** : consulter la section "Dette transversale" pour
-  savoir si le périmètre de la nouvelle phase touche un point déjà connu et
-  mérite d'être traité (ou explicitement reporté, avec justification) plutôt
-  que redécouvert à zéro.
+  est en réalité la ré-occurrence d'une dette déjà connue plutôt qu'une
+  nouveauté — le documenter comme tel ici plutôt que comme une mention
+  isolée dans la seule PR de la phase.
+- **En début de mission** : consulter les sections par phase et "✅ Corrigé"
+  pour savoir si le périmètre de la nouvelle phase touche un point déjà
+  connu (transversal ou non) et mérite d'être traité (ou explicitement
+  reporté, avec justification) plutôt que redécouvert à zéro.
 - **Une fois un point corrigé** : le déplacer dans la section "✅ Corrigé"
   ci-dessus, avec le commit/PR de correction en référence — jamais de
   suppression silencieuse d'un point qui a réellement existé.
