@@ -61,6 +61,15 @@ propre suite de tests de concurrence réelle (pattern déjà établi en
 Phase 4 : `Promise.all` sur deux requêtes simultanées, pas seulement
 séquentielles).
 
+**Précision Phase 7** : `Item.currentStock` (nouveau compteur partagé,
+voir section Phase 7 ci-dessous) n'est **pas** une quatrième occurrence de
+cette dette — mécanisme structurellement différent (un compteur de stock
+générique écrit par plusieurs flux automatiques, pas une vérification de
+disponibilité lecture-puis-comparaison sur un effectif animal/couvain) et
+déjà protégé par `SELECT ... FOR UPDATE` dès l'origine, avec son propre
+test de concurrence dédié (`items-stock.e2e-spec.ts`). Ne pas fusionner
+les deux chantiers par erreur lors d'une future revue.
+
 ## Phase 0 — Fondations techniques
 
 - **Conteneur `web` non fonctionnel sur Windows** (erreur de résolution
@@ -208,7 +217,115 @@ identifié comme actif dans les phases suivantes.
   `WaterPoint` (le §7.2 et le scénario §16-E sont exclusivement
   index/m³). À revoir si l'usage réel montre un besoin différent.
 
+## Phase 7 — Stocks, achats, finances et rentabilité
+
+- **`Item.currentStock`/`Item.averageUnitCostFcfa` persistés, DIVERGENCE
+  assumée par rapport à la convention dominante du projet** (partout
+  ailleurs : `BroilerBatch.currentHeadcount`, `EggStockLot.remaining`,
+  `BreederBatch.availableFertileEggs`... sont dérivés à la lecture, jamais
+  stockés). Justification : un article générique consommé quotidiennement
+  sur toute la durée de vie de la ferme a un volume de mouvements non
+  borné dans le temps (contrairement à un lot borné à 45-90 jours) —
+  sommer tous les `StockMovement` à chaque lecture deviendrait coûteux à
+  mesure que l'historique grandit. Compensée par une discipline stricte de
+  **point d'écriture unique** : `StockMovementsService.
+  recordMovementInTransaction()` est le SEUL endroit du code qui écrit ces
+  deux champs — vérifié à la revue, aucun autre service n'y touche
+  directement. Risque résiduel : un bug futur qui contournerait ce point
+  d'entrée (écriture directe `prisma.item.update({data:{currentStock:...}})`
+  ailleurs) ferait dériver silencieusement le compteur sans qu'aucun test
+  actuel ne le détecte spécifiquement — à surveiller en revue de code plutôt
+  qu'un risque activement mitigé par un mécanisme automatique.
+- **CUMP (coût moyen pondéré) non réversible rétroactivement** — corriger
+  une `ACHAT` à mauvais prix après coup ne peut pas restaurer "ce que le
+  CUMP aurait dû être" sans rejouer tout l'historique des mouvements ;
+  chaque `StockMovement.unitCostFcfaSnapshot` fige le coût au moment du
+  mouvement, jamais recalculé après coup (même principe que
+  `WaterReading.tariffFcfaPerM3Snapshot`, Phase 6). Limitation connue de
+  toute comptabilité CUMP réelle (contrairement au FIFO des œufs, où
+  chaque lot garde son identité propre et peut être corrigé
+  individuellement) — même niveau d'acceptation que l'indice de conversion
+  alimentaire approximatif de la Phase 3.
+- **Rentabilité `IncubationBatch`** : le chiffre d'affaires ne compte que
+  les ventes de poussins issus d'une orientation VENTE
+  (`BatchLineage.childType='chick_batch'`) — les orientations
+  CHAIR/RENOUVELLEMENT (transfert vers une bande poulet de chair/pondeuse)
+  ne génèrent délibérément aucun CA côté couvoir, pour éviter un double
+  comptage avec le P&L de la bande destinataire. Effet de bord accepté :
+  un couvoir qui oriente surtout vers du renouvellement interne affichera
+  une rentabilité structurellement faible/négative (charges d'incubation
+  sans CA en face), ce qui reflète une réalité comptable réelle (le couvoir
+  n'est dans ce cas qu'un centre de coût interne), pas un bug.
+- **Trésorerie (`TreasuryService`) : vue par période, pas un solde cumulé
+  depuis l'origine** — `netTreasuryFcfa` (résumé) et les totaux du journal
+  sont calculés uniquement sur `[from, to]`, aucune notion de solde de
+  caisse permanent/reporté d'une période à l'autre. Cohérent avec le
+  périmètre §8.7 tel que fourni (lecture agrégée par période, pas un
+  compte de trésorerie à solde persistant) — à revisiter si un besoin de
+  solde cumulé émerge.
+- **Confirmation explicite** : la dette transversale "vérification de
+  disponibilité sans verrou" (tête de ce document) reste inchangée par
+  cette phase — voir la précision ajoutée dans cette section, `Item.
+  currentStock` est un mécanisme distinct, déjà protégé.
+
 ## ✅ Corrigé
+
+### `PaymentsService.create()` — absence de plafond de paiement (§15, angle mort pré-existant depuis Phase 3, corrigé en Phase 7)
+
+**Découvert pendant la conception de `SupplierPaymentsService`** (Phase 7,
+achats fournisseurs) : le cahier §15 exige qu'"un paiement ne puisse pas
+excéder le solde restant" — règle que `SupplierPaymentsService` devait de
+toute façon implémenter pour son propre compte. En l'implémentant, la
+revue a fait apparaître que `PaymentsService` (Phase 3, ventes
+POULET_CHAIR/OEUFS/POUSSINS/EAU généralisées) ne l'a **jamais** appliquée :
+`CreatePaymentDto`/`PaymentsService.create()` n'avaient aucun contrôle de
+plafond, et `computeSaleStatus` ne bloque jamais un dépassement — un
+paiement pouvait dépasser `Sale.netAmountFcfa` sans erreur.
+
+**Décision explicite, tranchée pendant l'implémentation (pas laissée en
+dette différée)** : le trou est corrigé **dans cette même phase**, pas
+seulement documenté, avec le raisonnement suivant :
+
+1. C'est une règle d'intégrité financière explicite du cahier (§15),
+   activement violée par du code déjà en production logique sur 4 modules
+   généralisés (POULET_CHAIR/OEUFS/POUSSINS/EAU) — pas une préférence de
+   conception, une règle métier écrite.
+2. Cette même phase construit de la logique financière **neuve**
+   (trésorerie, créances clients, `TreasuryService`) directement au-dessus
+   de `Payment` — un `Sale.status`/solde faussé par un dépassement non
+   bloqué aurait contaminé silencieusement ces nouveaux calculs. Le trou
+   était donc pertinent pour **cette** phase précisément, pas seulement une
+   dette abstraite héritée d'une phase antérieure.
+3. Le correctif est un simple garde-fou **additif** : il rejette un état
+   auparavant accepté à tort, ne change le comportement d'aucun cas déjà
+   valide. Risque de régression quasi nul — confirmé après coup : aucun
+   scénario des 4 suites e2e pré-existantes (Broiler/Layer/Breeder/Eau) ne
+   teste un paiement excédant le montant net d'une vente, et la suite
+   complète (127 tests, 2 exécutions consécutives) est passée sans
+   régression après application du correctif.
+4. **Précédent direct dans cette même mission** : Phase 5, correctif de
+   l'atomicité `OrientationService` (voir ci-dessous) appliqué
+   immédiatement plutôt que différé, sur exactement ce même raisonnement
+   ("si c'est simplement et sûrement corrigeable, corriger maintenant
+   plutôt que reporter à `DETTE_TECHNIQUE.md`").
+
+**Ce qui n'a volontairement PAS été ajouté avec ce correctif** : aucun
+nouveau mécanisme de verrouillage (`FOR UPDATE`). Le correctif est une
+lecture-puis-comparaison classique (agrégat `Payment` non supprimés pour
+la vente, puis comparaison à `netAmountFcfa`) — action ponctuelle par un
+utilisateur unique sur une vente précise, jamais un compteur partagé à
+haute fréquence comme `Item.currentStock`. Ce schéma reste dans la même
+catégorie de risque "faible" que les vérifications de disponibilité déjà
+répertoriées comme dette transversale non urgente en tête de ce document —
+pas incohérent avec elles, juste corrigé ici parce que la correction était
+triviale et le bénéfice réel, alors que la dette transversale
+disponibilité/verrou nécessite un chantier plus large (trois points
+distincts, protection cohérente à construire d'un coup).
+
+Voir `payments.service.ts` (méthode privée `assertDoesNotExceedBalance`,
+appelée en tête de `create()`) et `supplier-payments.service.ts` (même
+contrôle, implémenté nativement dès la création puisque c'est une entité
+neuve sans passif à préserver).
 
 ### `OrientationService.orient()` — absence de transaction unique (Phase 5)
 
