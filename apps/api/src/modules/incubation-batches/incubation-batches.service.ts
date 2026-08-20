@@ -9,6 +9,13 @@ import {
   computeExpectedCandlingDate,
   computeExpectedHatchDate,
 } from './calculations/incubation-dates.calculations';
+import { computeCostPerChickHatchedFcfa } from './calculations/incubation-profitability.calculations';
+import {
+  computeGrossMarginFcfa,
+  computeProfitabilityRate,
+  computeRevenueFcfa,
+  computeTotalExpensesFcfa,
+} from '../broiler-batches/calculations/broiler-finance.calculations';
 import type { CreateIncubationBatchDto } from './dto/create-incubation-batch.dto';
 import type { UpdateIncubationBatchDto } from './dto/update-incubation-batch.dto';
 
@@ -19,10 +26,22 @@ const DEFAULT_INCUBATION_DURATION_DAYS = 21;
 const DEFAULT_CANDLING_DAY_OFFSET = 7;
 const SETTING_KEY_DURATION = 'incubation.duration_days';
 const SETTING_KEY_CANDLING_OFFSET = 'incubation.candling_day_offset';
+/** §10.5 : mêmes statuts que BroilerBatchesService/ChickBatchesService. */
+const CONFIRMED_SALE_STATUSES: Prisma.SaleWhereInput['status'] = {
+  in: ['CONFIRMEE', 'PAYEE', 'PARTIELLEMENT_PAYEE', 'IMPAYEE'],
+};
 
 export interface IncubationBatchWithComputed extends IncubationBatch {
   expectedHatchDate: Date;
   expectedCandlingDate: Date;
+}
+
+export interface IncubationBatchProfitability {
+  totalExpensesFcfa: number;
+  revenueFcfa: number;
+  grossMarginFcfa: number;
+  profitabilityRate: number;
+  costPerChickHatchedFcfa: number;
 }
 
 @Injectable()
@@ -230,6 +249,58 @@ export class IncubationBatchesService {
       ipAddress,
     );
     return this.attachComputedFields(actingUser, updated);
+  }
+
+  /**
+   * §8.8 — CA = ventes confirmées des lots de poussins issus de ce lot
+   * d'incubation (filiation VENTE uniquement, via BatchLineage ; les
+   * orientations CHAIR/RENOUVELLEMENT n'engendrent pas de vente directement
+   * rattachable au couvoir — leur valorisation appartient au P&L de la
+   * bande poulet de chair/pondeuse qui les reçoit, pas à celui-ci, pour
+   * éviter un double comptage). Charges = Expense.incubationBatchId
+   * (rattachement direct, Phase 7).
+   */
+  async getProfitability(
+    actingUser: AccessTokenPayload,
+    id: string,
+  ): Promise<IncubationBatchProfitability> {
+    const batch = await this.getRaw(actingUser, id);
+
+    const [expenses, lineages] = await Promise.all([
+      this.prisma.expense.findMany({
+        where: { incubationBatchId: batch.id, deletedAt: null },
+      }),
+      this.prisma.batchLineage.findMany({
+        where: { incubationBatchId: batch.id, childType: 'chick_batch' },
+      }),
+    ]);
+
+    const chickBatchIds = lineages
+      .map((lineage) => lineage.childId)
+      .filter((childId): childId is string => childId !== null);
+
+    const sales = chickBatchIds.length
+      ? await this.prisma.sale.findMany({
+          where: { chickBatchId: { in: chickBatchIds }, status: CONFIRMED_SALE_STATUSES },
+        })
+      : [];
+
+    const totalExpensesFcfa = computeTotalExpensesFcfa(
+      expenses.map((expense) => expense.amountFcfa),
+    );
+    const revenueFcfa = computeRevenueFcfa(sales.map((sale) => sale.netAmountFcfa));
+    const grossMarginFcfa = computeGrossMarginFcfa(revenueFcfa, totalExpensesFcfa);
+
+    return {
+      totalExpensesFcfa,
+      revenueFcfa,
+      grossMarginFcfa,
+      profitabilityRate: computeProfitabilityRate(grossMarginFcfa, totalExpensesFcfa),
+      costPerChickHatchedFcfa: computeCostPerChickHatchedFcfa(
+        totalExpensesFcfa,
+        batch.chicksHatched ?? 0,
+      ),
+    };
   }
 
   private async setStatus(

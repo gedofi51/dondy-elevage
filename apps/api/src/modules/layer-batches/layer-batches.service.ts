@@ -316,6 +316,18 @@ export class LayerBatchesService {
     return { batch: await this.attachComputedFields(updated), summary };
   }
 
+  /**
+   * §8.8 — même résumé financier que close(), consultable sur un lot actif.
+   */
+  async getProfitability(
+    actingUser: AccessTokenPayload,
+    id: string,
+  ): Promise<LayerBatchClosureSummary> {
+    const existing = await this.getRaw(actingUser, id);
+    const computed = await this.attachComputedFields(existing);
+    return this.computeClosureSummary(existing, computed);
+  }
+
   private async setStatus(
     existing: LayerBatch,
     status: LayerBatchStatus,

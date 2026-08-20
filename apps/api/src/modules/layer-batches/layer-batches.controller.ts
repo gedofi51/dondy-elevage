@@ -97,4 +97,13 @@ export class LayerBatchesController {
   ): Promise<{ batch: LayerBatchWithComputed; summary: LayerBatchClosureSummary }> {
     return this.layerBatchesService.close(user, id, req.ip ?? null);
   }
+
+  @Get(':id/profitability')
+  @RequirePermissions(PERMISSIONS.LAYER_BATCHES_READ)
+  async getProfitability(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+  ): Promise<LayerBatchClosureSummary> {
+    return this.layerBatchesService.getProfitability(user, id);
+  }
 }

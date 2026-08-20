@@ -1,8 +1,14 @@
-import { IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 /** Pas de `date` : clé métier immuable une fois la journée créée, comme
  * `dayNumber` côté BroilerDailyRecord. */
 export class UpdateDailyRecordDto {
+  /** Phase 7 — additif. Nullable explicitement (voir
+   * BroilerDailyRecord.UpdateDailyRecordDto.feedItemId). */
+  @IsOptional()
+  @IsUUID('4')
+  feedItemId?: string | null;
+
   @IsOptional()
   @IsInt()
   @Min(0)

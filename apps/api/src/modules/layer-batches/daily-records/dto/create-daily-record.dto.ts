@@ -1,6 +1,11 @@
-import { IsDateString, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsInt, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class CreateDailyRecordDto {
+  /** Phase 7 — additif. */
+  @IsOptional()
+  @IsUUID('4')
+  feedItemId?: string;
+
   @IsDateString()
   date!: string;
 

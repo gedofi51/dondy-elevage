@@ -8,6 +8,10 @@ import {
   computeAvailabilityRatePercent,
   computeAverageConsumptionPerPointM3,
 } from './calculations/water-kpi.calculations';
+import {
+  computeGrossMarginFcfa,
+  computeProfitabilityRate,
+} from '../broiler-batches/calculations/broiler-finance.calculations';
 import type { CreateWaterPointDto } from './dto/create-water-point.dto';
 import type { UpdateWaterPointDto } from './dto/update-water-point.dto';
 import type { GetWaterPointKpiQueryDto } from './dto/get-water-point-kpi.query.dto';
@@ -31,6 +35,15 @@ export interface WaterPointKpiSummary {
   averageConsumptionM3: number;
   availabilityRatePercent: number;
   receivablesFcfa: number;
+  /** §8.8 — charges rattachées (Expense.waterPointId) sur la période. */
+  totalExpensesFcfa: number;
+  /** Marge = CA théorique (eau réellement distribuée, valorisée au tarif)
+   * - charges : le théorique reflète la production réelle du point d'eau,
+   * contrairement à l'encaissé qui mélange comptoir/crédit/écarts de
+   * caisse (voir totalVarianceFcfa) et serait un mauvais indicateur de
+   * rentabilité de l'activité elle-même. */
+  grossMarginFcfa: number;
+  profitabilityRate: number;
 }
 
 /** Donnée de référence permanente (comme Customer/Supplier) : code plat
@@ -247,6 +260,13 @@ export class WaterPointsService {
     );
     const receivablesFcfa = totalSoldToIdentifiedClients - (paymentsAgg._sum.amountFcfa ?? 0);
 
+    const expenses = await this.prisma.expense.findMany({
+      where: { waterPointId: id, deletedAt: null, date: { gte: periodStart, lte: periodEnd } },
+      select: { amountFcfa: true },
+    });
+    const totalExpensesFcfa = expenses.reduce((sum, e) => sum + e.amountFcfa, 0);
+    const grossMarginFcfa = computeGrossMarginFcfa(totalTheoreticalAmountFcfa, totalExpensesFcfa);
+
     return {
       periodStart,
       periodEnd,
@@ -257,6 +277,9 @@ export class WaterPointsService {
       averageConsumptionM3,
       availabilityRatePercent,
       receivablesFcfa,
+      totalExpensesFcfa,
+      grossMarginFcfa,
+      profitabilityRate: computeProfitabilityRate(grossMarginFcfa, totalExpensesFcfa),
     };
   }
 }

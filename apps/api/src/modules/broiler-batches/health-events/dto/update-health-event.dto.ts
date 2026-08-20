@@ -1,7 +1,27 @@
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Min,
+} from 'class-validator';
 import { HealthEventRoute, HealthEventStatus, HealthEventType } from '@prisma/client';
 
 export class UpdateHealthEventDto {
+  /** Phase 7 — additifs. itemId nullable explicitement (voir
+   * BroilerDailyRecord.UpdateDailyRecordDto.feedItemId). */
+  @IsOptional()
+  @IsUUID('4')
+  itemId?: string | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  quantityUsed?: number;
+
   @IsOptional()
   @IsDateString()
   date?: string;

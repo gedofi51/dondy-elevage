@@ -1,6 +1,12 @@
-import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import { IsBoolean, IsInt, IsNumber, IsOptional, IsString, IsUUID, Min } from 'class-validator';
 
 export class UpdateDailyRecordDto {
+  /** Phase 7 — additif. Nullable explicitement (envoyer `null` retire
+   * l'article et déclenche le retour du stock déjà distribué). */
+  @IsOptional()
+  @IsUUID('4')
+  feedItemId?: string | null;
+
   @IsOptional()
   @IsString()
   entryTime?: string;

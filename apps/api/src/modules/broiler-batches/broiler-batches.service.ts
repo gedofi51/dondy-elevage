@@ -425,6 +425,17 @@ export class BroilerBatchesService {
     return { batch: await this.attachComputedFields(updated), summary };
   }
 
+  /**
+   * §8.8 — même résumé financier que close(), mais consultable sur une
+   * bande active (aucune vérification d'effectif nul) : la rentabilité
+   * est une lecture, pas une action de clôture.
+   */
+  async getProfitability(actingUser: AccessTokenPayload, id: string): Promise<BatchClosureSummary> {
+    const existing = await this.getRaw(actingUser, id);
+    const computed = await this.attachComputedFields(existing);
+    return this.computeClosureSummary(existing, computed);
+  }
+
   private async setStatus(
     existing: BroilerBatch,
     status: BroilerBatchStatus,

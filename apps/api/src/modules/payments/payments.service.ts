@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Payment, Sale } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
@@ -38,12 +38,37 @@ export class PaymentsService {
     }
   }
 
+  /** §15 : "un paiement ne peut pas excéder le solde restant sans règle
+   * explicite d'avoir" — corrigé en Phase 7 (angle mort pré-existant
+   * depuis la Phase 3, découvert lors de la conception de
+   * SupplierPaymentsService : ce contrôle n'a jamais été appliqué ici.
+   * Garde-fou additif — rejette un état auparavant accepté à tort,
+   * jamais un cas déjà valide — voir docs/architecture/
+   * DETTE_TECHNIQUE.md pour la justification complète de la correction
+   * immédiate plutôt que différée. */
+  private async assertDoesNotExceedBalance(
+    sale: Sale,
+    additionalAmountFcfa: number,
+  ): Promise<void> {
+    const paidAgg = await this.prisma.payment.aggregate({
+      where: { saleId: sale.id, deletedAt: null },
+      _sum: { amountFcfa: true },
+    });
+    const alreadyPaidFcfa = paidAgg._sum.amountFcfa ?? 0;
+    if (alreadyPaidFcfa + additionalAmountFcfa > sale.netAmountFcfa) {
+      throw new ConflictException(
+        `Paiement (${additionalAmountFcfa} FCFA) supérieur au solde restant (${sale.netAmountFcfa - alreadyPaidFcfa} FCFA).`,
+      );
+    }
+  }
+
   async create(
     actingUser: AccessTokenPayload,
     dto: CreatePaymentDto,
     ipAddress: string | null,
   ): Promise<Payment> {
     const sale = await this.getSale(actingUser.farmId, dto.saleId);
+    await this.assertDoesNotExceedBalance(sale, dto.amountFcfa);
 
     const payment = await this.prisma.payment.create({
       data: {

@@ -4,7 +4,9 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditLogService } from '../../../common/audit/audit-log.service';
 import { assertSameFarm } from '../../../common/rbac/farm-scope.util';
 import type { AccessTokenPayload } from '../../auth/jwt-payload.interface';
+import { StockMovementsService } from '../../stock-movements/stock-movements.service';
 import { computeLotRemaining } from '../../egg-stock/calculations/egg-stock-lot.calculations';
+import { computeStockConsumptionInstructions } from '../../items/calculations/stock-consumption.calculations';
 import {
   computeHeadcountDelta,
   computeSuggestedHenCount,
@@ -21,7 +23,51 @@ export class DailyRecordsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogService: AuditLogService,
+    private readonly stockMovementsService: StockMovementsService,
   ) {}
+
+  /** Phase 7 — hook §8.3 "distribution aliment pondeuses" : crée le
+   * StockMovement SORTIE + l'Expense correspondante à l'intérieur de la
+   * transaction de l'appelant. Une réduction (RETOUR) ne modifie/annule
+   * PAS une Expense déjà créée — limite assumée, voir DailyRecordsService
+   * (Broiler) et DETTE_TECHNIQUE.md. */
+  private async applyFeedStockInstructions(
+    tx: Prisma.TransactionClient,
+    actingUser: AccessTokenPayload,
+    batchId: string,
+    date: Date,
+    recordId: string,
+    instructions: ReturnType<typeof computeStockConsumptionInstructions>,
+  ): Promise<void> {
+    for (const instruction of instructions) {
+      const movement = await this.stockMovementsService.recordMovementInTransaction(tx, {
+        farmId: actingUser.farmId,
+        itemId: instruction.itemId,
+        type: instruction.type,
+        reason: instruction.reason,
+        quantity: instruction.quantity,
+        date,
+        createdBy: actingUser.sub,
+        sourceType: 'layer_daily_record',
+        sourceId: recordId,
+      });
+      if (instruction.reason === 'DISTRIBUTION_BANDE') {
+        await tx.expense.create({
+          data: {
+            farmId: actingUser.farmId,
+            layerBatchId: batchId,
+            date,
+            category: 'Alimentation',
+            description: 'Distribution aliment (mouvement de stock automatique)',
+            quantity: movement.quantity,
+            unitPriceFcfa: movement.unitCostFcfaSnapshot,
+            amountFcfa: movement.totalValueFcfa,
+            createdBy: actingUser.sub,
+          },
+        });
+      }
+    }
+  }
 
   /** Vérifie que le lot existe et appartient à la ferme courante — retourne
    * le lot (contrairement au pattern Broiler, on a besoin d'initialQuantity
@@ -112,6 +158,7 @@ export class DailyRecordsService {
             eggsSellable,
             layingRatePercent,
             feedDistributedKg: dto.feedDistributedKg,
+            feedItemId: dto.feedItemId,
             observations: dto.observations,
           },
         });
@@ -127,6 +174,23 @@ export class DailyRecordsService {
               quantityProduced: eggsSellable,
             },
           });
+        }
+
+        if (dto.feedItemId) {
+          const instructions = computeStockConsumptionInstructions(
+            null,
+            0,
+            dto.feedItemId,
+            dto.feedDistributedKg ?? 0,
+          );
+          await this.applyFeedStockInstructions(
+            tx,
+            actingUser,
+            batchId,
+            date,
+            created.id,
+            instructions,
+          );
         }
 
         return created;
@@ -196,6 +260,20 @@ export class DailyRecordsService {
       }
     }
 
+    const nextFeedItemId = dto.feedItemId !== undefined ? dto.feedItemId : existing.feedItemId;
+    const nextFeedDistributedKg =
+      dto.feedDistributedKg !== undefined
+        ? dto.feedDistributedKg
+        : existing.feedDistributedKg
+          ? Number(existing.feedDistributedKg)
+          : 0;
+    const feedInstructions = computeStockConsumptionInstructions(
+      existing.feedItemId,
+      existing.feedDistributedKg ? Number(existing.feedDistributedKg) : 0,
+      nextFeedItemId,
+      nextFeedDistributedKg,
+    );
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const record = await tx.layerDailyRecord.update({
         where: { batchId_date: { batchId, date: existing.date } },
@@ -225,6 +303,15 @@ export class DailyRecordsService {
           },
         });
       }
+
+      await this.applyFeedStockInstructions(
+        tx,
+        actingUser,
+        batchId,
+        existing.date,
+        record.id,
+        feedInstructions,
+      );
 
       return record;
     });

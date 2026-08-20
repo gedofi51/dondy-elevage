@@ -130,6 +130,30 @@ export const PERMISSIONS = {
   WATER_READINGS_CREATE: 'water_readings.create',
   WATER_READINGS_READ: 'water_readings.read',
   WATER_READINGS_UPDATE: 'water_readings.update',
+
+  ITEMS_CREATE: 'items.create',
+  ITEMS_READ: 'items.read',
+  ITEMS_UPDATE: 'items.update',
+  ITEMS_DELETE: 'items.delete',
+
+  STOCK_MOVEMENTS_CREATE: 'stock_movements.create',
+  STOCK_MOVEMENTS_READ: 'stock_movements.read',
+
+  PURCHASE_ORDERS_CREATE: 'purchase_orders.create',
+  PURCHASE_ORDERS_READ: 'purchase_orders.read',
+  PURCHASE_ORDERS_UPDATE: 'purchase_orders.update',
+  PURCHASE_ORDERS_CLOSE: 'purchase_orders.close',
+
+  GOODS_RECEIPTS_CREATE: 'goods_receipts.create',
+  GOODS_RECEIPTS_READ: 'goods_receipts.read',
+
+  SUPPLIER_PAYMENTS_CREATE: 'supplier_payments.create',
+  SUPPLIER_PAYMENTS_READ: 'supplier_payments.read',
+  SUPPLIER_PAYMENTS_DELETE: 'supplier_payments.delete',
+
+  /** §8.7 — lecture agrégée uniquement (aucune écriture propre, la
+   * trésorerie ne fait qu'unioner Payment/SupplierPayment/Expense). */
+  TREASURY_READ: 'treasury.read',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -259,4 +283,28 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.WATER_READINGS_CREATE]: "Saisir un relevé de compteur d'eau",
   [PERMISSIONS.WATER_READINGS_READ]: "Consulter les relevés de compteur d'eau",
   [PERMISSIONS.WATER_READINGS_UPDATE]: "Corriger un relevé de compteur d'eau",
+
+  [PERMISSIONS.ITEMS_CREATE]: 'Créer un article de stock',
+  [PERMISSIONS.ITEMS_READ]: 'Consulter le catalogue des articles',
+  [PERMISSIONS.ITEMS_UPDATE]: 'Modifier un article de stock',
+  [PERMISSIONS.ITEMS_DELETE]: 'Supprimer un article de stock',
+
+  [PERMISSIONS.STOCK_MOVEMENTS_CREATE]:
+    'Saisir un mouvement de stock manuel (ajustement, inventaire)',
+  [PERMISSIONS.STOCK_MOVEMENTS_READ]: 'Consulter les mouvements de stock',
+
+  [PERMISSIONS.PURCHASE_ORDERS_CREATE]: 'Créer une commande fournisseur',
+  [PERMISSIONS.PURCHASE_ORDERS_READ]: 'Consulter les commandes fournisseur',
+  [PERMISSIONS.PURCHASE_ORDERS_UPDATE]: 'Modifier une commande fournisseur',
+  [PERMISSIONS.PURCHASE_ORDERS_CLOSE]: 'Annuler une commande fournisseur',
+
+  [PERMISSIONS.GOODS_RECEIPTS_CREATE]: 'Enregistrer une réception de commande',
+  [PERMISSIONS.GOODS_RECEIPTS_READ]: 'Consulter les réceptions',
+
+  [PERMISSIONS.SUPPLIER_PAYMENTS_CREATE]: 'Enregistrer un paiement fournisseur',
+  [PERMISSIONS.SUPPLIER_PAYMENTS_READ]: 'Consulter les paiements fournisseur',
+  [PERMISSIONS.SUPPLIER_PAYMENTS_DELETE]: 'Annuler un paiement fournisseur',
+
+  [PERMISSIONS.TREASURY_READ]:
+    'Consulter la trésorerie (journal, créances, dettes, vue consolidée)',
 };
