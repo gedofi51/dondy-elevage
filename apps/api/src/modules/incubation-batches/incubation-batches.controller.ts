@@ -8,6 +8,7 @@ import { PERMISSIONS } from '../../common/rbac/permissions.constants';
 import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
 import {
   IncubationBatchesService,
+  type IncubationBatchProfitability,
   type IncubationBatchWithComputed,
 } from './incubation-batches.service';
 import { CreateIncubationBatchDto } from './dto/create-incubation-batch.dto';
@@ -72,5 +73,14 @@ export class IncubationBatchesController {
     @Req() req: Request,
   ): Promise<IncubationBatchWithComputed> {
     return this.incubationBatchesService.close(user, id, req.ip ?? null);
+  }
+
+  @Get(':id/profitability')
+  @RequirePermissions(PERMISSIONS.INCUBATION_BATCHES_READ)
+  async getProfitability(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+  ): Promise<IncubationBatchProfitability> {
+    return this.incubationBatchesService.getProfitability(user, id);
   }
 }

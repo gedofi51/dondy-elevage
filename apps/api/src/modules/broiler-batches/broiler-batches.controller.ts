@@ -97,4 +97,13 @@ export class BroilerBatchesController {
   ): Promise<{ batch: BroilerBatchWithComputed; summary: BatchClosureSummary }> {
     return this.broilerBatchesService.close(user, id, req.ip ?? null);
   }
+
+  @Get(':id/profitability')
+  @RequirePermissions(PERMISSIONS.BROILER_BATCHES_READ)
+  async getProfitability(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+  ): Promise<BatchClosureSummary> {
+    return this.broilerBatchesService.getProfitability(user, id);
+  }
 }
