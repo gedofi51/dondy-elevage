@@ -17,7 +17,15 @@ export class ExpensesService {
 
   private async assertReferencesBelongToFarm(
     farmId: string,
-    refs: { batchId?: string; layerBatchId?: string; chickBatchId?: string; supplierId?: string },
+    refs: {
+      batchId?: string;
+      layerBatchId?: string;
+      chickBatchId?: string;
+      breederBatchId?: string;
+      incubationBatchId?: string;
+      waterPointId?: string;
+      supplierId?: string;
+    },
   ): Promise<void> {
     if (refs.batchId) {
       const batch = await this.prisma.broilerBatch.findUnique({ where: { id: refs.batchId } });
@@ -41,6 +49,30 @@ export class ExpensesService {
         throw new NotFoundException('Lot de poussins introuvable.');
       }
     }
+    if (refs.breederBatchId) {
+      const breederBatch = await this.prisma.breederBatch.findUnique({
+        where: { id: refs.breederBatchId },
+      });
+      if (!breederBatch || breederBatch.farmId !== farmId) {
+        throw new NotFoundException('Lot reproducteur introuvable.');
+      }
+    }
+    if (refs.incubationBatchId) {
+      const incubationBatch = await this.prisma.incubationBatch.findUnique({
+        where: { id: refs.incubationBatchId },
+      });
+      if (!incubationBatch || incubationBatch.farmId !== farmId) {
+        throw new NotFoundException("Lot d'incubation introuvable.");
+      }
+    }
+    if (refs.waterPointId) {
+      const waterPoint = await this.prisma.waterPoint.findUnique({
+        where: { id: refs.waterPointId },
+      });
+      if (!waterPoint || waterPoint.farmId !== farmId) {
+        throw new NotFoundException("Point d'eau introuvable.");
+      }
+    }
     if (refs.supplierId) {
       const supplier = await this.prisma.supplier.findUnique({ where: { id: refs.supplierId } });
       if (!supplier || supplier.farmId !== farmId) {
@@ -62,6 +94,9 @@ export class ExpensesService {
         batchId: dto.batchId,
         layerBatchId: dto.layerBatchId,
         chickBatchId: dto.chickBatchId,
+        breederBatchId: dto.breederBatchId,
+        incubationBatchId: dto.incubationBatchId,
+        waterPointId: dto.waterPointId,
         date: new Date(dto.date),
         category: dto.category,
         description: dto.description,
@@ -94,6 +129,9 @@ export class ExpensesService {
         batchId: query.batchId,
         layerBatchId: query.layerBatchId,
         chickBatchId: query.chickBatchId,
+        breederBatchId: query.breederBatchId,
+        incubationBatchId: query.incubationBatchId,
+        waterPointId: query.waterPointId,
       },
       orderBy: { date: 'desc' },
     });
