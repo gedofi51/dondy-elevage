@@ -122,16 +122,6 @@ export class WaterPointsService {
     return waterPoint;
   }
 
-  /** Usage interne (SalesService, WaterReadingsService) : lève 404 si hors
-   * farm, sans passer par le contrôleur. */
-  async findRawForFarm(farmId: string, id: string): Promise<WaterPoint> {
-    const waterPoint = await this.prisma.waterPoint.findUnique({ where: { id } });
-    if (!waterPoint || waterPoint.farmId !== farmId) {
-      throw new NotFoundException("Point d'eau introuvable.");
-    }
-    return waterPoint;
-  }
-
   async update(
     actingUser: AccessTokenPayload,
     id: string,

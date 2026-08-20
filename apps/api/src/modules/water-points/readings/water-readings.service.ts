@@ -34,7 +34,7 @@ export class WaterReadingsService {
   ) {}
 
   private async assertWaterPointAccessible(actingUser: AccessTokenPayload, waterPointId: string) {
-    return this.waterPointsService.findRawForFarm(actingUser.farmId, waterPointId);
+    return this.waterPointsService.findOne(actingUser, waterPointId);
   }
 
   private async attachComputedFields(reading: WaterReading): Promise<WaterReadingWithComputed> {

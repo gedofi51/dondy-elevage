@@ -179,7 +179,7 @@ export class SalesService {
       // vérification de disponibilité/stock : l'eau n'est pas un lot fini
       // avec effectif/stock, c'est un flux continu (voir plan Phase 6,
       // section C). customerId reste optionnel ici (vente comptoir, §7.4).
-      await this.waterPointsService.findRawForFarm(actingUser.farmId, dto.waterPointId);
+      await this.waterPointsService.findOne(actingUser, dto.waterPointId);
       const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
       sale = await this.prisma.sale.create({ data: buildData(saleNumber) });
     } else {
