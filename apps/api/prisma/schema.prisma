@@ -66,6 +66,8 @@ model Farm {
   incubationBatches   IncubationBatch[]
   chickBatches        ChickBatch[]
   batchLineageRows    BatchLineage[]
+  waterPoints         WaterPoint[]
+  waterReadings       WaterReading[]
 
   @@map("farms")
 }
@@ -108,6 +110,8 @@ model User {
   dailyRecordsAsLayerOperator    LayerDailyRecord[]   @relation("LayerDailyRecordOperator")
   breederBatchesAsPrimaryManager BreederBatch[]       @relation("BreederBatchPrimaryManager")
   dailyRecordsAsBreederOperator  BreederDailyRecord[] @relation("BreederDailyRecordOperator")
+  waterPointsAsResponsible       WaterPoint[]         @relation("WaterPointResponsible")
+  waterReadingsAsOperator        WaterReading[]       @relation("WaterReadingOperator")
 
   @@unique([farmId, email])
   @@index([farmId])
@@ -774,6 +778,7 @@ enum SaleProductType {
   POULET_CHAIR
   OEUFS
   POUSSINS
+  EAU
 }
 
 /// Pas de SaleItem : une vente = un lot d'une bande (le cahier §16 propose
@@ -798,11 +803,17 @@ model Sale {
   layerBatchId String?
   /// FK ChickBatch (Phase 5) — renseigné seulement si productType = POUSSINS.
   chickBatchId String?
+  /// FK WaterPoint (Phase 6) — renseigné seulement si productType = EAU.
+  waterPointId String?
   /// Auto-généré, format VTE-AAAA-NNN, même principe que BroilerBatch.code.
   saleNumber   String
 
   date       DateTime
-  customerId String
+  /// Nullable depuis Phase 6 : uniquement pour productType = EAU (vente
+  /// comptoir anonyme, §7.4 — "sans création obligatoire de client").
+  /// Requis pour POULET_CHAIR/OEUFS/POUSSINS, vérifié en DTO (@ValidateIf)
+  /// et en service, pas seulement par la nullabilité de la colonne.
+  customerId String?
   sellerId   String
 
   saleMode SaleMode
@@ -825,7 +836,8 @@ model Sale {
   batch             BroilerBatch?      @relation(fields: [batchId], references: [id])
   layerBatch        LayerBatch?        @relation(fields: [layerBatchId], references: [id])
   chickBatch        ChickBatch?        @relation(fields: [chickBatchId], references: [id])
-  customer          Customer           @relation(fields: [customerId], references: [id])
+  waterPoint        WaterPoint?        @relation(fields: [waterPointId], references: [id])
+  customer          Customer?          @relation(fields: [customerId], references: [id])
   seller            User               @relation("SaleSeller", fields: [sellerId], references: [id])
   payments          Payment[]
   eggStockMovements EggStockMovement[]
@@ -835,6 +847,7 @@ model Sale {
   @@index([batchId])
   @@index([layerBatchId])
   @@index([chickBatchId])
+  @@index([waterPointId])
   @@index([farmId, status])
   @@map("sales")
 }
@@ -1355,4 +1368,111 @@ model BatchLineage {
   @@index([incubationBatchId])
   @@index([childType, childId])
   @@map("batch_lineage")
+}
+
+enum WaterPointStatus {
+  ACTIF
+  SUSPENDU
+  MAINTENANCE
+}
+
+/// Entité unique point+compteur (décision Phase 6) — le cahier §12 liste
+/// water_points/water_meters séparément, mais §7.1 ne décrit qu'un seul
+/// jeu de champs plat ; un compteur n'a ici ni cycle de vie ni mouvements
+/// propres (contrairement à EggStockLot, qui justifie sa table séparée
+/// par sa logique FIFO). Même règle de décision que Incubator vs Building
+/// en Phase 5 : séparer seulement si (a) une 3e table a une FK dure
+/// dessus, ou (b) logique métier non triviale à partager — aucun des
+/// deux ne s'applique ici. code = EAU-NNN, plat, PAS année-scopée
+/// (installation permanente, comme Customer/Supplier — pas un cycle
+/// répété comme les codes de bande).
+model WaterPoint {
+  id     String @id @default(uuid())
+  farmId String
+  code   String
+
+  name            String
+  location        String?
+  meterReference  String?
+  /// Verrouillé en service dès qu'un WaterReading existe pour ce point —
+  /// sinon on pourrait réécrire rétroactivement le point de départ d'une
+  /// chronologie d'index déjà validée.
+  initialIndex    Decimal @db.Decimal(10, 2)
+  /// FCFA/m³. "Tarif par récipient" (§7.1) n'est pas un champ manquant :
+  /// déjà couvert par Sale.saleMode=UNITE + Sale.unitPriceFcfa saisi
+  /// librement par vente, sans relevé associé.
+  tariffFcfaPerM3 Int
+
+  responsibleId String
+  status        WaterPointStatus @default(ACTIF)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm        Farm           @relation(fields: [farmId], references: [id])
+  responsible User           @relation("WaterPointResponsible", fields: [responsibleId], references: [id])
+  readings    WaterReading[]
+  sales       Sale[]
+
+  @@unique([farmId, code])
+  @@index([farmId])
+  @@map("water_points")
+}
+
+/// Une ligne par jour par point (comme BreederDailyRecord/LayerDailyRecord)
+/// — pas de deletedAt, pas de DELETE exposé : corrections exclusivement
+/// via PATCH, auditées (AuditLogService). Contrairement à Expense/Payment
+/// (transactions libres, 0 à N occurrences, deletedAt réel).
+model WaterReading {
+  id           String @id @default(uuid())
+  farmId       String
+  waterPointId String
+
+  date       DateTime
+  operatorId String?
+
+  indexMatin    Decimal @db.Decimal(10, 2)
+  indexSoir     Decimal @db.Decimal(10, 2)
+  /// Dérivé à l'écriture (= indexSoir - indexMatin) sauf anomalie
+  /// documentée (indexSoir < indexMatin + indexAnomalyReason renseigné) :
+  /// dans ce cas, override manuel requis en DTO — jamais un plafond
+  /// silencieux à 0 (voir plan Phase 6, section B.1 : effacerait
+  /// silencieusement une vraie consommation lors d'un remplacement de
+  /// compteur).
+  consumptionM3 Decimal @db.Decimal(10, 2)
+
+  /// Snapshot de WaterPoint.tariffFcfaPerM3 au moment du relevé — jamais
+  /// recalculé rétroactivement si le tarif change plus tard.
+  tariffFcfaPerM3Snapshot Int
+  /// Dérivé = consumptionM3 x tariffFcfaPerM3Snapshot.
+  theoreticalAmountFcfa   Int
+  /// Saisi (comptage de caisse physique) — voir plan Phase 6 section C :
+  /// indépendant de Sale(EAU), pas dérivé automatiquement (le
+  /// rapprochement théorique/caisse perdrait son sens sinon).
+  cashAmountFcfa          Int
+  /// Dérivé = cashAmountFcfa - theoreticalAmountFcfa.
+  varianceFcfa            Int
+
+  /// Requis si indexSoir < indexMatin OU indexMatin != dernier indexSoir
+  /// validé du point (contrôles §7.3, bloqués sinon en 400/409 — voir
+  /// service).
+  indexAnomalyReason String? @db.Text
+  /// Requis (non vide) si varianceFcfa != 0 (§7.3 "tout écart doit être
+  /// justifié") — réutilise ce champ déjà listé au §7.2, pas un champ
+  /// dédié supplémentaire.
+  remarks            String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm       Farm       @relation(fields: [farmId], references: [id])
+  waterPoint WaterPoint @relation(fields: [waterPointId], references: [id])
+  operator   User?      @relation("WaterReadingOperator", fields: [operatorId], references: [id])
+
+  @@unique([waterPointId, date])
+  @@index([farmId])
+  @@index([waterPointId, date])
+  @@map("water_readings")
 }
