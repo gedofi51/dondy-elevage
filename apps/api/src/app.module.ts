@@ -37,6 +37,11 @@ import { ChickBatchesModule } from './modules/chick-batches/chick-batches.module
 import { BatchLineageModule } from './modules/batch-lineage/batch-lineage.module';
 import { WaterPointsModule } from './modules/water-points/water-points.module';
 import { WaterReadingsModule } from './modules/water-points/readings/water-readings.module';
+import { ItemsModule } from './modules/items/items.module';
+import { StockMovementsModule } from './modules/stock-movements/stock-movements.module';
+import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
+import { GoodsReceiptsModule } from './modules/purchase-orders/receipts/goods-receipts.module';
+import { SupplierPaymentsModule } from './modules/supplier-payments/supplier-payments.module';
 
 @Module({
   imports: [
@@ -85,6 +90,11 @@ import { WaterReadingsModule } from './modules/water-points/readings/water-readi
     BatchLineageModule,
     WaterPointsModule,
     WaterReadingsModule,
+    ItemsModule,
+    StockMovementsModule,
+    PurchaseOrdersModule,
+    GoodsReceiptsModule,
+    SupplierPaymentsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
