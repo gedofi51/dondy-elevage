@@ -150,6 +150,10 @@ export const PERMISSIONS = {
   SUPPLIER_PAYMENTS_CREATE: 'supplier_payments.create',
   SUPPLIER_PAYMENTS_READ: 'supplier_payments.read',
   SUPPLIER_PAYMENTS_DELETE: 'supplier_payments.delete',
+
+  /** §8.7 — lecture agrégée uniquement (aucune écriture propre, la
+   * trésorerie ne fait qu'unioner Payment/SupplierPayment/Expense). */
+  TREASURY_READ: 'treasury.read',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -300,4 +304,7 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.SUPPLIER_PAYMENTS_CREATE]: 'Enregistrer un paiement fournisseur',
   [PERMISSIONS.SUPPLIER_PAYMENTS_READ]: 'Consulter les paiements fournisseur',
   [PERMISSIONS.SUPPLIER_PAYMENTS_DELETE]: 'Annuler un paiement fournisseur',
+
+  [PERMISSIONS.TREASURY_READ]:
+    'Consulter la trésorerie (journal, créances, dettes, vue consolidée)',
 };
