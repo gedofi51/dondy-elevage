@@ -4,12 +4,34 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { assertSameFarm } from '../../common/rbac/farm-scope.util';
 import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
+import {
+  computeAvailabilityRatePercent,
+  computeAverageConsumptionPerPointM3,
+} from './calculations/water-kpi.calculations';
 import type { CreateWaterPointDto } from './dto/create-water-point.dto';
 import type { UpdateWaterPointDto } from './dto/update-water-point.dto';
+import type { GetWaterPointKpiQueryDto } from './dto/get-water-point-kpi.query.dto';
 
 const CODE_PREFIX = 'EAU-';
 const CODE_DIGITS = 3;
 const MAX_CODE_RETRIES = 3;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/** §7.5 : les 6 KPI eau. Volume/consommation moyenne/disponibilité
+ * dérivés de WaterReading (vérité métrée) ; créances dérivées de Sale/
+ * Payment (uniquement les ventes à un client identifié) — voir plan
+ * Phase 6, section C, sur la séparation des deux registres. */
+export interface WaterPointKpiSummary {
+  periodStart: Date;
+  periodEnd: Date;
+  totalConsumptionM3: number;
+  totalTheoreticalAmountFcfa: number;
+  totalCashAmountFcfa: number;
+  totalVarianceFcfa: number;
+  averageConsumptionM3: number;
+  availabilityRatePercent: number;
+  receivablesFcfa: number;
+}
 
 /** Donnée de référence permanente (comme Customer/Supplier) : code plat
  * EAU-NNN, PAS année-scopé (contrairement aux codes de bande — un point
@@ -182,5 +204,69 @@ export class WaterPointsService {
       oldValues: { code: existing.code, name: existing.name },
       ipAddress,
     });
+  }
+
+  async getKpiSummary(
+    actingUser: AccessTokenPayload,
+    id: string,
+    query: GetWaterPointKpiQueryDto,
+  ): Promise<WaterPointKpiSummary> {
+    await this.findOne(actingUser, id);
+    const periodStart = new Date(query.from);
+    const periodEnd = new Date(query.to);
+
+    const readings = await this.prisma.waterReading.findMany({
+      where: { waterPointId: id, date: { gte: periodStart, lte: periodEnd } },
+    });
+    const totalConsumptionM3 = readings.reduce((sum, r) => sum + Number(r.consumptionM3), 0);
+    const totalTheoreticalAmountFcfa = readings.reduce(
+      (sum, r) => sum + r.theoreticalAmountFcfa,
+      0,
+    );
+    const totalCashAmountFcfa = readings.reduce((sum, r) => sum + r.cashAmountFcfa, 0);
+    const totalVarianceFcfa = totalCashAmountFcfa - totalTheoreticalAmountFcfa;
+    const averageConsumptionM3 = computeAverageConsumptionPerPointM3(
+      totalConsumptionM3,
+      readings.length,
+    );
+    const totalDaysInPeriod =
+      Math.floor((periodEnd.getTime() - periodStart.getTime()) / MS_PER_DAY) + 1;
+    const availabilityRatePercent = computeAvailabilityRatePercent(
+      readings.length,
+      totalDaysInPeriod,
+    );
+
+    // Créances clients : uniquement les ventes à un client identifié (une
+    // vente comptoir, sans customerId, n'a jamais de notion de dette).
+    const identifiedSales = await this.prisma.sale.findMany({
+      where: {
+        waterPointId: id,
+        productType: 'EAU',
+        customerId: { not: null },
+        date: { gte: periodStart, lte: periodEnd },
+      },
+      select: { id: true, netAmountFcfa: true },
+    });
+    const paymentsAgg = await this.prisma.payment.aggregate({
+      where: { saleId: { in: identifiedSales.map((s) => s.id) }, deletedAt: null },
+      _sum: { amountFcfa: true },
+    });
+    const totalSoldToIdentifiedClients = identifiedSales.reduce(
+      (sum, s) => sum + s.netAmountFcfa,
+      0,
+    );
+    const receivablesFcfa = totalSoldToIdentifiedClients - (paymentsAgg._sum.amountFcfa ?? 0);
+
+    return {
+      periodStart,
+      periodEnd,
+      totalConsumptionM3,
+      totalTheoreticalAmountFcfa,
+      totalCashAmountFcfa,
+      totalVarianceFcfa,
+      averageConsumptionM3,
+      availabilityRatePercent,
+      receivablesFcfa,
+    };
   }
 }

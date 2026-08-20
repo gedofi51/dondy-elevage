@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -19,9 +20,10 @@ import { RequirePermissions } from '../../common/decorators/require-permissions.
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PERMISSIONS } from '../../common/rbac/permissions.constants';
 import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
-import { WaterPointsService } from './water-points.service';
+import { WaterPointsService, type WaterPointKpiSummary } from './water-points.service';
 import { CreateWaterPointDto } from './dto/create-water-point.dto';
 import { UpdateWaterPointDto } from './dto/update-water-point.dto';
+import { GetWaterPointKpiQueryDto } from './dto/get-water-point-kpi.query.dto';
 
 @Controller('water-points')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -73,5 +75,18 @@ export class WaterPointsController {
     @Req() req: Request,
   ): Promise<void> {
     await this.waterPointsService.remove(user, id, req.ip ?? null);
+  }
+
+  /** Données financières agrégées (théorique/encaissé/écart/créances) —
+   * gardé sur WATER_READINGS_READ, pas WATER_POINTS_READ (même logique
+   * que le reste du module : Employé/Vendeur n'y ont pas accès). */
+  @Get(':id/kpi')
+  @RequirePermissions(PERMISSIONS.WATER_READINGS_READ)
+  async getKpi(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+    @Query() query: GetWaterPointKpiQueryDto,
+  ): Promise<WaterPointKpiSummary> {
+    return this.waterPointsService.getKpiSummary(user, id, query);
   }
 }
