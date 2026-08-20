@@ -120,6 +120,21 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.WATER_READINGS_CREATE,
       PERMISSIONS.WATER_READINGS_READ,
       PERMISSIONS.WATER_READINGS_UPDATE,
+      PERMISSIONS.ITEMS_CREATE,
+      PERMISSIONS.ITEMS_READ,
+      PERMISSIONS.ITEMS_UPDATE,
+      PERMISSIONS.ITEMS_DELETE,
+      PERMISSIONS.STOCK_MOVEMENTS_CREATE,
+      PERMISSIONS.STOCK_MOVEMENTS_READ,
+      PERMISSIONS.PURCHASE_ORDERS_CREATE,
+      PERMISSIONS.PURCHASE_ORDERS_READ,
+      PERMISSIONS.PURCHASE_ORDERS_UPDATE,
+      PERMISSIONS.PURCHASE_ORDERS_CLOSE,
+      PERMISSIONS.GOODS_RECEIPTS_CREATE,
+      PERMISSIONS.GOODS_RECEIPTS_READ,
+      PERMISSIONS.SUPPLIER_PAYMENTS_CREATE,
+      PERMISSIONS.SUPPLIER_PAYMENTS_READ,
+      PERMISSIONS.SUPPLIER_PAYMENTS_DELETE,
     ],
   },
   {
@@ -211,6 +226,21 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.WATER_READINGS_CREATE,
       PERMISSIONS.WATER_READINGS_READ,
       PERMISSIONS.WATER_READINGS_UPDATE,
+      PERMISSIONS.ITEMS_CREATE,
+      PERMISSIONS.ITEMS_READ,
+      PERMISSIONS.ITEMS_UPDATE,
+      PERMISSIONS.ITEMS_DELETE,
+      PERMISSIONS.STOCK_MOVEMENTS_CREATE,
+      PERMISSIONS.STOCK_MOVEMENTS_READ,
+      PERMISSIONS.PURCHASE_ORDERS_CREATE,
+      PERMISSIONS.PURCHASE_ORDERS_READ,
+      PERMISSIONS.PURCHASE_ORDERS_UPDATE,
+      PERMISSIONS.PURCHASE_ORDERS_CLOSE,
+      PERMISSIONS.GOODS_RECEIPTS_CREATE,
+      PERMISSIONS.GOODS_RECEIPTS_READ,
+      PERMISSIONS.SUPPLIER_PAYMENTS_CREATE,
+      PERMISSIONS.SUPPLIER_PAYMENTS_READ,
+      PERMISSIONS.SUPPLIER_PAYMENTS_DELETE,
     ],
   },
   {
@@ -256,6 +286,13 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.BREEDER_DAILY_RECORDS_CREATE,
       PERMISSIONS.BREEDER_DAILY_RECORDS_READ,
       PERMISSIONS.BREEDER_DAILY_RECORDS_UPDATE,
+      // Mandat texte "alimentation, santé" couvre exactement les champs
+      // feedItemId/itemId qu'il a déjà le droit de modifier (Phase 7) —
+      // lecture du catalogue nécessaire pour les sélectionner. Pas
+      // STOCK_MOVEMENTS_CREATE/EXPENSES_CREATE : le mouvement est un effet
+      // de bord orchestré par le service, jamais créé directement (même
+      // précédent que Vendeur/Caisse pour EGG_STOCK_MOVEMENTS_CREATE).
+      PERMISSIONS.ITEMS_READ,
     ],
   },
   {
@@ -345,6 +382,20 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.BREEDER_BATCHES_READ,
       PERMISSIONS.INCUBATION_BATCHES_READ,
       PERMISSIONS.CHICK_BATCHES_READ,
+      // §11 : "Magasinier — Stocks, réceptions, inventaires, mouvements"
+      // — raison d'être de ce rôle, mandat complet. PURCHASE_ORDERS_READ
+      // seul (pas CREATE/UPDATE) : voit les commandes en attente de
+      // réception, ne les crée pas — l'achat est un acte financier
+      // (domaine du Comptable).
+      PERMISSIONS.ITEMS_CREATE,
+      PERMISSIONS.ITEMS_READ,
+      PERMISSIONS.ITEMS_UPDATE,
+      PERMISSIONS.ITEMS_DELETE,
+      PERMISSIONS.STOCK_MOVEMENTS_CREATE,
+      PERMISSIONS.STOCK_MOVEMENTS_READ,
+      PERMISSIONS.GOODS_RECEIPTS_CREATE,
+      PERMISSIONS.GOODS_RECEIPTS_READ,
+      PERMISSIONS.PURCHASE_ORDERS_READ,
     ],
   },
   {
@@ -386,8 +437,16 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.DOCUMENTS_READ,
       PERMISSIONS.ALERTS_READ,
       PERMISSIONS.BROILER_BATCHES_READ,
+      // §11 : "Comptable — Achats, dépenses, paiements, rapports
+      // financiers" — mandat complet (angle mort corrigé en Phase 7 : ce
+      // rôle ne pouvait jusqu'ici ni créer une dépense ni enregistrer un
+      // paiement client, malgré son mandat texte — même précédent que
+      // Responsable couvoir/eau en Phase 5/6).
+      PERMISSIONS.EXPENSES_CREATE,
       PERMISSIONS.EXPENSES_READ,
+      PERMISSIONS.EXPENSES_UPDATE,
       PERMISSIONS.SALES_READ,
+      PERMISSIONS.PAYMENTS_CREATE,
       PERMISSIONS.PAYMENTS_READ,
       PERMISSIONS.LAYER_BATCHES_READ,
       PERMISSIONS.EGG_STOCK_LOTS_READ,
@@ -398,6 +457,16 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       // cohérent avec son accès existant à EGG_STOCK_LOTS_READ.
       PERMISSIONS.WATER_POINTS_READ,
       PERMISSIONS.WATER_READINGS_READ,
+      // "Achats" : ITEMS_READ nécessaire pour choisir un itemId en créant
+      // une ligne de commande fournisseur.
+      PERMISSIONS.ITEMS_READ,
+      PERMISSIONS.PURCHASE_ORDERS_CREATE,
+      PERMISSIONS.PURCHASE_ORDERS_READ,
+      PERMISSIONS.PURCHASE_ORDERS_UPDATE,
+      PERMISSIONS.PURCHASE_ORDERS_CLOSE,
+      PERMISSIONS.SUPPLIER_PAYMENTS_CREATE,
+      PERMISSIONS.SUPPLIER_PAYMENTS_READ,
+      PERMISSIONS.SUPPLIER_PAYMENTS_DELETE,
     ],
   },
   {
@@ -451,6 +520,11 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.BATCH_LINEAGE_READ,
       PERMISSIONS.WATER_POINTS_READ,
       PERMISSIONS.WATER_READINGS_READ,
+      PERMISSIONS.ITEMS_READ,
+      PERMISSIONS.STOCK_MOVEMENTS_READ,
+      PERMISSIONS.PURCHASE_ORDERS_READ,
+      PERMISSIONS.GOODS_RECEIPTS_READ,
+      PERMISSIONS.SUPPLIER_PAYMENTS_READ,
     ],
   },
 ];
