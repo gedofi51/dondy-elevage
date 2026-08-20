@@ -35,11 +35,21 @@ export class CreateSaleDto {
   @IsUUID('4')
   chickBatchId?: string;
 
+  /** Requis si productType = EAU (vérifié aussi en service). */
+  @ValidateIf((dto: CreateSaleDto) => dto.productType === 'EAU')
+  @IsUUID('4')
+  waterPointId?: string;
+
   @IsDateString()
   date!: string;
 
+  /** Requis sauf si productType = EAU — §7.4 : "vente anonyme comptoir,
+   * sans création obligatoire de client". Seul productType autorisant une
+   * vente sans client identifié (POULET_CHAIR/OEUFS/POUSSINS restent
+   * inchangés, toujours requis). */
+  @ValidateIf((dto: CreateSaleDto) => dto.productType !== 'EAU')
   @IsUUID('4')
-  customerId!: string;
+  customerId?: string;
 
   /** Défaut = utilisateur courant si omis. */
   @IsOptional()

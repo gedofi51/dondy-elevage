@@ -35,15 +35,18 @@ import { IncubationBatchesModule } from './modules/incubation-batches/incubation
 import { OrientationModule } from './modules/incubation-batches/orientation/orientation.module';
 import { ChickBatchesModule } from './modules/chick-batches/chick-batches.module';
 import { BatchLineageModule } from './modules/batch-lineage/batch-lineage.module';
+import { WaterPointsModule } from './modules/water-points/water-points.module';
+import { WaterReadingsModule } from './modules/water-points/readings/water-readings.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     // Premier ordonnanceur du projet — voir BroilerAlertsCronService
     // (alertes calendaires J1-J45, Phase 3), LayerAlertsCronService
-    // (alertes pondeuses, Phase 4) et BreederAlertsCronService (reproduction
-    // + couvoir, Phase 5) — trois crons séparés, règles structurellement
-    // différentes par domaine.
+    // (alertes pondeuses, Phase 4), BreederAlertsCronService (reproduction
+    // + couvoir, Phase 5) et WaterAlertsCronService (eau, Phase 6) —
+    // quatre crons séparés, règles structurellement différentes par
+    // domaine.
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: 60_000, limit: 100 }],
@@ -80,6 +83,8 @@ import { BatchLineageModule } from './modules/batch-lineage/batch-lineage.module
     OrientationModule,
     ChickBatchesModule,
     BatchLineageModule,
+    WaterPointsModule,
+    WaterReadingsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
