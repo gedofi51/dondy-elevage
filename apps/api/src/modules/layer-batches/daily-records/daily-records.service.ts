@@ -6,7 +6,7 @@ import { assertSameFarm } from '../../../common/rbac/farm-scope.util';
 import type { AccessTokenPayload } from '../../auth/jwt-payload.interface';
 import { StockMovementsService } from '../../stock-movements/stock-movements.service';
 import { computeLotRemaining } from '../../egg-stock/calculations/egg-stock-lot.calculations';
-import { computeFeedMovementInstructions } from '../../items/calculations/feed-movement.calculations';
+import { computeStockConsumptionInstructions } from '../../items/calculations/stock-consumption.calculations';
 import {
   computeHeadcountDelta,
   computeSuggestedHenCount,
@@ -37,7 +37,7 @@ export class DailyRecordsService {
     batchId: string,
     date: Date,
     recordId: string,
-    instructions: ReturnType<typeof computeFeedMovementInstructions>,
+    instructions: ReturnType<typeof computeStockConsumptionInstructions>,
   ): Promise<void> {
     for (const instruction of instructions) {
       const movement = await this.stockMovementsService.recordMovementInTransaction(tx, {
@@ -177,7 +177,7 @@ export class DailyRecordsService {
         }
 
         if (dto.feedItemId) {
-          const instructions = computeFeedMovementInstructions(
+          const instructions = computeStockConsumptionInstructions(
             null,
             0,
             dto.feedItemId,
@@ -267,7 +267,7 @@ export class DailyRecordsService {
         : existing.feedDistributedKg
           ? Number(existing.feedDistributedKg)
           : 0;
-    const feedInstructions = computeFeedMovementInstructions(
+    const feedInstructions = computeStockConsumptionInstructions(
       existing.feedItemId,
       existing.feedDistributedKg ? Number(existing.feedDistributedKg) : 0,
       nextFeedItemId,

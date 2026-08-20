@@ -6,7 +6,7 @@ import { assertSameFarm } from '../../../common/rbac/farm-scope.util';
 import type { AccessTokenPayload } from '../../auth/jwt-payload.interface';
 import { StockMovementsService } from '../../stock-movements/stock-movements.service';
 import { computeAverageWeightG } from '../calculations/broiler-growth.calculations';
-import { computeFeedMovementInstructions } from '../../items/calculations/feed-movement.calculations';
+import { computeStockConsumptionInstructions } from '../../items/calculations/stock-consumption.calculations';
 import type { UpdateDailyRecordDto } from './dto/update-daily-record.dto';
 
 @Injectable()
@@ -62,7 +62,7 @@ export class DailyRecordsService {
    * Phase 7 — hook automatique §8.3 "distribution aliment poulets" : si
    * feedItemId est renseigné (additif, comportement historique inchangé
    * sinon), toute correction de feedDistributedKg déclenche un mouvement
-   * de stock EN DELTA (computeFeedMovementInstructions, jamais la valeur
+   * de stock EN DELTA (computeStockConsumptionInstructions, jamais la valeur
    * brute — cette méthode peut être PATCHée plusieurs fois pour le même
    * jour) + une Expense pour la charge correspondante. Introduit une
    * transaction ici (n'en avait aucune jusqu'ici) pour coupler
@@ -93,7 +93,7 @@ export class DailyRecordsService {
         : existing.feedDistributedKg
           ? Number(existing.feedDistributedKg)
           : 0;
-    const instructions = computeFeedMovementInstructions(
+    const instructions = computeStockConsumptionInstructions(
       existing.feedItemId,
       existing.feedDistributedKg ? Number(existing.feedDistributedKg) : 0,
       nextFeedItemId,
