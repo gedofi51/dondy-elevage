@@ -15,6 +15,10 @@ export class ListSalesQueryDto {
   chickBatchId?: string;
 
   @IsOptional()
+  @IsUUID('4')
+  waterPointId?: string;
+
+  @IsOptional()
   @IsEnum(SaleStatus)
   status?: SaleStatus;
 }

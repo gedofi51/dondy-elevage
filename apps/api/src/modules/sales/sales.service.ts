@@ -13,6 +13,7 @@ import { BroilerBatchesService } from '../broiler-batches/broiler-batches.servic
 import { LayerBatchesService } from '../layer-batches/layer-batches.service';
 import { EggStockService } from '../egg-stock/egg-stock.service';
 import { ChickBatchesService } from '../chick-batches/chick-batches.service';
+import { WaterPointsService } from '../water-points/water-points.service';
 import {
   computeGrossAmountFcfa,
   computeNetAmountFcfa,
@@ -54,6 +55,7 @@ export class SalesService {
     private readonly layerBatchesService: LayerBatchesService,
     private readonly eggStockService: EggStockService,
     private readonly chickBatchesService: ChickBatchesService,
+    private readonly waterPointsService: WaterPointsService,
   ) {}
 
   /** Dérivé du dernier numéro émis pour la ferme+année (VTE-AAAA-NNN) — un
@@ -117,6 +119,7 @@ export class SalesService {
         batchId: productType === 'POULET_CHAIR' ? dto.batchId : null,
         layerBatchId: productType === 'OEUFS' ? dto.layerBatchId : null,
         chickBatchId: productType === 'POUSSINS' ? dto.chickBatchId : null,
+        waterPointId: productType === 'EAU' ? dto.waterPointId : null,
         saleNumber,
         date: new Date(dto.date),
         customerId: dto.customerId,
@@ -168,6 +171,17 @@ export class SalesService {
       }
       const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
       sale = await this.prisma.sale.create({ data: buildData(saleNumber) });
+    } else if (productType === 'EAU') {
+      if (!dto.waterPointId) {
+        throw new BadRequestException("waterPointId requis pour une vente d'eau.");
+      }
+      // Vérifie l'existence/l'appartenance du point à la ferme — PAS de
+      // vérification de disponibilité/stock : l'eau n'est pas un lot fini
+      // avec effectif/stock, c'est un flux continu (voir plan Phase 6,
+      // section C). customerId reste optionnel ici (vente comptoir, §7.4).
+      await this.waterPointsService.findOne(actingUser, dto.waterPointId);
+      const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
+      sale = await this.prisma.sale.create({ data: buildData(saleNumber) });
     } else {
       if (!dto.layerBatchId) {
         throw new BadRequestException("layerBatchId requis pour une vente d'œufs.");
@@ -205,6 +219,7 @@ export class SalesService {
         batchId: dto.batchId,
         layerBatchId: dto.layerBatchId,
         chickBatchId: dto.chickBatchId,
+        waterPointId: dto.waterPointId,
       },
       ipAddress,
     });
@@ -296,6 +311,7 @@ export class SalesService {
         batchId: query.batchId,
         layerBatchId: query.layerBatchId,
         chickBatchId: query.chickBatchId,
+        waterPointId: query.waterPointId,
         status: query.status,
       },
       orderBy: { date: 'desc' },
@@ -360,6 +376,9 @@ export class SalesService {
           );
         }
       }
+    } else if (existing.productType === 'EAU') {
+      // Aucune vérification de disponibilité/stock (voir create()) — rien à
+      // faire ici, contrairement aux trois autres productType.
     } else {
       // OEUFS — les ajustements de stock réels sont effectués après la mise
       // à jour de la vente ci-dessous (reverseFifo/consumeFifo/adjustFifo).

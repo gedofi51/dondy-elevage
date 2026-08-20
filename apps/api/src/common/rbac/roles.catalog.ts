@@ -113,6 +113,13 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.CHICK_BATCHES_UPDATE,
       PERMISSIONS.BATCH_LINEAGE_READ,
       PERMISSIONS.ORIENTATION_CREATE,
+      PERMISSIONS.WATER_POINTS_CREATE,
+      PERMISSIONS.WATER_POINTS_READ,
+      PERMISSIONS.WATER_POINTS_UPDATE,
+      PERMISSIONS.WATER_POINTS_DELETE,
+      PERMISSIONS.WATER_READINGS_CREATE,
+      PERMISSIONS.WATER_READINGS_READ,
+      PERMISSIONS.WATER_READINGS_UPDATE,
     ],
   },
   {
@@ -197,6 +204,13 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.CHICK_BATCHES_UPDATE,
       PERMISSIONS.BATCH_LINEAGE_READ,
       PERMISSIONS.ORIENTATION_CREATE,
+      PERMISSIONS.WATER_POINTS_CREATE,
+      PERMISSIONS.WATER_POINTS_READ,
+      PERMISSIONS.WATER_POINTS_UPDATE,
+      PERMISSIONS.WATER_POINTS_DELETE,
+      PERMISSIONS.WATER_READINGS_CREATE,
+      PERMISSIONS.WATER_READINGS_READ,
+      PERMISSIONS.WATER_READINGS_UPDATE,
     ],
   },
   {
@@ -287,6 +301,27 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.LAYER_BATCHES_READ,
       PERMISSIONS.BREEDER_BATCHES_READ,
       PERMISSIONS.INCUBATION_BATCHES_READ,
+      // §11 : "Responsable eau — Points d'eau, relevés, ventes et
+      // encaissements" — raison d'être de ce rôle, mandat complet
+      // (jusqu'ici cantonné à des READ transverses, aucun accès
+      // Sales/Customers/Payments faute de module eau).
+      PERMISSIONS.WATER_POINTS_CREATE,
+      PERMISSIONS.WATER_POINTS_READ,
+      PERMISSIONS.WATER_POINTS_UPDATE,
+      PERMISSIONS.WATER_POINTS_DELETE,
+      PERMISSIONS.WATER_READINGS_CREATE,
+      PERMISSIONS.WATER_READINGS_READ,
+      PERMISSIONS.WATER_READINGS_UPDATE,
+      // "Ventes et encaissements" : cluster identique à Vendeur / Caisse
+      // pour la partie commerciale (vente d'eau généralisée sur Sale).
+      PERMISSIONS.CUSTOMERS_CREATE,
+      PERMISSIONS.CUSTOMERS_READ,
+      PERMISSIONS.CUSTOMERS_UPDATE,
+      PERMISSIONS.SALES_CREATE,
+      PERMISSIONS.SALES_READ,
+      PERMISSIONS.SALES_UPDATE,
+      PERMISSIONS.PAYMENTS_CREATE,
+      PERMISSIONS.PAYMENTS_READ,
     ],
   },
   {
@@ -333,6 +368,10 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.LAYER_BATCHES_READ,
       PERMISSIONS.EGG_STOCK_LOTS_READ,
       PERMISSIONS.CHICK_BATCHES_READ,
+      // Cible FK directe de Sale.waterPointId (même logique que
+      // CHICK_BATCHES_READ) — pas WATER_READINGS_READ, hors de son usage
+      // direct (relevés = domaine Responsable eau/Comptable).
+      PERMISSIONS.WATER_POINTS_READ,
     ],
   },
   {
@@ -355,6 +394,10 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.BREEDER_BATCHES_READ,
       PERMISSIONS.INCUBATION_BATCHES_READ,
       PERMISSIONS.CHICK_BATCHES_READ,
+      // Données financières de rapprochement (théorique/encaissé/écart) —
+      // cohérent avec son accès existant à EGG_STOCK_LOTS_READ.
+      PERMISSIONS.WATER_POINTS_READ,
+      PERMISSIONS.WATER_READINGS_READ,
     ],
   },
   {
@@ -368,6 +411,11 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.LAYER_BATCHES_READ,
       PERMISSIONS.BREEDER_BATCHES_READ,
       PERMISSIONS.INCUBATION_BATCHES_READ,
+      // Visibilité opérationnelle du statut du point — pas
+      // WATER_READINGS_READ (cashAmountFcfa/varianceFcfa sont des données
+      // financières, exclues de ce rôle partout ailleurs dans le
+      // catalogue).
+      PERMISSIONS.WATER_POINTS_READ,
     ],
   },
   {
@@ -401,6 +449,8 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.INCUBATION_BATCHES_READ,
       PERMISSIONS.CHICK_BATCHES_READ,
       PERMISSIONS.BATCH_LINEAGE_READ,
+      PERMISSIONS.WATER_POINTS_READ,
+      PERMISSIONS.WATER_READINGS_READ,
     ],
   },
 ];

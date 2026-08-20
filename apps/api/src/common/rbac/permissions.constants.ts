@@ -121,6 +121,15 @@ export const PERMISSIONS = {
   BATCH_LINEAGE_READ: 'batch_lineage.read',
 
   ORIENTATION_CREATE: 'orientation.create',
+
+  WATER_POINTS_CREATE: 'water_points.create',
+  WATER_POINTS_READ: 'water_points.read',
+  WATER_POINTS_UPDATE: 'water_points.update',
+  WATER_POINTS_DELETE: 'water_points.delete',
+
+  WATER_READINGS_CREATE: 'water_readings.create',
+  WATER_READINGS_READ: 'water_readings.read',
+  WATER_READINGS_UPDATE: 'water_readings.update',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -241,4 +250,13 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
 
   [PERMISSIONS.ORIENTATION_CREATE]:
     'Orienter des poussins éclos (vente, chair, renouvellement, réforme)',
+
+  [PERMISSIONS.WATER_POINTS_CREATE]: "Créer un point d'eau",
+  [PERMISSIONS.WATER_POINTS_READ]: "Consulter les points d'eau",
+  [PERMISSIONS.WATER_POINTS_UPDATE]: "Modifier un point d'eau",
+  [PERMISSIONS.WATER_POINTS_DELETE]: "Supprimer un point d'eau",
+
+  [PERMISSIONS.WATER_READINGS_CREATE]: "Saisir un relevé de compteur d'eau",
+  [PERMISSIONS.WATER_READINGS_READ]: "Consulter les relevés de compteur d'eau",
+  [PERMISSIONS.WATER_READINGS_UPDATE]: "Corriger un relevé de compteur d'eau",
 };
