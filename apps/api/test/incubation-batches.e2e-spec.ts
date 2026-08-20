@@ -603,4 +603,235 @@ describe('Reproduction, couvoir et poussins — cycle complet (e2e, scénario §
       expect(body<ErrorResponseBody>(res).message).toContain('Permissions insuffisantes');
     });
   });
+
+  /**
+   * Phase 8 — durcissement de la dette transversale "disponibilité sans
+   * verrou" (ouverte depuis les Phases 3/5, voir DETTE_TECHNIQUE.md). Même
+   * gabarit que "Concurrence FIFO" (layer-batches.e2e-spec.ts) : vérifie le
+   * verrouillage SELECT ... FOR UPDATE de ChickBatchesService.
+   * assertAvailableHeadcountInTransaction. Lot de poussins créé directement
+   * via Prisma (pas par le cycle couvoir complet, hors-sujet ici — seule la
+   * vente concurrente est testée).
+   */
+  describe('Concurrence — deux ventes de poussins simultanées dépassant le stock du lot', () => {
+    let concurrencyChickBatchId: string;
+
+    beforeAll(async () => {
+      const chickBatch = await prisma.chickBatch.create({
+        data: {
+          farmId: farmA.id,
+          code: 'POU-CONC-TEST',
+          purpose: 'VENTE',
+          initialQuantity: 100,
+          createdBy: ownerUserId,
+        },
+      });
+      concurrencyChickBatchId = chickBatch.id;
+      createdChickBatchIds.push(concurrencyChickBatchId);
+    });
+
+    it('exactement une des deux ventes concurrentes réussit, l’autre est rejetée proprement (409), stock final cohérent', async () => {
+      // 100 disponibles — deux ventes de 70 sont chacune individuellement
+      // valides, mais 70 + 70 = 140 > 100.
+      const sendSale = () =>
+        request(app.getHttpServer())
+          .post('/api/v1/sales')
+          .set('Authorization', `Bearer ${ownerToken}`)
+          .send({
+            productType: 'POUSSINS',
+            chickBatchId: concurrencyChickBatchId,
+            date: DAY3.toISOString(),
+            customerId,
+            saleMode: 'UNITE',
+            quantity: 70,
+            unitPriceFcfa: 500,
+            status: 'CONFIRMEE',
+          });
+
+      const [resA, resB] = await Promise.all([sendSale(), sendSale()]);
+      const statuses = [resA.status, resB.status].sort();
+      expect(statuses).toEqual([201, 409]);
+
+      const afterRes = await request(app.getHttpServer())
+        .get(`/api/v1/chick-batches/${concurrencyChickBatchId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      // Une seule vente a pu être confirmée : 100 - 70 = 30 restants
+      // (jamais 100 - 140 = -40, jamais un double décompte).
+      expect(body<ChickBatchResponseBody>(afterRes).currentHeadcount).toBe(30);
+
+      const salesRes = await request(app.getHttpServer())
+        .get(`/api/v1/sales?chickBatchId=${concurrencyChickBatchId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      expect(body<SaleResponseBody[]>(salesRes)).toHaveLength(1);
+    });
+  });
+
+  /**
+   * Vérifie le verrouillage SELECT ... FOR UPDATE de BreederBatchesService.
+   * assertAvailableFertileEggsInTransaction, appelé par
+   * IncubationBatchesService.create().
+   */
+  describe('Concurrence — deux créations de lot d’incubation simultanées dépassant les œufs fécondés disponibles', () => {
+    let concurrencyBreederBatchId: string;
+    let concurrencyIncubatorId: string;
+
+    beforeAll(async () => {
+      const breederRes = await request(app.getHttpServer())
+        .post('/api/v1/breeder-batches')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          constitutionDate: DAY1.toISOString(),
+          femaleCount: 200,
+          maleCount: 20,
+          buildingId,
+          primaryManagerId: ownerUserId,
+        })
+        .expect(201);
+      concurrencyBreederBatchId = body<BreederBatchResponseBody>(breederRes).id;
+      createdBreederBatchIds.push(concurrencyBreederBatchId);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/breeder-batches/${concurrencyBreederBatchId}/daily-records`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          date: DAY1.toISOString(),
+          eggsLaid: 100,
+          eggsSelectedForIncubation: 100,
+          eggsRejected: 0,
+          eggsSold: 0,
+        })
+        .expect(201);
+
+      const incubatorRes = await request(app.getHttpServer())
+        .post('/api/v1/incubators')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Couveuse Concurrence Test', capacityEggs: 500 })
+        .expect(201);
+      concurrencyIncubatorId = body<IncubatorResponseBody>(incubatorRes).id;
+      createdIncubatorIds.push(concurrencyIncubatorId);
+    });
+
+    it('exactement une des deux créations concurrentes réussit, l’autre est rejetée proprement (409), disponible final cohérent', async () => {
+      // 100 œufs fécondés disponibles — deux lots de 70 sont chacun
+      // individuellement valides, mais 70 + 70 = 140 > 100.
+      const sendCreate = () =>
+        request(app.getHttpServer())
+          .post('/api/v1/incubation-batches')
+          .set('Authorization', `Bearer ${ownerToken}`)
+          .send({
+            breederBatchId: concurrencyBreederBatchId,
+            incubatorId: concurrencyIncubatorId,
+            incubationStartDate: DAY1.toISOString(),
+            eggCount: 70,
+          });
+
+      const [resA, resB] = await Promise.all([sendCreate(), sendCreate()]);
+      const statuses = [resA.status, resB.status].sort();
+      expect(statuses).toEqual([201, 409]);
+
+      const succeeded = resA.status === 201 ? resA : resB;
+      createdIncubationBatchIds.push(body<IncubationBatchResponseBody>(succeeded).id);
+
+      const breederAfterRes = await request(app.getHttpServer())
+        .get(`/api/v1/breeder-batches/${concurrencyBreederBatchId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      // Un seul lot a pu être créé : 100 - 70 = 30 restants (jamais
+      // 100 - 140 = -40, jamais un double décompte).
+      expect(body<BreederBatchResponseBody>(breederAfterRes).availableFertileEggs).toBe(30);
+
+      const incubationCount = await prisma.incubationBatch.count({
+        where: { breederBatchId: concurrencyBreederBatchId },
+      });
+      expect(incubationCount).toBe(1);
+    });
+  });
+
+  /**
+   * Vérifie le verrouillage SELECT ... FOR UPDATE de
+   * OrientationService.orient() lui-même (transaction déjà existante
+   * depuis la Phase 5, verrou ajouté en Phase 8).
+   */
+  describe('Concurrence — deux orientations simultanées dépassant les poussins disponibles', () => {
+    let concurrencyIncubationBatchId: string;
+
+    beforeAll(async () => {
+      const breederRes = await request(app.getHttpServer())
+        .post('/api/v1/breeder-batches')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          constitutionDate: DAY1.toISOString(),
+          femaleCount: 200,
+          maleCount: 20,
+          buildingId,
+          primaryManagerId: ownerUserId,
+        })
+        .expect(201);
+      const orientationBreederBatchId = body<BreederBatchResponseBody>(breederRes).id;
+      createdBreederBatchIds.push(orientationBreederBatchId);
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/breeder-batches/${orientationBreederBatchId}/daily-records`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          date: DAY1.toISOString(),
+          eggsLaid: 100,
+          eggsSelectedForIncubation: 100,
+          eggsRejected: 0,
+          eggsSold: 0,
+        })
+        .expect(201);
+
+      const incubationRes = await request(app.getHttpServer())
+        .post('/api/v1/incubation-batches')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          breederBatchId: orientationBreederBatchId,
+          incubatorId,
+          incubationStartDate: DAY1.toISOString(),
+          eggCount: 100,
+        })
+        .expect(201);
+      concurrencyIncubationBatchId = body<IncubationBatchResponseBody>(incubationRes).id;
+      createdIncubationBatchIds.push(concurrencyIncubationBatchId);
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/incubation-batches/${concurrencyIncubationBatchId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          actualHatchDate: DAY3.toISOString(),
+          eggsInfertile: 0,
+          eggsInfected: 0,
+          embryonicMortality: 0,
+          chicksHatched: 100,
+          status: 'ECLOS',
+        })
+        .expect(200);
+    });
+
+    it('exactement une des deux orientations concurrentes réussit, l’autre est rejetée proprement (409), filiation finale cohérente', async () => {
+      // 100 poussins éclos — deux orientations de 70 (REFORME_PERTE, aucune
+      // entité enfant, isole le verrou testé) sont chacune individuellement
+      // valides, mais 70 + 70 = 140 > 100.
+      const sendOrient = () =>
+        request(app.getHttpServer())
+          .post(`/api/v1/incubation-batches/${concurrencyIncubationBatchId}/orientation`)
+          .set('Authorization', `Bearer ${ownerToken}`)
+          .send({ transformationType: 'REFORME_PERTE', quantity: 70, reason: 'Test concurrence' });
+
+      const [resA, resB] = await Promise.all([sendOrient(), sendOrient()]);
+      const statuses = [resA.status, resB.status].sort();
+      expect(statuses).toEqual([201, 409]);
+
+      const lineageAgg = await prisma.batchLineage.aggregate({
+        where: { incubationBatchId: concurrencyIncubationBatchId },
+        _sum: { quantity: true },
+      });
+      // Une seule orientation a pu être appliquée : jamais 140, jamais un
+      // double comptage.
+      expect(lineageAgg._sum.quantity).toBe(70);
+    });
+  });
 });

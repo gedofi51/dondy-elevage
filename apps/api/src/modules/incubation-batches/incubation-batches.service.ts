@@ -21,7 +21,10 @@ import type { UpdateIncubationBatchDto } from './dto/update-incubation-batch.dto
 
 const CODE_PREFIX_BASE = 'INC';
 const CODE_DIGITS = 3;
-const MAX_CODE_RETRIES = 3;
+/** Phase 8 : couvre à la fois les collisions de code (P2002) et les
+ * échecs de sérialisation liés au verrou FOR UPDATE (P2034) — une
+ * transaction par tentative, comme StockMovementsService.create(). */
+const MAX_TRANSACTION_RETRIES = 3;
 const DEFAULT_INCUBATION_DURATION_DAYS = 21;
 const DEFAULT_CANDLING_DAY_OFFSET = 7;
 const SETTING_KEY_DURATION = 'incubation.duration_days';
@@ -30,6 +33,14 @@ const SETTING_KEY_CANDLING_OFFSET = 'incubation.candling_day_offset';
 const CONFIRMED_SALE_STATUSES: Prisma.SaleWhereInput['status'] = {
   in: ['CONFIRMEE', 'PAYEE', 'PARTIELLEMENT_PAYEE', 'IMPAYEE'],
 };
+
+function isSerializationFailure(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+}
+
+function isUniqueConstraintFailure(error: unknown): boolean {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
 
 export interface IncubationBatchWithComputed extends IncubationBatch {
   expectedHatchDate: Date;
@@ -105,6 +116,9 @@ export class IncubationBatchesService {
   ): Promise<IncubationBatchWithComputed> {
     // Filiation obligatoire, non contournable : le lot reproducteur source
     // doit exister et appartenir à la ferme (findOne lève 404 sinon).
+    // Pré-vérification rapide hors transaction (message d'erreur immédiat
+    // au cas non-concurrent) — la garantie réelle contre le dépassement
+    // concurrent reste le verrouillage FOR UPDATE dans createLocked().
     const breederBatch = await this.breederBatchesService.findOne(actingUser, dto.breederBatchId);
     await this.assertIncubatorBelongsToFarm(actingUser.farmId, dto.incubatorId);
 
@@ -116,37 +130,7 @@ export class IncubationBatchesService {
     }
 
     const incubationStartDate = new Date(dto.incubationStartDate);
-
-    let batch: IncubationBatch | undefined;
-    for (let attempt = 0; attempt < MAX_CODE_RETRIES; attempt++) {
-      const code = await this.generateBatchCode(
-        actingUser.farmId,
-        incubationStartDate.getFullYear(),
-      );
-      try {
-        batch = await this.prisma.incubationBatch.create({
-          data: {
-            farmId: actingUser.farmId,
-            code,
-            breederBatchId: dto.breederBatchId,
-            incubatorId: dto.incubatorId,
-            incubationStartDate,
-            eggCount: dto.eggCount,
-            remarks: dto.remarks,
-            createdBy: actingUser.sub,
-          },
-        });
-        break;
-      } catch (error) {
-        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-          continue;
-        }
-        throw error;
-      }
-    }
-    if (!batch) {
-      throw new ConflictException('Impossible de générer un code de lot unique — réessayer.');
-    }
+    const batch = await this.createLocked(actingUser, dto, incubationStartDate);
 
     await this.auditLogService.record({
       farmId: actingUser.farmId,
@@ -159,6 +143,62 @@ export class IncubationBatchesService {
     });
 
     return this.attachComputedFields(actingUser, batch);
+  }
+
+  /**
+   * Phase 8 — durcissement concurrence (dette transversale "disponibilité
+   * sans verrou" corrigée). Une transaction PAR tentative (comme
+   * StockMovementsService.create()) : verrou+validation
+   * (BreederBatchesService.assertAvailableFertileEggsInTransaction) EN
+   * PREMIER dans la transaction, puis génération de code + création —
+   * fusionne l'ancienne boucle retry (P2002, collision de code) avec le
+   * retry P2034 (échec de sérialisation dû au verrou).
+   */
+  private async createLocked(
+    actingUser: AccessTokenPayload,
+    dto: CreateIncubationBatchDto,
+    incubationStartDate: Date,
+  ): Promise<IncubationBatch> {
+    for (let attempt = 0; attempt < MAX_TRANSACTION_RETRIES; attempt++) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          await this.breederBatchesService.assertAvailableFertileEggsInTransaction(
+            tx,
+            actingUser.farmId,
+            dto.breederBatchId,
+            dto.eggCount,
+          );
+          const code = await this.generateBatchCode(
+            actingUser.farmId,
+            incubationStartDate.getFullYear(),
+          );
+          return tx.incubationBatch.create({
+            data: {
+              farmId: actingUser.farmId,
+              code,
+              breederBatchId: dto.breederBatchId,
+              incubatorId: dto.incubatorId,
+              incubationStartDate,
+              eggCount: dto.eggCount,
+              remarks: dto.remarks,
+              createdBy: actingUser.sub,
+            },
+          });
+        });
+      } catch (error) {
+        if (error instanceof ConflictException) {
+          throw error;
+        }
+        if (
+          (isSerializationFailure(error) || isUniqueConstraintFailure(error)) &&
+          attempt < MAX_TRANSACTION_RETRIES - 1
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new ConflictException('Impossible de générer un code de lot unique — réessayer.');
   }
 
   async findAll(actingUser: AccessTokenPayload): Promise<IncubationBatchWithComputed[]> {
