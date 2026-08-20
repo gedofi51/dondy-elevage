@@ -544,6 +544,29 @@ describe('Reproduction, couvoir et poussins — cycle complet (e2e, scénario §
     await expect(breederCronService.runDailySweep()).resolves.toBeUndefined();
   });
 
+  it('17. GET .../profitability (Phase 7) : CA = uniquement les ventes du lot poussins orienté VENTE (20 x 500 = 10 000), le lot RENOUVELLEMENT jamais vendu n’y contribue pas', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/incubation-batches/${incubationBatchId}/profitability`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    const profitability = body<{
+      totalExpensesFcfa: number;
+      revenueFcfa: number;
+      grossMarginFcfa: number;
+      profitabilityRate: number;
+      costPerChickHatchedFcfa: number;
+    }>(res);
+
+    // Aucune Expense rattachée à ce lot d'incubation dans ce scénario.
+    expect(profitability.totalExpensesFcfa).toBe(0);
+    // Seule la vente confirmée du lot orienté VENTE (test 10, 20 poussins
+    // x 500 FCFA) compte — le lot RENOUVELLEMENT (300, jamais vendu,
+    // currentHeadcount null) n'ajoute aucun CA malgré sa filiation
+    // childType='chick_batch' identique.
+    expect(profitability.revenueFcfa).toBe(10_000);
+    expect(profitability.grossMarginFcfa).toBe(10_000);
+  });
+
   describe('Isolation farmId et RBAC', () => {
     let readerBToken: string;
 

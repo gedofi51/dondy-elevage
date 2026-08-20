@@ -468,6 +468,23 @@ describe('Layer batches — cycle de vie complet (e2e, scénario §16-B)', () =>
     await expect(layerCronService.runDailySweep()).resolves.toBeUndefined();
   });
 
+  it('13bis. GET .../profitability est consultable sur un lot ACTIF (pas encore clôturé, Phase 7) — mêmes chiffres que la clôture ci-dessous', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/layer-batches/${batchId}/profitability`)
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .expect(200);
+    const summary = body<ClosureResponseBody['summary']>(res);
+
+    // Réutilise EXACTEMENT le même calcul que la clôture (test 14,
+    // ci-dessous) — les chiffres doivent être identiques puisqu'aucune
+    // saisie n'intervient entre les deux appels, la seule différence est
+    // que le lot n'est pas encore CLOTURE.
+    expect(summary.finances.totalExpensesFcfa).toBe(143_000);
+    expect(summary.finances.revenueFcfa).toBe(150_000);
+    expect(summary.finances.grossMarginFcfa).toBe(7_000);
+    expect(summary.finances.costPerEggFcfa).toBeCloseTo(52.19, 1);
+  });
+
   it('14. clôture le lot → résumé de cohérence complet (production/stock/finances/cohérence)', async () => {
     const res = await request(app.getHttpServer())
       .post(`/api/v1/layer-batches/${batchId}/cloturer`)
