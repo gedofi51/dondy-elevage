@@ -165,6 +165,49 @@ identifié comme actif dans les phases suivantes.
   rigueur que les autres seuils déjà sourcés dans le projet, mais à
   reconsidérer si une source plus directement applicable apparaît.
 
+## Phase 6 — Vente et distribution d'eau
+
+- **Pas d'occurrence de la dette transversale "vérification de
+  disponibilité sans verrou"** (voir tête de ce document) : la vente d'eau
+  (`Sale`, productType=EAU) n'a, structurellement, **aucune** vérification
+  de disponibilité/stock à faire (l'eau n'est pas un lot fini avec
+  effectif, contrairement à `POULET_CHAIR`/`OEUFS`/`POUSSINS`) — donc
+  aucune fenêtre de course lecture-puis-écriture comparable. La contrainte
+  unique `[waterPointId, date]` sur `WaterReading` protège nativement les
+  doublons de relevé, comme `BreederDailyRecord`/`LayerDailyRecord`,
+  jamais signalée comme un gap dans ces modules non plus. Conclusion
+  explicitement vérifiée avant implémentation (voir plan Phase 6, section
+  "Concurrence") : ce n'est pas de la dette différée, le problème
+  n'existe simplement pas dans ce module.
+- **Seuils d'écart de caisse (5 % / 2 000 FCFA) non sourcés** —
+  `water.cash_variance_threshold_percent`/`water.cash_variance_threshold_fcfa_floor`
+  (`WaterAlertsCronService`), paramètres d'ingénierie assumés faute de
+  norme publiée pour la tolérance de caisse d'un point de vente d'eau
+  informel (contrairement aux seuils avicoles sourcés des phases
+  précédentes). Même traitement que
+  `DEFAULT_FEED_DEVIATION_THRESHOLD_PERCENT` (Phase 4), reconfigurables
+  sans déploiement (`Setting`).
+- **Angle mort constaté (pas introduit par cette phase) : `remove()` sans
+  garde-fou réel sur `Building`/`Incubator`/`Supplier`** — ces trois
+  services font un `prisma.X.delete()` nu, sans `count()` préalable ni
+  interception de `PrismaClientKnownRequestError` P2003 ; une suppression
+  avec des données liées existantes remonterait probablement une erreur
+  500 non gérée plutôt qu'un 409 propre. Repéré lors de la revue du plan
+  Phase 6 (comparaison avec le garde-fou explicite de
+  `BroilerBatchesService.remove()`). **Non corrigé sur ces trois entités**
+  (hors périmètre demandé — corriger du code de phases antérieures non
+  sollicité). `WaterPointsService.remove()`, créé dans cette même phase,
+  **en est exempté dès l'origine** : garde-fou explicite ajouté
+  directement (`count()` sur `WaterReading`/`Sale` liés → 409).
+- **"Vente au récipient" (§7.1, unité tarifaire alternative) non
+  implémentée comme flux dédié** : couverte structurellement par
+  `Sale.saleMode = UNITE` + `Sale.unitPriceFcfa` saisi librement par
+  vente (comme toute vente généralisée), sans relevé `WaterReading`
+  associé — pas un champ manquant, une conséquence directe de la
+  décision de ne pas ajouter de structure tarifaire multi-unité à
+  `WaterPoint` (le §7.2 et le scénario §16-E sont exclusivement
+  index/m³). À revoir si l'usage réel montre un besoin différent.
+
 ## ✅ Corrigé
 
 ### `OrientationService.orient()` — absence de transaction unique (Phase 5)
