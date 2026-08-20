@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { BroilerHealthEvent } from '@prisma/client';
+import type { BroilerHealthEvent, HealthEventStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AuditLogService } from '../../../common/audit/audit-log.service';
 import { assertSameFarm } from '../../../common/rbac/farm-scope.util';
 import type { AccessTokenPayload } from '../../auth/jwt-payload.interface';
+import { StockMovementsService } from '../../stock-movements/stock-movements.service';
+import { computeStockConsumptionInstructions } from '../../items/calculations/stock-consumption.calculations';
 import type { CreateHealthEventDto } from './dto/create-health-event.dto';
 import type { UpdateHealthEventDto } from './dto/update-health-event.dto';
 
@@ -12,6 +14,7 @@ export class HealthEventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogService: AuditLogService,
+    private readonly stockMovementsService: StockMovementsService,
   ) {}
 
   private async assertBatchAccessible(
@@ -25,6 +28,51 @@ export class HealthEventsService {
     assertSameFarm(actingUser, batch.farmId);
   }
 
+  /** Phase 7 — hook §8.3 "médicament administré" : ne déclenche un
+   * mouvement de stock (+ Expense santé) QUE sur transition vers
+   * status=REALISE — jamais pour un soin PREVU (déduirait le stock avant
+   * l'administration réelle). Symétriquement, un événement REALISE qui
+   * repasse à ANNULE/REPORTE génère le mouvement compensatoire inverse
+   * (computeStockConsumptionInstructions avec état "effectif" null/0 hors
+   * REALISE). */
+  private async applyHealthStockInstructions(
+    tx: Prisma.TransactionClient,
+    actingUser: AccessTokenPayload,
+    batchId: string,
+    date: Date,
+    eventId: string,
+    instructions: ReturnType<typeof computeStockConsumptionInstructions>,
+  ): Promise<void> {
+    for (const instruction of instructions) {
+      const movement = await this.stockMovementsService.recordMovementInTransaction(tx, {
+        farmId: actingUser.farmId,
+        itemId: instruction.itemId,
+        type: instruction.type,
+        reason: instruction.reason,
+        quantity: instruction.quantity,
+        date,
+        createdBy: actingUser.sub,
+        sourceType: 'broiler_health_event',
+        sourceId: eventId,
+      });
+      if (instruction.reason === 'DISTRIBUTION_BANDE') {
+        await tx.expense.create({
+          data: {
+            farmId: actingUser.farmId,
+            batchId,
+            date,
+            category: 'Santé',
+            description: 'Traitement sanitaire (mouvement de stock automatique)',
+            quantity: movement.quantity,
+            unitPriceFcfa: movement.unitCostFcfaSnapshot,
+            amountFcfa: movement.totalValueFcfa,
+            createdBy: actingUser.sub,
+          },
+        });
+      }
+    }
+  }
+
   async create(
     actingUser: AccessTokenPayload,
     batchId: string,
@@ -32,27 +80,46 @@ export class HealthEventsService {
     ipAddress: string | null,
   ): Promise<BroilerHealthEvent> {
     await this.assertBatchAccessible(actingUser, batchId);
+    const date = new Date(dto.date);
+    const status: HealthEventStatus = dto.status ?? 'PREVU';
+    const instructions =
+      status === 'REALISE' && dto.itemId
+        ? computeStockConsumptionInstructions(null, 0, dto.itemId, dto.quantityUsed ?? 0)
+        : [];
 
-    const event = await this.prisma.broilerHealthEvent.create({
-      data: {
-        farmId: actingUser.farmId,
+    const event = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.broilerHealthEvent.create({
+        data: {
+          farmId: actingUser.farmId,
+          batchId,
+          date,
+          status: dto.status,
+          type: dto.type,
+          product: dto.product,
+          motif: dto.motif,
+          dose: dto.dose,
+          quantity: dto.quantity,
+          unit: dto.unit,
+          itemId: dto.itemId,
+          quantityUsed: dto.quantityUsed,
+          durationDays: dto.durationDays,
+          administrationRoute: dto.administrationRoute,
+          prescribedBy: dto.prescribedBy,
+          performedBy: dto.performedBy,
+          costFcfa: dto.costFcfa,
+          observation: dto.observation,
+          createdBy: actingUser.sub,
+        },
+      });
+      await this.applyHealthStockInstructions(
+        tx,
+        actingUser,
         batchId,
-        date: new Date(dto.date),
-        status: dto.status,
-        type: dto.type,
-        product: dto.product,
-        motif: dto.motif,
-        dose: dto.dose,
-        quantity: dto.quantity,
-        unit: dto.unit,
-        durationDays: dto.durationDays,
-        administrationRoute: dto.administrationRoute,
-        prescribedBy: dto.prescribedBy,
-        performedBy: dto.performedBy,
-        costFcfa: dto.costFcfa,
-        observation: dto.observation,
-        createdBy: actingUser.sub,
-      },
+        date,
+        created.id,
+        instructions,
+      );
+      return created;
     });
 
     await this.auditLogService.record({
@@ -99,9 +166,42 @@ export class HealthEventsService {
   ): Promise<BroilerHealthEvent> {
     const existing = await this.findOne(actingUser, batchId, id);
 
-    const updated = await this.prisma.broilerHealthEvent.update({
-      where: { id },
-      data: { ...dto, date: dto.date ? new Date(dto.date) : undefined },
+    const nextStatus = dto.status !== undefined ? dto.status : existing.status;
+    const nextItemId = dto.itemId !== undefined ? dto.itemId : existing.itemId;
+    const nextQuantityUsed =
+      dto.quantityUsed !== undefined
+        ? dto.quantityUsed
+        : existing.quantityUsed
+          ? Number(existing.quantityUsed)
+          : 0;
+
+    const effectivePreviousItemId = existing.status === 'REALISE' ? existing.itemId : null;
+    const effectivePreviousQuantity =
+      existing.status === 'REALISE' && existing.quantityUsed ? Number(existing.quantityUsed) : 0;
+    const effectiveNextItemId = nextStatus === 'REALISE' ? nextItemId : null;
+    const effectiveNextQuantity = nextStatus === 'REALISE' ? nextQuantityUsed : 0;
+
+    const instructions = computeStockConsumptionInstructions(
+      effectivePreviousItemId,
+      effectivePreviousQuantity,
+      effectiveNextItemId,
+      effectiveNextQuantity,
+    );
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const event = await tx.broilerHealthEvent.update({
+        where: { id },
+        data: { ...dto, date: dto.date ? new Date(dto.date) : undefined },
+      });
+      await this.applyHealthStockInstructions(
+        tx,
+        actingUser,
+        batchId,
+        event.date,
+        event.id,
+        instructions,
+      );
+      return event;
     });
 
     await this.auditLogService.record({
