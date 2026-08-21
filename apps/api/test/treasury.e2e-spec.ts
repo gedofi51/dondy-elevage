@@ -173,103 +173,13 @@ describe('Trésorerie — journal, créances/dettes, vue consolidée (e2e, scén
       await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
       await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-
-      // DIAGNOSTIC TEMPORAIRE — à retirer une fois la table fautive
-      // identifiée. Balaie tout modèle portant farmId (référence directe
-      // à Farm) pour farmA/farmB, y compris les modèles déjà supposément
-      // nettoyés ci-dessus (vérifie que le suivi par ID est complet) —
-      // non reproductible en local, capturé via le prochain run CI.
-      const farmIds = [farmA.id, farmB.id];
-      const modelChecks: Array<[string, () => Promise<number>]> = [
-        ['role', () => prisma.role.count({ where: { farmId: { in: farmIds } } })],
-        ['building', () => prisma.building.count({ where: { farmId: { in: farmIds } } })],
-        ['setting', () => prisma.setting.count({ where: { farmId: { in: farmIds } } })],
-        ['document', () => prisma.document.count({ where: { farmId: { in: farmIds } } })],
-        ['alert', () => prisma.alert.count({ where: { farmId: { in: farmIds } } })],
-        ['notification', () => prisma.notification.count({ where: { farmId: { in: farmIds } } })],
-        ['broilerBatch', () => prisma.broilerBatch.count({ where: { farmId: { in: farmIds } } })],
-        [
-          'broilerDailyRecord',
-          () => prisma.broilerDailyRecord.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        [
-          'broilerMortality',
-          () => prisma.broilerMortality.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        [
-          'broilerHealthEvent',
-          () => prisma.broilerHealthEvent.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        ['layerBatch', () => prisma.layerBatch.count({ where: { farmId: { in: farmIds } } })],
-        [
-          'layerDailyRecord',
-          () => prisma.layerDailyRecord.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        [
-          'layerHealthEvent',
-          () => prisma.layerHealthEvent.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        ['eggStockLot', () => prisma.eggStockLot.count({ where: { farmId: { in: farmIds } } })],
-        [
-          'eggStockMovement',
-          () => prisma.eggStockMovement.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        ['incubator', () => prisma.incubator.count({ where: { farmId: { in: farmIds } } })],
-        ['breederBatch', () => prisma.breederBatch.count({ where: { farmId: { in: farmIds } } })],
-        [
-          'breederDailyRecord',
-          () => prisma.breederDailyRecord.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        [
-          'incubationBatch',
-          () => prisma.incubationBatch.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        ['chickBatch', () => prisma.chickBatch.count({ where: { farmId: { in: farmIds } } })],
-        ['batchLineage', () => prisma.batchLineage.count({ where: { farmId: { in: farmIds } } })],
-        ['waterPoint', () => prisma.waterPoint.count({ where: { farmId: { in: farmIds } } })],
-        ['waterReading', () => prisma.waterReading.count({ where: { farmId: { in: farmIds } } })],
-        ['item', () => prisma.item.count({ where: { farmId: { in: farmIds } } })],
-        ['stockMovement', () => prisma.stockMovement.count({ where: { farmId: { in: farmIds } } })],
-        ['purchaseOrder', () => prisma.purchaseOrder.count({ where: { farmId: { in: farmIds } } })],
-        [
-          'purchaseOrderItem',
-          () => prisma.purchaseOrderItem.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        ['goodsReceipt', () => prisma.goodsReceipt.count({ where: { farmId: { in: farmIds } } })],
-        [
-          'goodsReceiptItem',
-          () => prisma.goodsReceiptItem.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        [
-          'supplierPayment',
-          () => prisma.supplierPayment.count({ where: { farmId: { in: farmIds } } }),
-        ],
-        ['supplier', () => prisma.supplier.count({ where: { farmId: { in: farmIds } } })],
-        ['customer', () => prisma.customer.count({ where: { farmId: { in: farmIds } } })],
-        ['expense', () => prisma.expense.count({ where: { farmId: { in: farmIds } } })],
-        ['sale', () => prisma.sale.count({ where: { farmId: { in: farmIds } } })],
-        ['payment', () => prisma.payment.count({ where: { farmId: { in: farmIds } } })],
-        ['auditLog', () => prisma.auditLog.count({ where: { farmId: { in: farmIds } } })],
-        ['user', () => prisma.user.count({ where: { farmId: { in: farmIds } } })],
-      ];
-      const results = await Promise.all(
-        modelChecks.map(async ([name, run]) => [name, await run()] as const),
-      );
-      console.error(
-        'DIAGNOSTIC balayage farmId avant farm.deleteMany :',
-        results.filter(([, count]) => count > 0),
-      );
-
+      // Diagnostic CI (commit 1acad95) : Alert orpheline pour farmA/farmB,
+      // jamais tracée par ce fichier — aucun cron d'alerte n'est invoqué
+      // ici, mais Notification.alertId dépend de Alert donc l'ordre reste
+      // avant la ferme (avant les entités déjà nettoyées ci-dessus).
+      await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
       await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
-    } catch (error) {
-      // DIAGNOSTIC TEMPORAIRE — à retirer une fois la table fautive
-      // identifiée depuis le log CI (non reproductible en local).
-      console.error('DIAGNOSTIC nettoyage afterAll treasury :', {
-        message: (error as Error)?.message,
-        meta: (error as { meta?: unknown })?.meta,
-        code: (error as { code?: unknown })?.code,
-      });
-      throw error;
     } finally {
       await app.close();
     }
