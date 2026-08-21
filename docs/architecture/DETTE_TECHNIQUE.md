@@ -297,6 +297,107 @@ laissées de côté.
     ont une couverture allant jusqu'au contenu réel de l'alerte
     déclenchée (voir "✅ Corrigé").
 
+## Phase 9 — Socle frontend + module Eau
+
+Première phase frontend (`apps/web`) : socle transversal (connexion,
+client API, permissions UI, composants partagés) puis le module Eau
+complet (choix argumenté dans le plan de mission — dette la plus faible
+des 8 modules candidats, cycle le plus simple, rôle "Responsable eau"
+déjà taillé pour lui dans `roles.catalog.ts`).
+
+- **`PERMISSIONS`/`PermissionCode`/`ALL_PERMISSIONS`/
+  `PERMISSION_DESCRIPTIONS` déplacés vers
+  `packages/shared-types/src/permissions.ts`** (pas dupliqués — voir
+  discussion ci-dessous) — `apps/api/src/common/rbac/permissions.
+  constants.ts` n'est plus qu'un ré-export nommé. Un agent Explore a
+  d'abord audité les 42 points d'import du fichier source (41 dans
+  `apps/api/src`, 1 dans `prisma/seed.ts`, 0 dans les suites e2e) :
+  déplacement sûr côté code (aucun export par défaut, aucune dépendance
+  à l'identité du module). Deux problèmes de packaging bloquaient
+  ensuite le déplacement réel, tous deux corrigés :
+  1. Le stage `runner` du `Dockerfile` de `apps/api` ne copiait pas
+     `packages/` → ajout d'un `COPY --from=builder /repo/packages/
+     shared-types ./packages/shared-types`.
+  2. `packages/shared-types` n'avait pas d'étape de build (TS brut) —
+     suffisant pour `apps/web` (Turbopack transpile via
+     `transpilePackages`), **insuffisant pour `apps/api`** : `nest
+     build`/`node` exécutent du CommonJS pur, incapables de charger un
+     `.ts` non compilé (`ERR_MODULE_NOT_FOUND` reproduit et vérifié).
+     Ajout d'un vrai build (`tsconfig.json` + script `build: tsc`,
+     `main`/`types` pointant vers `dist/`), invoqué explicitement dans
+     le stage `builder` du Dockerfile (avant le build de `apps/api`) et
+     dans la commande de démarrage du stage `dev` (le dossier `src` de
+     `packages/shared-types` n'arrivant qu'au runtime via le bind-mount
+     du monorepo complet, jamais présent au moment du `npm ci` du stage
+     `deps` — un `postinstall` racine a été essayé puis abandonné pour
+     cette raison précise, il cassait le cache Docker du stage `deps`).
+  Vérifié : image `runner` reconstruite et démarrée manuellement — plus
+  aucune erreur de résolution de module sur `@dondy-elevage/shared-types`
+  (voir aussi les deux bugs Docker **préexistants et sans rapport**,
+  découverts pendant cette vérification, ci-dessous). RBAC revérifié
+  fonctionnel (401 sans token, 200 avec) + suite e2e complète (142/142,
+  11/11 suites) rejouée deux fois consécutives après le déplacement,
+  aucune régression.
+- **Deux bugs Docker de production préexistants, découverts en
+  vérifiant le point ci-dessus, sans rapport avec cette phase** — la
+  chaîne `builder`→`runner` du `Dockerfile` de `apps/api` n'avait
+  apparemment jamais été construite ET démarrée de bout en bout
+  auparavant (cohérent avec `ci.yml` : "le déploiement lui-même est
+  ajouté à partir de la phase où un environnement de déploiement réel
+  existe") :
+  1. `CMD ["node", "dist/main.js"]` (stage `runner`) — chemin faux, la
+     sortie réelle de `nest build` est `dist/src/main.js`
+     (`tsc` calcule un `rootDir` commun incluant `apps/api/
+     prisma.config.ts`, qui vit hors de `src/`, ce qui pousse tout le
+     reste sous `dist/src/`).
+  2. `otplib` absent de `node_modules` dans l'image `runner` alors que
+     déclaré en dépendance directe de `apps/api/package.json` — cause
+     non creusée (hors périmètre de cette phase).
+  Non corrigés (hors périmètre socle frontend) — signalés ici pour ne
+  pas être redécouverts comme un "nouveau" bug le jour où quelqu'un
+  tente un vrai déploiement de production.
+- **Bug de session découvert et corrigé en cours de vérification
+  manuelle** : `AuthProvider` déclenchait un rafraîchissement silencieux
+  du token au montage (`POST /api/auth/refresh`) sans protection contre
+  un double appel concurrent (React StrictMode en dev, mais le risque
+  existe aussi en prod — deux onglets ouverts simultanément, une
+  reprise sur 401 chevauchant ce montage...). Le refresh token étant à
+  usage unique côté API avec **révocation de toute la famille de
+  tokens en cas de réutilisation détectée** (`TokenService.
+  rotateRefreshToken`), un simple double appel invalidait la session
+  entière silencieusement — symptôme observé : perte de session
+  systématique sur tout rechargement complet de page. Corrigé par un
+  dédoublonnage des appels concurrents vers une seule requête réelle
+  partagée (`lib/auth/auth-client.ts`, promesse en vol mémorisée).
+  Aucune régression possible côté API (le comportement de rotation
+  lui-même n'a pas changé) — le correctif est entièrement côté client.
+- **Période par défaut du KPI point d'eau non spécifiée par l'API,
+  tranchée côté front** : `GET /water-points/:id/kpi` exige `from`/`to`
+  sans valeur par défaut (choix délibéré côté API, "pas d'ambiguïté").
+  Le front retient le mois en cours comme période d'affichage par
+  défaut sur la fiche point d'eau — décision d'affichage, pas un bug ;
+  pas de sélecteur de période dans cette première version (aucun champ
+  pour changer la plage), à ajouter si l'usage réel en montre le besoin.
+- **Aucune pagination serveur sur `GET /water-points`** — cohérent avec
+  le constat déjà documenté (seuls Alerts/Notifications sont réellement
+  paginés) : le nombre de points d'eau par ferme reste naturellement
+  petit, pas de nécessité identifiée. Le composant `DataTable` accepte
+  néanmoins déjà soit un tableau simple soit un `PaginatedResult<T>`,
+  pour ne pas devoir le réécrire quand un module au volume croissant
+  (ex. historique des ventes, bandes Chair) en aura besoin.
+- **2FA, mot de passe oublié/réinitialisation et OAuth (Google/
+  Microsoft) implémentés mais non couverts par des tests de
+  composants** — seul `AppShell` a un test (Phase 0, étendu pour
+  englober `AuthProvider`). Honnêteté du périmètre : aucun test de
+  composant écrit cette phase au-delà de celui déjà existant, uniquement
+  une vérification manuelle guidée dans un vrai navigateur (voir
+  rapport de mission).
+- **`apps/web/proxy.ts` (redirection optimiste pré-rendu) non
+  implémenté** — le garde côté client du layout `(app)` suffit pour la
+  correction fonctionnelle (redirige vers `/connexion` si aucune
+  session), documenté comme reporté dans le plan de mission (non
+  bloquant, juste un flash de contenu protégé évitable en plus).
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
