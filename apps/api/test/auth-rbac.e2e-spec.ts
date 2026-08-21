@@ -8,6 +8,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PasswordService } from '../src/modules/auth/password.service';
 import { hashOpaqueToken } from '../src/modules/auth/tokens.util';
+import { MailService } from '../src/mail/mail.service';
 
 /**
  * Test d'intégration contre une vraie base MySQL (pas de mocks) : couvre les
@@ -19,6 +20,14 @@ import { hashOpaqueToken } from '../src/modules/auth/tokens.util';
  * (seul son hash est stocké, par design) : on simule la réception de l'email
  * en écrivant nous-mêmes un hash de jeton connu, plutôt que de dépendre de
  * Mailpit être joignable pendant l'exécution des tests.
+ *
+ * MailService est mocké (overrideProvider) : la création d'utilisateur
+ * (POST /users) déclenche un envoi réel via AuthService.issueInvitation(),
+ * indépendamment de ce que le test lit ensuite — sans mock, ce test tente
+ * une vraie connexion SMTP à chaque exécution, silencieusement absorbée en
+ * local (Mailpit y répond) mais en échec (ECONNREFUSED) en CI (aucun SMTP
+ * provisionné), source d'un handle de connexion qui ne se referme pas
+ * proprement avant la fin du process Jest.
  */
 jest.setTimeout(30_000);
 
@@ -65,7 +74,10 @@ describe('Auth + RBAC + isolation farmId (e2e)', () => {
   beforeAll(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(MailService)
+      .useValue({ envoyerInvitation: async () => undefined, envoyerReinitialisationMotDePasse: async () => undefined })
+      .compile();
 
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api/v1');
