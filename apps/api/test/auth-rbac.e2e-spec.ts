@@ -76,7 +76,10 @@ describe('Auth + RBAC + isolation farmId (e2e)', () => {
       imports: [AppModule],
     })
       .overrideProvider(MailService)
-      .useValue({ envoyerInvitation: async () => undefined, envoyerReinitialisationMotDePasse: async () => undefined })
+      .useValue({
+        envoyerInvitation: () => Promise.resolve(),
+        envoyerReinitialisationMotDePasse: () => Promise.resolve(),
+      })
       .compile();
 
     app = moduleRef.createNestApplication();
