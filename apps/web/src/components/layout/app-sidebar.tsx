@@ -1,8 +1,14 @@
+'use client';
+
 import Link from 'next/link';
 import { Feather } from 'lucide-react';
 import { navItems } from './nav-items';
+import { useAuth } from '@/components/providers/auth-provider';
 
 export function AppSidebar() {
+  const { user } = useAuth();
+  const visibleItems = navItems.filter((item) => !item.permission || user?.permissions.includes(item.permission));
+
   return (
     <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
       <div className="flex items-center gap-2 px-6 py-5">
@@ -14,7 +20,7 @@ export function AppSidebar() {
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 px-3 py-2">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const Icon = item.icon;
           return (
             <Link
@@ -30,7 +36,7 @@ export function AppSidebar() {
       </nav>
 
       <div className="border-t border-sidebar-border px-6 py-4 text-xs text-sidebar-foreground/60">
-        Modules métier disponibles à partir de la Phase 3.
+        Modules métier ajoutés progressivement, un par un.
       </div>
     </aside>
   );

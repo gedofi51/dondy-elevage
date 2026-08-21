@@ -12,6 +12,9 @@ apps/web/next-env.d.ts
 apps/api/dist/
 apps/api/storage/
 
+# Packages partagés (compilés — voir packages/*/package.json "build")
+packages/*/dist/
+
 # Env files (never commit secrets)
 .env
 .env.local
