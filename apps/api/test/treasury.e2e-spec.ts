@@ -174,6 +174,15 @@ describe('Trésorerie — journal, créances/dettes, vue consolidée (e2e, scén
       await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
       await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
+    } catch (error) {
+      // DIAGNOSTIC TEMPORAIRE — à retirer une fois la table fautive
+      // identifiée depuis le log CI (non reproductible en local).
+      console.error('DIAGNOSTIC nettoyage afterAll treasury :', {
+        message: (error as Error)?.message,
+        meta: (error as { meta?: unknown })?.meta,
+        code: (error as { code?: unknown })?.code,
+      });
+      throw error;
     } finally {
       await app.close();
     }
