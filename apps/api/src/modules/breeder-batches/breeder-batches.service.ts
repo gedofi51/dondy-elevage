@@ -61,14 +61,20 @@ export class BreederBatchesService {
   }
 
   /** §6.2/§6.3 : quantité d'œufs fécondés disponible pour incubation —
-   * jamais stockée, toujours dérivée (voir BreederDailyRecord). */
-  async computeAvailableFertileEggsForBatch(batchId: string): Promise<number> {
+   * jamais stockée, toujours dérivée (voir BreederDailyRecord). `tx`
+   * optionnel (Phase 8) : permet de recalculer DANS la transaction
+   * verrouillée de assertAvailableFertileEggsInTransaction. */
+  async computeAvailableFertileEggsForBatch(
+    batchId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
+    const client = tx ?? this.prisma;
     const [dailyAgg, incubationAgg] = await Promise.all([
-      this.prisma.breederDailyRecord.aggregate({
+      client.breederDailyRecord.aggregate({
         where: { batchId },
         _sum: { eggsSelectedForIncubation: true },
       }),
-      this.prisma.incubationBatch.aggregate({
+      client.incubationBatch.aggregate({
         where: { breederBatchId: batchId, status: NON_CANCELLED_INCUBATION_STATUSES },
         _sum: { eggCount: true },
       }),
@@ -77,6 +83,36 @@ export class BreederBatchesService {
       dailyAgg._sum.eggsSelectedForIncubation ?? 0,
       incubationAgg._sum.eggCount ?? 0,
     );
+  }
+
+  /**
+   * Phase 8 — durcissement concurrence (dette transversale "disponibilité
+   * sans verrou" corrigée). Verrouille la ligne BreederBatch
+   * (SELECT ... FOR UPDATE, seul endroit de ce service où un verrou est
+   * pris) avant de recalculer via CE MÊME client transactionnel, puis
+   * compare. `tx` obligatoire — l'appelant (IncubationBatchesService)
+   * fournit une transaction déjà ouverte.
+   */
+  async assertAvailableFertileEggsInTransaction(
+    tx: Prisma.TransactionClient,
+    farmId: string,
+    batchId: string,
+    requestedEggCount: number,
+  ): Promise<void> {
+    const [locked] = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM breeder_batches
+      WHERE id = ${batchId} AND farmId = ${farmId}
+      FOR UPDATE
+    `;
+    if (!locked) {
+      throw new NotFoundException('Lot reproducteur introuvable.');
+    }
+    const availableFertileEggs = await this.computeAvailableFertileEggsForBatch(batchId, tx);
+    if (requestedEggCount > availableFertileEggs) {
+      throw new ConflictException(
+        `Nombre d'œufs à incuber (${requestedEggCount}) supérieur aux œufs fécondés disponibles (${availableFertileEggs}).`,
+      );
+    }
   }
 
   private async attachComputedFields(batch: BreederBatch): Promise<BreederBatchWithComputed> {

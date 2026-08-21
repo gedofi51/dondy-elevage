@@ -142,35 +142,24 @@ export class SalesService {
       if (!dto.batchId) {
         throw new BadRequestException('batchId requis pour une vente de poulets de chair.');
       }
-      // §17 : vérifié dès la création (même en brouillon), pas seulement à
-      // la confirmation, pour ne jamais laisser promettre plus que
-      // l'effectif réel.
-      const computedBatch = await this.broilerBatchesService.findOne(actingUser, dto.batchId);
-      if (dto.quantity > computedBatch.currentHeadcount) {
-        throw new ConflictException(
-          `Quantité vendue (${dto.quantity}) supérieure à l'effectif disponible (${computedBatch.currentHeadcount}).`,
-        );
-      }
-      const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
-      sale = await this.prisma.sale.create({ data: buildData(saleNumber) });
+      sale = await this.createBroilerSaleWithLock(
+        actingUser,
+        dto.batchId,
+        dto.quantity,
+        saleYear,
+        buildData,
+      );
     } else if (productType === 'POUSSINS') {
       if (!dto.chickBatchId) {
         throw new BadRequestException('chickBatchId requis pour une vente de poussins.');
       }
-      // Même schéma que POULET_CHAIR (effectif simple, pas de FIFO) — un
-      // ChickBatch est un lot unique, pas un stock multi-lots accumulé.
-      const computedChickBatch = await this.chickBatchesService.findOne(
+      sale = await this.createChickSaleWithLock(
         actingUser,
         dto.chickBatchId,
+        dto.quantity,
+        saleYear,
+        buildData,
       );
-      const available = computedChickBatch.currentHeadcount ?? 0;
-      if (dto.quantity > available) {
-        throw new ConflictException(
-          `Quantité vendue (${dto.quantity}) supérieure au stock de poussins disponible (${available}).`,
-        );
-      }
-      const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
-      sale = await this.prisma.sale.create({ data: buildData(saleNumber) });
     } else if (productType === 'EAU') {
       if (!dto.waterPointId) {
         throw new BadRequestException("waterPointId requis pour une vente d'eau.");
@@ -225,6 +214,111 @@ export class SalesService {
     });
 
     return sale;
+  }
+
+  /**
+   * Phase 8 — durcissement concurrence (dette transversale "disponibilité
+   * sans verrou", ouverte depuis la Phase 3). Même gabarit que
+   * createEggSaleAndConsumeStock ci-dessous : pré-vérification rapide hors
+   * transaction (message d'erreur immédiat au cas non-concurrent), verrou
+   * réel `SELECT ... FOR UPDATE` dans BroilerBatchesService.
+   * assertAvailableHeadcountInTransaction. Contrairement à OEUFS
+   * (countsTowardAvailability), le contrôle s'applique ICI à TOUS les
+   * statuts, y compris BROUILLON/RESERVEE — comportement préexistant
+   * délibéré (§17 : "vérifié dès la création, même en brouillon, pour ne
+   * jamais laisser promettre plus que l'effectif réel"), préservé tel
+   * quel : ce correctif rend cette vérification atomique, il ne change PAS
+   * quand elle s'applique.
+   */
+  private async createBroilerSaleWithLock(
+    actingUser: AccessTokenPayload,
+    batchId: string,
+    quantity: number,
+    saleYear: number,
+    buildData: (saleNumber: string) => Prisma.SaleUncheckedCreateInput,
+  ): Promise<Sale> {
+    const computedBatch = await this.broilerBatchesService.findOne(actingUser, batchId);
+    if (quantity > computedBatch.currentHeadcount) {
+      throw new ConflictException(
+        `Quantité vendue (${quantity}) supérieure à l'effectif disponible (${computedBatch.currentHeadcount}).`,
+      );
+    }
+
+    for (let attempt = 0; attempt < MAX_TRANSACTION_RETRIES; attempt++) {
+      try {
+        const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
+        return await this.prisma.$transaction(async (tx) => {
+          await this.broilerBatchesService.assertAvailableHeadcountInTransaction(
+            tx,
+            actingUser.farmId,
+            batchId,
+            quantity,
+          );
+          return tx.sale.create({ data: buildData(saleNumber) });
+        });
+      } catch (error) {
+        if (error instanceof ConflictException) {
+          throw error;
+        }
+        if (
+          (isSerializationFailure(error) || isUniqueConstraintFailure(error)) &&
+          attempt < MAX_TRANSACTION_RETRIES - 1
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    // Inatteignable (la boucle retourne ou lève systématiquement), requis pour TypeScript.
+    throw new ConflictException('Impossible de finaliser la vente — réessayer.');
+  }
+
+  /** Même correctif que createBroilerSaleWithLock, appliqué à POUSSINS
+   * (même schéma que POULET_CHAIR — effectif simple, pas de FIFO — voir
+   * ChickBatchesService.assertAvailableHeadcountInTransaction). Occurrence
+   * découverte en Phase 8, jamais inventoriée séparément dans
+   * DETTE_TECHNIQUE.md malgré le même défaut exact que POULET_CHAIR. */
+  private async createChickSaleWithLock(
+    actingUser: AccessTokenPayload,
+    chickBatchId: string,
+    quantity: number,
+    saleYear: number,
+    buildData: (saleNumber: string) => Prisma.SaleUncheckedCreateInput,
+  ): Promise<Sale> {
+    const computedChickBatch = await this.chickBatchesService.findOne(actingUser, chickBatchId);
+    const available = computedChickBatch.currentHeadcount ?? 0;
+    if (quantity > available) {
+      throw new ConflictException(
+        `Quantité vendue (${quantity}) supérieure au stock de poussins disponible (${available}).`,
+      );
+    }
+
+    for (let attempt = 0; attempt < MAX_TRANSACTION_RETRIES; attempt++) {
+      try {
+        const saleNumber = await this.generateSaleNumber(actingUser.farmId, saleYear);
+        return await this.prisma.$transaction(async (tx) => {
+          await this.chickBatchesService.assertAvailableHeadcountInTransaction(
+            tx,
+            actingUser.farmId,
+            chickBatchId,
+            quantity,
+          );
+          return tx.sale.create({ data: buildData(saleNumber) });
+        });
+      } catch (error) {
+        if (error instanceof ConflictException) {
+          throw error;
+        }
+        if (
+          (isSerializationFailure(error) || isUniqueConstraintFailure(error)) &&
+          attempt < MAX_TRANSACTION_RETRIES - 1
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new ConflictException('Impossible de finaliser la vente — réessayer.');
   }
 
   /**

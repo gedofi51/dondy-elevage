@@ -71,6 +71,9 @@ interface WaterPointKpiResponseBody {
   averageConsumptionM3: number;
   availabilityRatePercent: number;
   receivablesFcfa: number;
+  totalExpensesFcfa: number;
+  grossMarginFcfa: number;
+  profitabilityRate: number;
 }
 
 describe("Vente et distribution d'eau — cycle complet (e2e, scénario §16-E)", () => {
@@ -375,6 +378,12 @@ describe("Vente et distribution d'eau — cycle complet (e2e, scénario §16-E)"
     expect(kpi.averageConsumptionM3).toBeCloseTo(7.6667, 3);
     // 3 relevés sur une période de 3 jours (J1-J3 inclus).
     expect(kpi.availabilityRatePercent).toBe(100);
+    // Phase 7 — aucune Expense rattachée à ce point d'eau dans ce
+    // scénario : la marge est donc égale au CA théorique (pas à
+    // l'encaissé, qui mélange comptoir/crédit/écarts de caisse, voir
+    // WaterPointsService.getKpiSummary).
+    expect(kpi.totalExpensesFcfa).toBe(0);
+    expect(kpi.grossMarginFcfa).toBe(57_500);
   });
 
   it("14. le cron d'alertes eau s'exécute sans erreur", async () => {

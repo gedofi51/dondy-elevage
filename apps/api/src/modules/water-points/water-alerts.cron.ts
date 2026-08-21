@@ -39,7 +39,7 @@ export class WaterAlertsCronService {
     private readonly alertsService: AlertsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_6AM, { timeZone: 'Africa/Bangui' })
+  @Cron(CronExpression.EVERY_DAY_AT_6AM, { timeZone: 'Africa/Bangui', unrefTimeout: true })
   async runDailySweep(): Promise<void> {
     const waterPoints = await this.prisma.waterPoint.findMany({
       where: { status: ACTIVE_STATUS },

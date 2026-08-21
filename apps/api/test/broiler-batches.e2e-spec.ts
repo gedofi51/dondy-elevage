@@ -445,4 +445,76 @@ describe('Broiler batches — cycle de vie complet (e2e, scénario §25)', () =>
       expect(body<{ type: string }>(res).type).toBe('VACCINATION');
     });
   });
+
+  /**
+   * Phase 8 — durcissement de la dette transversale "disponibilité sans
+   * verrou" (ouverte depuis la Phase 3, voir DETTE_TECHNIQUE.md). Même
+   * gabarit que "Concurrence FIFO" (layer-batches.e2e-spec.ts) : vérifie le
+   * verrouillage SELECT ... FOR UPDATE de BroilerBatchesService.
+   * assertAvailableHeadcountInTransaction.
+   */
+  describe('Concurrence — deux ventes de poulets simultanées dépassant l’effectif disponible', () => {
+    let concurrencyBatchId: string;
+
+    beforeAll(async () => {
+      const batchRes = await request(app.getHttpServer())
+        .post('/api/v1/broiler-batches')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          arrivalDate: new Date().toISOString(),
+          origin: 'ACHAT',
+          supplierId,
+          orderedQuantity: 300,
+          receivedQuantity: 300,
+          deadOnArrivalQuantity: 0,
+          unitPriceFcfa: 500,
+          buildingId,
+          primaryManagerId: ownerUserId,
+        })
+        .expect(201);
+      concurrencyBatchId = body<BatchResponseBody>(batchRes).id;
+      createdBatchIds.push(concurrencyBatchId);
+    });
+
+    it('exactement une des deux ventes concurrentes réussit, l’autre est rejetée proprement (409), effectif final cohérent', async () => {
+      // 300 disponibles — deux ventes de 200 sont chacune individuellement
+      // valides, mais 200 + 200 = 400 > 300.
+      const sendSale = () =>
+        request(app.getHttpServer())
+          .post('/api/v1/sales')
+          .set('Authorization', `Bearer ${ownerToken}`)
+          .send({
+            productType: 'POULET_CHAIR',
+            batchId: concurrencyBatchId,
+            date: new Date().toISOString(),
+            customerId,
+            saleMode: 'UNITE',
+            quantity: 200,
+            unitPriceFcfa: 3_000,
+            status: 'CONFIRMEE',
+          });
+
+      const [resA, resB] = await Promise.all([sendSale(), sendSale()]);
+      const statuses = [resA.status, resB.status].sort();
+
+      // Ni les deux ne réussissent (survente), ni les deux n'échouent
+      // (perte de disponibilité légitime) — exactement une des deux, et
+      // l'échec est un 409 métier propre, jamais un 500 non géré.
+      expect(statuses).toEqual([201, 409]);
+
+      const batchAfterRes = await request(app.getHttpServer())
+        .get(`/api/v1/broiler-batches/${concurrencyBatchId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      // Une seule vente a pu être confirmée : 300 - 200 = 100 restants
+      // (jamais 300 - 400 = -100, jamais un double décompte).
+      expect(body<BatchResponseBody>(batchAfterRes).currentHeadcount).toBe(100);
+
+      const salesRes = await request(app.getHttpServer())
+        .get(`/api/v1/sales?batchId=${concurrencyBatchId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      expect(body<SaleResponseBody[]>(salesRes)).toHaveLength(1);
+    });
+  });
 });

@@ -5,6 +5,8 @@ import type { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PasswordService } from '../src/modules/auth/password.service';
+import { ItemsAlertsCronService } from '../src/modules/items/items-alerts.cron';
+import { PurchaseOrdersAlertsCronService } from '../src/modules/purchase-orders/purchase-orders-alerts.cron';
 import {
   body,
   createActiveUser,
@@ -67,6 +69,8 @@ describe('Stocks, achats et finances — cycle complet (e2e, scénario §16-F)',
   let app: INestApplication<App>;
   let prisma: PrismaService;
   let passwordService: PasswordService;
+  let itemsAlertsCron: ItemsAlertsCronService;
+  let purchaseOrdersAlertsCron: PurchaseOrdersAlertsCronService;
 
   let farmA: { id: string };
   let farmB: { id: string };
@@ -97,6 +101,8 @@ describe('Stocks, achats et finances — cycle complet (e2e, scénario §16-F)',
 
     prisma = app.get(PrismaService);
     passwordService = app.get(PasswordService);
+    itemsAlertsCron = app.get(ItemsAlertsCronService);
+    purchaseOrdersAlertsCron = app.get(PurchaseOrdersAlertsCronService);
 
     const roles = await prisma.role.findMany({ where: { farmId: null } });
     const proprietaireRole = roles.find((r) => r.name === 'Propriétaire / Administrateur');
@@ -173,6 +179,11 @@ describe('Stocks, achats et finances — cycle complet (e2e, scénario §16-F)',
     await prisma.item.deleteMany({ where: { id: { in: createdItemIds } } });
     await prisma.supplier.deleteMany({ where: { id: supplierId } });
     await prisma.building.deleteMany({ where: { id: buildingId } });
+    // Les crons d'alerte déclenchent des notifications sur IMPORTANT/CRITIQUE
+    // — à nettoyer avant les alertes elles-mêmes (Notification.alertId) et
+    // avant les utilisateurs (Notification.userId).
+    await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+    await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
     await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
     await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
     await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
@@ -600,6 +611,84 @@ describe('Stocks, achats et finances — cycle complet (e2e, scénario §16-F)',
       const sorties = movements.filter((m) => m.type === 'SORTIE');
       expect(sorties).toHaveLength(1);
       expect(Number(sorties[0]!.quantity)).toBe(70);
+    });
+  });
+
+  /**
+   * Phase 8 — durcissement (bilan V1-V5 : aucune alerte stock/financière
+   * n'existait, contrairement à tous les autres modules métier). Va
+   * au-delà du niveau "s'exécute sans erreur" du reste du projet : vérifie
+   * qu'une alerte est réellement créée avec le bon type/sévérité, pas
+   * seulement l'absence d'exception — logique neuve, donc plus de valeur
+   * qu'un simple smoke test.
+   */
+  describe('Alertes stock (ItemsAlertsCronService)', () => {
+    let ruptureItemId: string;
+
+    beforeAll(async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/items')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ name: 'Article Rupture Test', category: 'Test', unit: 'unité', minThreshold: 10 })
+        .expect(201);
+      ruptureItemId = body<ItemResponseBody>(res).id;
+      createdItemIds.push(ruptureItemId);
+    });
+
+    it('lève une alerte CRITIQUE (rupture, stock à 0) au premier balayage, jamais deux fois au second', async () => {
+      await itemsAlertsCron.runDailySweep();
+
+      const alertsAfterFirst = await prisma.alert.findMany({
+        where: { entityType: 'item', entityId: ruptureItemId },
+      });
+      expect(alertsAfterFirst).toHaveLength(1);
+      expect(alertsAfterFirst[0]!.type).toBe('item_stock_rouge');
+      expect(alertsAfterFirst[0]!.severity).toBe('CRITIQUE');
+
+      // Deuxième balayage : la même alerte d'état ne doit jamais être
+      // recréée (idempotence par type+entityId, comme les autres crons).
+      await itemsAlertsCron.runDailySweep();
+      const alertsAfterSecond = await prisma.alert.findMany({
+        where: { entityType: 'item', entityId: ruptureItemId },
+      });
+      expect(alertsAfterSecond).toHaveLength(1);
+    });
+  });
+
+  describe('Alertes finance (PurchaseOrdersAlertsCronService)', () => {
+    let overdueOrderId: string;
+
+    beforeAll(async () => {
+      const pastDueDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/purchase-orders')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          supplierId,
+          date: pastDueDate.toISOString(),
+          dueDate: pastDueDate.toISOString(),
+          items: [{ itemId, orderedQuantity: 1, unitPriceFcfa: 1_000 }],
+        })
+        .expect(201);
+      overdueOrderId = body<PurchaseOrderResponseBody>(res).id;
+      createdOrderIds.push(overdueOrderId);
+    });
+
+    it('lève une alerte IMPORTANT (facture en retard, solde non nul) au premier balayage, jamais deux fois au second', async () => {
+      await purchaseOrdersAlertsCron.runDailySweep();
+
+      const alertsAfterFirst = await prisma.alert.findMany({
+        where: { entityType: 'purchase_order', entityId: overdueOrderId },
+      });
+      expect(alertsAfterFirst).toHaveLength(1);
+      expect(alertsAfterFirst[0]!.type).toBe('purchase_order_overdue');
+      expect(alertsAfterFirst[0]!.severity).toBe('IMPORTANT');
+
+      await purchaseOrdersAlertsCron.runDailySweep();
+      const alertsAfterSecond = await prisma.alert.findMany({
+        where: { entityType: 'purchase_order', entityId: overdueOrderId },
+      });
+      expect(alertsAfterSecond).toHaveLength(1);
     });
   });
 });

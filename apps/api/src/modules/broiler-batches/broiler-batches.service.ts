@@ -105,13 +105,23 @@ export class BroilerBatchesService {
     return { startedQuantity, chickCostFcfa, totalAcquisitionCostFcfa };
   }
 
-  private async computeCurrentHeadcount(batchId: string, startedQuantity: number): Promise<number> {
+  /** `tx` optionnel (Phase 8) : permet de recalculer l'agrégat DANS la
+   * transaction verrouillée de assertAvailableHeadcountInTransaction, sans
+   * dupliquer la formule. Hors transaction (findAll/findOne), aucun verrou
+   * n'est jamais pris ici — voir assertAvailableHeadcountInTransaction pour
+   * le seul endroit où FOR UPDATE est utilisé. */
+  private async computeCurrentHeadcount(
+    batchId: string,
+    startedQuantity: number,
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
+    const client = tx ?? this.prisma;
     const [dailyAgg, soldAgg] = await Promise.all([
-      this.prisma.broilerDailyRecord.aggregate({
+      client.broilerDailyRecord.aggregate({
         where: { batchId },
         _sum: { mortalityQuantity: true, cullsQuantity: true, otherExitsQuantity: true },
       }),
-      this.prisma.sale.aggregate({
+      client.sale.aggregate({
         where: { batchId, status: CONFIRMED_SALE_STATUSES },
         _sum: { quantity: true },
       }),
@@ -123,6 +133,44 @@ export class BroilerBatchesService {
       cumulativeOtherExits: dailyAgg._sum.otherExitsQuantity ?? 0,
       cumulativeConfirmedSold: soldAgg._sum.quantity ?? 0,
     });
+  }
+
+  /**
+   * Phase 8 — durcissement concurrence (dette transversale "disponibilité
+   * sans verrou" corrigée). Verrouille la ligne BroilerBatch
+   * (SELECT ... FOR UPDATE, seul endroit du service où un verrou est pris
+   * — jamais dans computeCurrentHeadcount lui-même, pour ne pas verrouiller
+   * inutilement un simple GET) avant de recalculer l'effectif via CE MÊME
+   * client transactionnel, puis compare. `tx` obligatoire (jamais
+   * optionnel) : l'appelant (SalesService) doit fournir une transaction
+   * déjà ouverte, comme StockMovementsService.recordMovementInTransaction.
+   */
+  async assertAvailableHeadcountInTransaction(
+    tx: Prisma.TransactionClient,
+    farmId: string,
+    batchId: string,
+    requestedQuantity: number,
+  ): Promise<void> {
+    const [locked] = await tx.$queryRaw<
+      { id: string; receivedQuantity: number; deadOnArrivalQuantity: number }[]
+    >`
+      SELECT id, receivedQuantity, deadOnArrivalQuantity FROM broiler_batches
+      WHERE id = ${batchId} AND farmId = ${farmId}
+      FOR UPDATE
+    `;
+    if (!locked) {
+      throw new NotFoundException('Bande introuvable.');
+    }
+    const startedQuantity = computeStartedQuantity(
+      locked.receivedQuantity,
+      locked.deadOnArrivalQuantity,
+    );
+    const currentHeadcount = await this.computeCurrentHeadcount(batchId, startedQuantity, tx);
+    if (requestedQuantity > currentHeadcount) {
+      throw new ConflictException(
+        `Quantité vendue (${requestedQuantity}) supérieure à l'effectif disponible (${currentHeadcount}).`,
+      );
+    }
   }
 
   private async attachComputedFields(batch: BroilerBatch): Promise<BroilerBatchWithComputed> {

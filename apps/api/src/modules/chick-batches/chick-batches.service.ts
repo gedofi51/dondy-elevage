@@ -102,19 +102,59 @@ export class ChickBatchesService {
     return batch;
   }
 
-  private async attachComputedFields(batch: ChickBatch): Promise<ChickBatchWithComputed> {
+  /** `tx` optionnel (Phase 8) : voir BroilerBatchesService.
+   * computeCurrentHeadcount pour le même mécanisme. RENOUVELLEMENT n'a
+   * jamais de notion d'effectif "restant à vendre" (jamais vendu). */
+  private async computeCurrentHeadcountForBatch(
+    batch: Pick<ChickBatch, 'id' | 'purpose' | 'initialQuantity'>,
+    tx?: Prisma.TransactionClient,
+  ): Promise<number | null> {
     if (batch.purpose !== 'VENTE') {
-      return { ...batch, currentHeadcount: null };
+      return null;
     }
-    const soldAgg = await this.prisma.sale.aggregate({
+    const client = tx ?? this.prisma;
+    const soldAgg = await client.sale.aggregate({
       where: { chickBatchId: batch.id, status: CONFIRMED_SALE_STATUSES },
       _sum: { quantity: true },
     });
-    const currentHeadcount = computeChickCurrentHeadcount(
-      batch.initialQuantity,
-      soldAgg._sum.quantity ?? 0,
-    );
+    return computeChickCurrentHeadcount(batch.initialQuantity, soldAgg._sum.quantity ?? 0);
+  }
+
+  private async attachComputedFields(batch: ChickBatch): Promise<ChickBatchWithComputed> {
+    const currentHeadcount = await this.computeCurrentHeadcountForBatch(batch);
     return { ...batch, currentHeadcount };
+  }
+
+  /**
+   * Phase 8 — durcissement concurrence, même principe que
+   * BroilerBatchesService.assertAvailableHeadcountInTransaction : verrou
+   * SELECT ... FOR UPDATE sur la ligne ChickBatch (seul endroit de ce
+   * service où un verrou est pris), recalcul via CE MÊME client
+   * transactionnel, comparaison. `tx` obligatoire.
+   */
+  async assertAvailableHeadcountInTransaction(
+    tx: Prisma.TransactionClient,
+    farmId: string,
+    batchId: string,
+    requestedQuantity: number,
+  ): Promise<void> {
+    const [locked] = await tx.$queryRaw<
+      { id: string; purpose: ChickBatchPurpose; initialQuantity: number }[]
+    >`
+      SELECT id, purpose, initialQuantity FROM chick_batches
+      WHERE id = ${batchId} AND farmId = ${farmId}
+      FOR UPDATE
+    `;
+    if (!locked) {
+      throw new NotFoundException('Lot de poussins introuvable.');
+    }
+    const currentHeadcount = await this.computeCurrentHeadcountForBatch(locked, tx);
+    const available = currentHeadcount ?? 0;
+    if (requestedQuantity > available) {
+      throw new ConflictException(
+        `Quantité vendue (${requestedQuantity}) supérieure au stock de poussins disponible (${available}).`,
+      );
+    }
   }
 
   async findAll(actingUser: AccessTokenPayload): Promise<ChickBatchWithComputed[]> {
