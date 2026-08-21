@@ -145,29 +145,38 @@ describe('Trésorerie — journal, créances/dettes, vue consolidée (e2e, scén
   });
 
   afterAll(async () => {
-    // Ordre sûr vis-à-vis des FK : paiements -> ventes -> réceptions/lignes
-    // -> commandes -> articles -> points d'eau -> références -> utilisateurs
-    // -> fermes.
-    await prisma.payment.deleteMany({ where: { saleId: { in: createdSaleIds } } });
-    await prisma.sale.deleteMany({ where: { id: { in: createdSaleIds } } });
-    await prisma.expense.deleteMany({ where: { farmId: farmA.id } });
-    await prisma.supplierPayment.deleteMany({
-      where: { purchaseOrderId: { in: createdOrderIds } },
-    });
-    await prisma.purchaseOrderItem.deleteMany({
-      where: { purchaseOrderId: { in: createdOrderIds } },
-    });
-    await prisma.purchaseOrder.deleteMany({ where: { id: { in: createdOrderIds } } });
-    await prisma.item.deleteMany({ where: { id: { in: createdItemIds } } });
-    await prisma.waterPoint.deleteMany({ where: { id: { in: createdWaterPointIds } } });
-    await prisma.supplier.deleteMany({ where: { id: supplierId } });
-    await prisma.customer.deleteMany({ where: { id: customerId } });
-    await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
-    await app.close();
+    // app.close() dans un finally : si une des suppressions échoue (ex. FK
+    // sur une entité créée par un test ajouté plus tard sans mettre à jour
+    // cet ordre), l'app doit quand même se fermer — sinon la connexion
+    // Prisma et les crons de cette instance restent actifs indéfiniment et
+    // empêchent le worker Jest de sortir proprement (cf. incident CI Phase
+    // 8 : une erreur non catchée ici a laissé un handle ouvert).
+    try {
+      // Ordre sûr vis-à-vis des FK : paiements -> ventes -> réceptions/lignes
+      // -> commandes -> articles -> points d'eau -> références -> utilisateurs
+      // -> fermes.
+      await prisma.payment.deleteMany({ where: { saleId: { in: createdSaleIds } } });
+      await prisma.sale.deleteMany({ where: { id: { in: createdSaleIds } } });
+      await prisma.expense.deleteMany({ where: { farmId: farmA.id } });
+      await prisma.supplierPayment.deleteMany({
+        where: { purchaseOrderId: { in: createdOrderIds } },
+      });
+      await prisma.purchaseOrderItem.deleteMany({
+        where: { purchaseOrderId: { in: createdOrderIds } },
+      });
+      await prisma.purchaseOrder.deleteMany({ where: { id: { in: createdOrderIds } } });
+      await prisma.item.deleteMany({ where: { id: { in: createdItemIds } } });
+      await prisma.waterPoint.deleteMany({ where: { id: { in: createdWaterPointIds } } });
+      await prisma.supplier.deleteMany({ where: { id: supplierId } });
+      await prisma.customer.deleteMany({ where: { id: customerId } });
+      await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
+    } finally {
+      await app.close();
+    }
   });
 
   it('0. prépare le scénario : point d’eau, 2 ventes (comptoir + client, paiement partiel), commande fournisseur + paiement partiel, dépense générale', async () => {
