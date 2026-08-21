@@ -23,7 +23,7 @@ export class PurchaseOrdersAlertsCronService {
     private readonly alertsService: AlertsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_6AM, { timeZone: 'Africa/Bangui' })
+  @Cron(CronExpression.EVERY_DAY_AT_6AM, { timeZone: 'Africa/Bangui', unrefTimeout: true })
   async runDailySweep(): Promise<void> {
     const overdueOrders = await this.prisma.purchaseOrder.findMany({
       where: { status: { not: 'ANNULE' }, dueDate: { lt: new Date() } },

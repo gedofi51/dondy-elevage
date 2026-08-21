@@ -23,7 +23,7 @@ export class ItemsAlertsCronService {
     private readonly alertsService: AlertsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_DAY_AT_6AM, { timeZone: 'Africa/Bangui' })
+  @Cron(CronExpression.EVERY_DAY_AT_6AM, { timeZone: 'Africa/Bangui', unrefTimeout: true })
   async runDailySweep(): Promise<void> {
     const items = await this.prisma.item.findMany();
     for (const item of items) {
