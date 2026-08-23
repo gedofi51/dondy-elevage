@@ -1,10 +1,19 @@
 /**
  * Design tokens — palette officielle DONDY ELEVAGE.
- * Source : docs/architecture/DONDY_ELEVAGE_GO_PHASE0.md, section C.
+ * Source : docs/architecture/DESIGN_SYSTEM.md (direction "Agritech
+ * Premium", Phase 10 — remplace la palette Phase 0 d'origine, voir
+ * DONDY_ELEVAGE_GO_PHASE0.md section C pour l'historique).
  *
  * Palette brute (--dondy-*) conservée séparément des variables sémantiques
  * shadcn (--primary, --secondary, ...) pour que la marque reste la seule
  * source de vérité si les tokens shadcn évoluent plus tard.
+ *
+ * --dondy-muted-foreground et --dondy-warning sont volontairement plus
+ * sombres que les valeurs brutes du mockup (#8a8a7a et #B06f12) : ces
+ * dernières échouent le contraste WCAG AA texte normal (4.5:1) sur leurs
+ * fonds respectifs — 3.27:1 et 3.60:1 mesurés. Assombries à teinte
+ * égale pour repasser l'AA (~4.6-4.8:1), important en usage extérieur
+ * (Samba, forte luminosité). Détail des calculs : DESIGN_SYSTEM.md.
  *
  * Thème clair par défaut (cohérent avec le fond crème du logo). Le mode
  * sombre reste à concevoir en Phase 2+ sans toucher primary/accent, pour
@@ -13,26 +22,35 @@
  */
 
 :root {
-  /* Palette brute DONDY ELEVAGE */
+  /* Palette brute DONDY ELEVAGE — direction "Agritech Premium" */
   --dondy-primary: #2d4a2e;
-  --dondy-primary-foreground: #f5f0e1;
+  --dondy-primary-foreground: #faf7ef;
   --dondy-secondary: #a0522d;
   --dondy-secondary-foreground: #faf7ef;
   --dondy-accent: #e8891d;
-  --dondy-accent-foreground: #1a1a1a;
+  --dondy-accent-foreground: #231a0c;
   --dondy-background: #faf7ef;
-  --dondy-foreground: #1a1a1a;
-  --dondy-muted: #e8e1d0;
-  --dondy-muted-foreground: #5a5346;
-  --dondy-border: #d8cfb8;
-  --dondy-success: #3f7a3e;
+  --dondy-foreground: #2a2a24;
+  --dondy-muted: #eef1ea;
+  --dondy-muted-foreground: #6e6e60;
+  --dondy-border: color-mix(in oklch, var(--dondy-primary) 10%, var(--dondy-background));
+  --dondy-success: #2d7a3a;
   --dondy-success-foreground: #faf7ef;
-  --dondy-warning: #e8891d;
-  --dondy-warning-foreground: #1a1a1a;
-  --dondy-destructive: #b03a2e;
+  --dondy-warning: #96600f;
+  --dondy-warning-foreground: #faf7ef;
+  --dondy-destructive: #b4341f;
   --dondy-destructive-foreground: #faf7ef;
   --dondy-info: #4a6c8c;
   --dondy-info-foreground: #faf7ef;
+
+  /* Ombres — direction "Agritech Premium" (docs/architecture/DESIGN_SYSTEM.md).
+     --dondy-shadow-kpi-hero (carte KPI vedette, fond primary) n'a pas
+     encore d'usage : le dashboard Phase 9 n'affiche qu'un seul KpiCard,
+     une distinction vedette/standard serait prématurée (cf. --chart-4/5,
+     déjà préparés de la même façon pour de futurs dashboards). */
+  --dondy-shadow-card: 0 14px 30px -22px rgb(45 74 46 / 0.5);
+  --dondy-shadow-kpi-hero: 0 12px 26px -14px rgb(45 74 46 / 0.6);
+  --dondy-shadow-kpi: 0 10px 22px -18px rgb(45 74 46 / 0.5);
 
   /* Variables sémantiques attendues par shadcn/Tailwind (@theme inline) */
   --background: var(--dondy-background);
@@ -68,14 +86,15 @@
   --chart-4: var(--dondy-info);
   --chart-5: var(--dondy-success);
 
-  /* Sidebar (layout applicatif) alignée sur la marque */
-  --sidebar: var(--dondy-primary);
-  --sidebar-foreground: var(--dondy-primary-foreground);
+  /* Sidebar (layout applicatif) — vert plus sombre que primary, distinct
+     (mockup "Agritech Premium" : #243B25, contraste texte 8.1:1 vérifié) */
+  --sidebar: #243b25;
+  --sidebar-foreground: #cdd6c8;
   --sidebar-primary: var(--dondy-accent);
   --sidebar-primary-foreground: var(--dondy-accent-foreground);
-  --sidebar-accent: #243924; /* primary légèrement assombri, état actif/hover */
-  --sidebar-accent-foreground: var(--dondy-primary-foreground);
-  --sidebar-border: #1f331f;
+  --sidebar-accent: #1c2f1d; /* état actif/hover — panneau encart mockup */
+  --sidebar-accent-foreground: #cdd6c8;
+  --sidebar-border: color-mix(in oklch, var(--sidebar), black 15%);
   --sidebar-ring: var(--dondy-accent);
 }
 
@@ -110,12 +129,12 @@
   --chart-3: var(--dondy-accent);
   --chart-4: var(--dondy-info);
   --chart-5: var(--dondy-success);
-  --sidebar: var(--dondy-primary);
-  --sidebar-foreground: var(--dondy-primary-foreground);
+  --sidebar: #243b25;
+  --sidebar-foreground: #cdd6c8;
   --sidebar-primary: var(--dondy-accent);
   --sidebar-primary-foreground: var(--dondy-accent-foreground);
-  --sidebar-accent: #243924;
-  --sidebar-accent-foreground: var(--dondy-primary-foreground);
-  --sidebar-border: #1f331f;
+  --sidebar-accent: #1c2f1d;
+  --sidebar-accent-foreground: #cdd6c8;
+  --sidebar-border: color-mix(in oklch, var(--sidebar), black 15%);
   --sidebar-ring: var(--dondy-accent);
 }

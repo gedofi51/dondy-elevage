@@ -45,3 +45,6 @@ docker/redis-data/
 
 # Backups (never committed)
 backups/
+
+# Scratchpad Claude Code (fichiers temporaires d'analyse, jamais commités)
+.scratch/

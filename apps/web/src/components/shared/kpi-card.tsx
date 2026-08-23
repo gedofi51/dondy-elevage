@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 type KpiTone = 'default' | 'success' | 'warning' | 'destructive' | 'info';
 
 const toneClasses: Record<KpiTone, string> = {
-  default: 'text-foreground',
+  default: 'text-primary',
   success: 'text-success',
   warning: 'text-warning',
   destructive: 'text-destructive',
@@ -22,15 +22,15 @@ interface KpiCardProps {
 
 export function KpiCard({ label, value, unit, tone = 'default', icon: Icon }: KpiCardProps) {
   return (
-    <Card>
+    <Card className="shadow-kpi">
       <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
         {Icon ? <Icon className={cn('h-4 w-4', toneClasses[tone])} aria-hidden="true" /> : null}
       </CardHeader>
       <CardContent>
-        <p className={cn('text-2xl font-semibold', toneClasses[tone])}>
+        <p className={cn('font-heading text-3xl font-semibold', toneClasses[tone])}>
           {value}
-          {unit ? <span className="ml-1 text-sm font-normal text-muted-foreground">{unit}</span> : null}
+          {unit ? <span className="ml-1 font-sans text-sm font-normal text-muted-foreground">{unit}</span> : null}
         </p>
       </CardContent>
     </Card>
