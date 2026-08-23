@@ -499,9 +499,14 @@ Occurrences confirmées (grep + lecture du service pour chacune) :
   broiler-batches.ts`) — un contournement UI, pas une correction de la
   source.
 - **`LayerBatch`** (Pondeuses, Phase 4) — même schéma
-  (`layer-batches.service.ts`, `data: { ...dto, entryDate: ... }`),
-  **non contourné même côté frontend** : ce module n'a pas encore
-  d'écran (Phase 12+ probable).
+  (`layer-batches.service.ts`, `data: { ...dto, entryDate: ... }`).
+  **Désormais contourné côté frontend (Phase 12)** : le `<Select>`
+  statut du formulaire de modification n'affiche que les 3 valeurs
+  libres (`LAYER_BATCH_EDITABLE_STATUSES` = `ELEVAGE`/`PONTE`/
+  `REFORME`, `packages/shared-types/src/layer-batches.ts`) —
+  `CLOTURE`/`ANNULEE` restent atteignables uniquement via les endpoints
+  dédiés (`/cloturer`, `/annuler`) côté UI. Toujours un contournement
+  UI, pas une correction de la source.
 - **`BreederBatch`** (Reproductrices, Phase 5) — même schéma
   (`breeder-batches.service.ts`, `data: { ...dto, constitutionDate:
   ... }`), statuts libres `ACTIF`/`REFORME`. Non contourné (pas
@@ -556,6 +561,127 @@ correction ponctuelle module par module.
   avec `weightKg` renseigné n'affecte aucun calcul, comportement API
   préexistant confirmé (pas une régression introduite ici), juste
   rendu visible côté formulaire pour la première fois.
+
+### `SelectValue` (base-ui) affiche la value brute au lieu du libellé — trouvé et corrigé cette phase, jamais documenté (entrée ajoutée rétroactivement en Phase 12)
+
+Trouvé pendant la vérification manuelle de cette phase (le champ
+"Bâtiment" affichait un UUID brut au lieu du nom sélectionné) :
+`SelectValue` (`@base-ui/react/select`) sans `items`/`itemToStringLabel`
+sur `Select.Root` retombe sur la `value` brute sélectionnée, sauf si un
+enfant fonction `{(value) => ...}` est fourni directement à
+`SelectValue` — confirmé en lisant le code source installé
+(`node_modules/@base-ui/react/select/value/SelectValue.js`,
+`.../internals/resolveValueLabel.js`), pas deviné par essai-erreur.
+Fix appliqué à tous les `<SelectValue>` peuplés dynamiquement, dans le
+code neuf de cette phase et rétroactivement dans du code Phase 9 déjà
+mergé (`water-point-form.tsx`) : enfant fonction
+`(value) => value ? (map.get(value) ?? value) : 'texte'`. **Effet de
+bord découvert au second passage** : passer un enfant fonction fait
+ignorer le prop `placeholder` par `SelectValue` (`shouldCheckNullItemLabel`
+exige `childrenProp == null`) — la fonction doit donc gérer elle-même le
+cas valeur vide/non sélectionnée et renvoyer le texte de substitution.
+
+Chaque fichier corrigé porte un commentaire renvoyant à "DETTE_TECHNIQUE.md
+Phase 11" (`broiler-batch-form.tsx`, `mortality-form.tsx`,
+`water-point-form.tsx`, `sale-form.tsx`) — **mais cette entrée n'existait
+pas réellement** (vérifié par grep négatif en tout début de Phase 12) :
+un oubli de documentation, pas un correctif manquant. Ajoutée ici en
+Phase 12, rétroactivement, puisque c'est cette phase qui a détecté
+l'absence de l'entrée — le correctif lui-même date bien de la Phase 11.
+
+## Phase 12 — Frontend Pondeuses
+
+Troisième module métier frontend complet, construit directement dans le
+design "Agritech Premium" : lots de pondeuses, suivi journalier créé à
+la demande (architecture différente de Chair — pas de 45 lignes
+pré-générées), santé, stock d'œufs (premier mécanisme de stock FIFO
+réellement exposé au frontend), vente, clôture, alertes, KPI dashboard.
+Statut `LayerBatch` désormais contourné côté frontend — voir la puce
+mise à jour dans la catégorie transversale "Statuts terminaux non
+protégés au niveau service" (Phase 11 ci-dessus), pas une nouvelle
+entrée isolée.
+
+### `POST /layer-batches/:id/annuler` — existe, non testé, reporté
+
+`POST /layer-batches/:id/annuler` (`layer-batches.controller.ts:81-89`,
+permission `LAYER_BATCHES_DELETE`) existe côté backend mais **n'a
+aucune couverture de test** dans `layer-batches.e2e-spec.ts` (vérifié
+par grep — la seule occurrence "annuler" du fichier concerne
+l'annulation d'une *vente*, pas d'un lot). Contrairement à `POST
+/:id/cloturer` (testé, test 14, `layer-batches.e2e-spec.ts:488-515`,
+inclus cette phase avec le même patron que Chair), le critère fixé pour
+cette phase (existence + test) n'est pas satisfait pour `/annuler` —
+l'action "Annuler" est donc absente de la fiche du lot cette phase,
+reportée à une phase future. `DELETE /layer-batches/:id` (hard-delete)
+reste également non exposé côté frontend, comme pour Broiler.
+
+### KPI dashboard "production d'œufs du jour" — fetch par lot actif, arbitrage réseau (même schéma que la mortalité Chair, avec une différence réelle)
+
+`LayerBatchWithComputed` n'expose aucun champ agrégé de production, et
+aucun endpoint farm-wide n'existe. `useTodayEggProductionTotal`
+(`features/layer-batches/hooks.ts`) émet un fetch `GET
+.../daily-records/:date` (date du jour) par lot **actif**
+(`ELEVAGE`/`PONTE`), gaté sur `LAYER_DAILY_RECORDS_READ`. Différence
+importante avec `useTodayMortalityTotal` (Chair) : il n'y a pas de
+cycle borné à filtrer en amont côté Pondeuses — un 404 "pas encore
+saisi aujourd'hui" est le cas **normal et quotidien** pour chaque lot
+actif tant que personne n'a saisi, pas une exception rare comme pour
+Chair (où le 404 hors-cycle est filtré avant le fetch). `retry: false`
+sur chaque requête pour ne pas retarder l'affichage ; un 404 compte
+pour 0 (normal), une autre erreur (403/500) fait retourner `undefined`
+(affiché "—") plutôt que de la masquer silencieusement derrière un
+total potentiellement faux. Même arbitrage réel contre la contrainte
+réseau permanente de CLAUDE.md que pour Chair — accepté faute
+d'alternative sans modification backend, pas ignoré silencieusement.
+
+### Widget alertes sur la fiche de lot — filtrage entièrement côté client, et absent côté Chair malgré le plan Phase 11
+
+`GET /alerts` n'a pas de filtre serveur par `entityId` (seulement
+`status`/`limit`) — `BatchAlertsWidget`
+(`features/layer-batches/components/batch-alerts-widget.tsx`) fetch
+les 50 alertes déclenchées les plus récentes toutes entités confondues
+et filtre côté client sur `entityId === batchId`. Borné par `limit:
+50` : un lot dont l'alerte serait "noyée" au-delà de ce rang (peu
+probable en pratique, mais possible sur une ferme avec beaucoup
+d'alertes actives simultanées, toutes entités confondues) ne
+l'afficherait pas sur sa fiche.
+
+**Constaté en implémentant ce widget** : le plan Phase 11 (Chair)
+prévoyait explicitement un widget équivalent sur
+`broiler-batch-detail-view.tsx` ("alertes calendaires visibles sur la
+fiche de bande, comme pour Chair" est d'ailleurs la formulation
+reprise dans le kickoff de cette phase) — mais il n'a en réalité
+**jamais été construit** (vérifié : seul le widget dashboard global
+`AlertsWidget` existe côté Chair, aucun `AlertBadge` ni équivalent
+n'apparaît dans `broiler-batch-detail-view.tsx`). Non corrigé ici (hors
+périmètre Pondeuses, toucher du code Chair déjà mergé) — signalé pour
+une phase de rattrapage ou pour uniformiser les deux fiches ensemble.
+
+### Colonne "taux de ponte récent" absente de la liste des lots
+
+`LayerBatchWithComputed` n'expose aucun `layingRate` agrégé — seule
+source : `LayerDailyRecord.layingRatePercent` de la dernière journée
+saisie. L'ajouter à la liste (`layer-batch-table.tsx`) obligerait un
+fetch `daily-records` par ligne (N+1) sur une liste déjà non paginée
+côté serveur (voir point suivant) — non ajouté, choix documenté plutôt
+que silencieux. Affiché en revanche sur la fiche du lot (KPI "Taux de
+ponte actuel"), dérivé de la liste déjà chargée par l'onglet Suivi
+journalier, sans coût réseau supplémentaire.
+
+### `GET /layer-batches` toujours sans filtre/pagination serveur
+
+Même gap que `GET /broiler-batches` (signalé Phase 11, non corrigé
+Phase 8) — mitigé par un toggle "Actifs"/"Tous" purement côté client
+sur `pondeuses/page.tsx` (filtrage en mémoire sur les données déjà
+entièrement récupérées). Palliatif d'affichage, pas une résolution du
+gap réseau — le gap backend reste ouvert pour les deux modules.
+
+### Onglet Santé, suivi journalier et perte manuelle de stock sans test de composant
+
+Comme pour Chair (Phase 11) : validation manuelle en navigateur
+uniquement cette phase, aucun test Vitest écrit pour
+`health-event-form.tsx`, `daily-record-form.tsx` (les deux variantes
+création/édition) ou `egg-stock-movement-form.tsx` faute de temps.
 
 ## ✅ Corrigé
 
