@@ -126,6 +126,12 @@ function CreateLayerBatchForm() {
     formState: { errors, isSubmitting },
   } = useForm<CreateLayerBatchFormInput, unknown, CreateLayerBatchFormValues>({
     resolver: zodResolver(createLayerBatchSchema),
+    // buildingId/primaryManagerId initialisés à '' : sans valeur par
+    // défaut, le Select démarre non contrôlé (field.value===undefined)
+    // puis devient contrôlé dès la première sélection — base-ui avertit
+    // (et React déconseille) ce changement de mode en cours de vie du
+    // composant. Trouvé en vérification manuelle.
+    defaultValues: { buildingId: '', primaryManagerId: '' },
   });
 
   async function onSubmit(values: CreateLayerBatchFormValues) {

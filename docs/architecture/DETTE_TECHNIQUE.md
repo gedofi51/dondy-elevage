@@ -910,6 +910,26 @@ car défaut identique trouvé par comparaison directe). Pas de refonte du
 formulaire/schéma : la modification métier d'un lot déjà clôturé/annulé
 n'a de toute façon aucun cas d'usage légitime identifié dans le cahier.
 
+### `Select` Bâtiment/Responsable passant de non contrôlé à contrôlé — warning React sur les formulaires de création (Broiler Phase 11, Pondeuses Phase 12 — trouvé et corrigé en Phase 12)
+
+**Trouvé en vérification manuelle** (console du navigateur, formulaire de
+création d'un lot de pondeuses) : `CreateLayerBatchForm` n'initialisait pas
+`buildingId`/`primaryManagerId` dans `defaultValues` — `field.value` valait
+`undefined` au premier rendu (Select non contrôlé), puis devenait une
+chaîne dès la première sélection (Select contrôlé), déclenchant
+l'avertissement base-ui *"A component is changing the uncontrolled value
+state of Select to be controlled"*. Vérifié : **même défaut préexistant
+sur `CreateBroilerBatchForm`** (Phase 11, jamais remarqué faute de
+vérification console dédiée à l'époque) — la fuite de scope pour aller le
+corriger a été jugée justifiée ici car la cause et le correctif sont
+identiques à la lettre, purement additifs (deux clés `''` de plus dans un
+objet `defaultValues` déjà existant), et sans risque de régression.
+Corrigé dans les deux fichiers (`layer-batch-form.tsx`,
+`broiler-batch-form.tsx`) en initialisant ces deux champs à `''`. Les
+formulaires d'édition (`Edit*BatchForm`) n'étaient pas concernés : leurs
+`defaultValues` renseignent déjà `buildingId`/`primaryManagerId` depuis
+l'entité chargée.
+
 ## Comment utiliser ce document
 
 - **En fin de mission** : avant de rédiger la section "Risques / dette
