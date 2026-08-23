@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiFetch, ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import { resetPasswordSchema, type ResetPasswordFormValues } from '../schemas';
 
 interface SetPasswordFormProps {
@@ -52,7 +53,11 @@ export function SetPasswordForm({ token, mode }: SetPasswordFormProps) {
       });
       router.push('/connexion');
     } catch (err) {
-      setServerError(err instanceof ApiError ? extractMessage(err.body) : 'Une erreur est survenue.');
+      setServerError(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Une erreur est survenue.')
+          : 'Une erreur est survenue.',
+      );
     }
   }
 
@@ -95,13 +100,4 @@ export function SetPasswordForm({ token, mode }: SetPasswordFormProps) {
       </Button>
     </form>
   );
-}
-
-function extractMessage(body: unknown): string {
-  if (body && typeof body === 'object' && 'message' in body) {
-    const message = (body as { message: unknown }).message;
-    if (typeof message === 'string') return message;
-    if (Array.isArray(message)) return message.join(' ');
-  }
-  return 'Une erreur est survenue.';
 }
