@@ -12,3 +12,5 @@ export * from './broiler-batches';
 export * from './buildings';
 export * from './suppliers';
 export * from './items';
+export * from './layer-batches';
+export * from './egg-stock';

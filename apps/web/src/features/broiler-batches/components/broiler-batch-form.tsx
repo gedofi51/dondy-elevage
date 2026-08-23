@@ -199,7 +199,18 @@ function CreateBroilerBatchForm() {
     formState: { errors, isSubmitting },
   } = useForm<CreateBroilerBatchFormInput, unknown, CreateBroilerBatchFormValues>({
     resolver: zodResolver(createBroilerBatchSchema),
-    defaultValues: { origin: 'NAISSANCE_INTERNE', deadOnArrivalQuantity: 0 },
+    // buildingId/primaryManagerId initialisés à '' : sans valeur par
+    // défaut, le Select démarre non contrôlé (field.value===undefined)
+    // puis devient contrôlé dès la première sélection — base-ui avertit
+    // (et React déconseille) ce changement de mode en cours de vie du
+    // composant. Trouvé en vérification manuelle Phase 12 (même défaut
+    // reproduit sur le formulaire Pondeuses, corrigé au même endroit).
+    defaultValues: {
+      origin: 'NAISSANCE_INTERNE',
+      deadOnArrivalQuantity: 0,
+      buildingId: '',
+      primaryManagerId: '',
+    },
   });
   const origin = watch('origin');
 

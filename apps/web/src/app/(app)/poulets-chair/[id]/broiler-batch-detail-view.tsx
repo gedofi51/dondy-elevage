@@ -47,7 +47,13 @@ export function BroilerBatchDetailView({ batchId }: { batchId: string }) {
 
   const dayNumber = computeDayNumber(batch.arrivalDate);
   const dayInCycle = isDayNumberInCycle(dayNumber);
-  const canCloseBatch = batch.status !== 'CLOTUREE' && batch.status !== 'ANNULEE';
+  // Garde client sur Modifier ET Clôturer — trouvé en vérification manuelle
+  // Phase 12 (même défaut latent que sur la fiche Layer, corrigé au même
+  // endroit) : un statut terminal (ANNULEE/CLOTUREE) est hors de
+  // BROILER_BATCH_EDITABLE_STATUSES, donc ouvrir "Modifier" sur une bande
+  // déjà terminale bloquait silencieusement l'enregistrement (Select
+  // statut vide, aucune valeur valide à soumettre).
+  const isBatchOpen = batch.status !== 'CLOTUREE' && batch.status !== 'ANNULEE';
 
   return (
     <div className="flex flex-col gap-6">
@@ -90,17 +96,19 @@ export function BroilerBatchDetailView({ batchId }: { batchId: string }) {
               </Button>
             </Can>
             <Can permission={PERMISSIONS.BROILER_BATCHES_UPDATE}>
-              <Button
-                variant="outline"
-                size="icon"
-                nativeButton={false}
-                render={<Link href={`/poulets-chair/${batchId}/modifier`} />}
-              >
-                <Pencil className="h-4 w-4" aria-hidden="true" />
-              </Button>
+              {isBatchOpen ? (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  nativeButton={false}
+                  render={<Link href={`/poulets-chair/${batchId}/modifier`} />}
+                >
+                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              ) : null}
             </Can>
             <Can permission={PERMISSIONS.BROILER_BATCHES_CLOSE}>
-              {canCloseBatch ? (
+              {isBatchOpen ? (
                 <Button variant="outline" onClick={() => setClosureDialogOpen(true)}>
                   <CircleX className="h-4 w-4" aria-hidden="true" />
                   Clôturer

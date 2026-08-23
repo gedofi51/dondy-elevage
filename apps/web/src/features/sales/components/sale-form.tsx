@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import { useCustomers } from '@/features/customers/hooks';
 import { useCreateSale } from '../hooks';
 import {
@@ -77,8 +79,14 @@ export function SaleForm({ productType, presetFk, customerRequired = false, onSu
       await createMutation.mutateAsync(input);
       toast.success('Vente enregistrée.');
       onSuccess?.();
-    } catch {
-      toast.error('Échec de l’enregistrement de la vente.');
+    } catch (err) {
+      // productType=OEUFS peut renvoyer un 409 stock insuffisant (message
+      // serveur exact, ex. FIFO) — plus utile que le message générique.
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement de la vente.')
+          : 'Échec de l’enregistrement de la vente.',
+      );
     }
   }
 

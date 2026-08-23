@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import { useCreateWaterReading } from '../hooks';
 import {
   createWaterReadingSchema,
@@ -49,7 +50,9 @@ export function WaterReadingForm({ waterPointId }: { waterPointId: string }) {
       // Le calcul serveur de l'écart caisse/théorique peut exiger
       // `remarks` (409) — jamais recalculé côté client, surfacé tel quel.
       setServerError(
-        err instanceof ApiError ? extractMessage(err.body) : 'Échec de l’enregistrement du relevé.',
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement du relevé.')
+          : 'Échec de l’enregistrement du relevé.',
       );
     }
   }
@@ -122,13 +125,4 @@ export function WaterReadingForm({ waterPointId }: { waterPointId: string }) {
       </Button>
     </form>
   );
-}
-
-function extractMessage(body: unknown): string {
-  if (body && typeof body === 'object' && 'message' in body) {
-    const message = (body as { message: unknown }).message;
-    if (typeof message === 'string') return message;
-    if (Array.isArray(message)) return message.join(' ');
-  }
-  return 'Échec de l’enregistrement du relevé.';
 }
