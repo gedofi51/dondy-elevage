@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { navItems } from './nav-items';
 import { useAuth } from '@/components/providers/auth-provider';
@@ -11,11 +12,19 @@ export function AppSidebar() {
   return (
     <aside className="hidden w-[248px] shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
       <div className="flex items-center gap-3 px-4 pt-[22px] pb-[22px]">
-        <span
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary font-heading text-sm font-semibold text-primary-foreground ring-2 ring-sidebar-primary/50"
-          aria-hidden="true"
-        >
-          DE
+        {/* Fond blanc arrondi : le logo a un fond blanc/crème (pas de
+            transparence, voir docs/architecture/DESIGN_SYSTEM.md) — sans
+            lui, ses bords carrés trancheraient sur le vert sombre de la
+            sidebar une fois recadrés en cercle. */}
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5 ring-2 ring-sidebar-primary/50">
+          <Image
+            src="/logo_dondy_elevage.png"
+            alt="Dondy Élevage"
+            width={40}
+            height={40}
+            className="h-full w-full rounded-full object-cover"
+            priority
+          />
         </span>
         <div className="leading-tight">
           <p className="font-heading text-lg font-semibold text-sidebar-foreground">Dondy Élevage</p>
