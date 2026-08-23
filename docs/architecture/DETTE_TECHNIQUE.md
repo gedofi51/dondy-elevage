@@ -881,6 +881,35 @@ tous les logs d'audit après le commit. Voir
 `orientation.service.ts`/`broiler-batches.service.ts`/
 `chick-batches.service.ts`.
 
+### Bouton "Modifier" accessible sur un lot déjà terminal — Select statut vide, enregistrement bloqué silencieusement (Broiler Phase 11, Pondeuses Phase 12 — trouvé et corrigé en Phase 12)
+
+**Trouvé en vérification manuelle de cette phase** (clôture d'un lot de
+pondeuses de test, puis navigation directe vers `modifier/` pour vérifier
+le garde-fou de statut) : le bouton "Modifier" de la fiche n'a jamais été
+conditionné à un statut non terminal — seul "Clôturer" l'était
+(`canCloseBatch`). Conséquence concrète : sur un lot déjà `CLOTURE`/
+`ANNULEE` (Pondeuses) ou `CLOTUREE`/`ANNULEE` (Chair), le formulaire de
+modification restait accessible, mais son `<Select>` statut (restreint aux
+valeurs "libres" — voir catégorie transversale ci-dessus) n'a aucune
+option correspondant à la valeur réelle du lot : le champ s'affiche vide,
+`zodResolver` rejette `status` à la soumission, et **rien ne se passe** au
+clic sur "Enregistrer" — pas de message d'erreur visible sous le champ (ce
+champ n'avait pas d'affichage `errors.status`), aucune navigation, aucun
+toast. Un cul-de-sac silencieux, reproductible pour n'importe quel champ
+du formulaire (même une simple correction d'observation), pas seulement le
+statut.
+
+**Corrigé immédiatement plutôt que documenté seul** (même raisonnement que
+`PaymentsService`/Phase 7 et `OrientationService`/Phase 5 ci-dessus : cause
+simple, correctif sûr et purement additif) : le bouton "Modifier" est
+désormais gardé par la même condition que "Clôturer" (`isBatchOpen =
+status !== 'CLOTURE(E)' && status !== 'ANNULEE'`), sur les deux fiches
+(`layer-batch-detail-view.tsx` — code neuf de cette phase — et
+`broiler-batch-detail-view.tsx` — code Phase 11 déjà mergé, corrigé ici
+car défaut identique trouvé par comparaison directe). Pas de refonte du
+formulaire/schéma : la modification métier d'un lot déjà clôturé/annulé
+n'a de toute façon aucun cas d'usage légitime identifié dans le cahier.
+
 ## Comment utiliser ce document
 
 - **En fin de mission** : avant de rédiger la section "Risques / dette

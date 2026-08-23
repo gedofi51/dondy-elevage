@@ -51,7 +51,14 @@ export function LayerBatchDetailView({ batchId }: { batchId: string }) {
   }
 
   const canEnterToday = batch.status === 'ELEVAGE' || batch.status === 'PONTE';
-  const canCloseBatch = batch.status !== 'CLOTURE' && batch.status !== 'ANNULEE';
+  // Garde client sur Modifier ET Clôturer — LayerBatchesService.close() ne
+  // vérifie jamais le statut courant côté serveur, et un statut terminal
+  // (CLOTURE/ANNULEE) est hors de LAYER_BATCH_EDITABLE_STATUSES : ouvrir le
+  // formulaire de modification sur un lot déjà terminal bloque
+  // silencieusement l'enregistrement (Select statut vide, aucune valeur
+  // valide à soumettre) — trouvé en vérification manuelle, corrigé en
+  // empêchant d'y accéder plutôt qu'en autorisant un état invalide.
+  const isBatchOpen = batch.status !== 'CLOTURE' && batch.status !== 'ANNULEE';
   // findAll (backend) trie par date croissante — le dernier élément est la
   // journée la plus récente, sans fetch supplémentaire (liste déjà chargée
   // pour l'onglet Suivi journalier).
@@ -95,17 +102,19 @@ export function LayerBatchDetailView({ batchId }: { batchId: string }) {
               </Button>
             </Can>
             <Can permission={PERMISSIONS.LAYER_BATCHES_UPDATE}>
-              <Button
-                variant="outline"
-                size="icon"
-                nativeButton={false}
-                render={<Link href={`/pondeuses/${batchId}/modifier`} />}
-              >
-                <Pencil className="h-4 w-4" aria-hidden="true" />
-              </Button>
+              {isBatchOpen ? (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  nativeButton={false}
+                  render={<Link href={`/pondeuses/${batchId}/modifier`} />}
+                >
+                  <Pencil className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              ) : null}
             </Can>
             <Can permission={PERMISSIONS.LAYER_BATCHES_CLOSE}>
-              {canCloseBatch ? (
+              {isBatchOpen ? (
                 <Button variant="outline" onClick={() => setClosureDialogOpen(true)}>
                   <CircleX className="h-4 w-4" aria-hidden="true" />
                   Clôturer
