@@ -43,6 +43,7 @@ function ResponsibleSelect<T extends FieldValues & { responsibleId: string }>({
   error?: string;
 }) {
   const { data: users } = useUsers();
+  const usersById = new Map((users ?? []).map((u) => [u.id, u.name]));
   return (
     <div className="grid gap-1.5">
       <Label htmlFor="wp-responsible">Responsable</Label>
@@ -52,7 +53,11 @@ function ResponsibleSelect<T extends FieldValues & { responsibleId: string }>({
         render={({ field }) => (
           <Select value={field.value} onValueChange={field.onChange}>
             <SelectTrigger id="wp-responsible">
-              <SelectValue placeholder="Sélectionner…" />
+              {/* SelectValue affiche la value brute sans mapping explicite
+                  — trouvé/corrigé en Phase 11, voir DETTE_TECHNIQUE.md. */}
+              <SelectValue placeholder="Sélectionner…">
+                {(value: string) => (value ? (usersById.get(value) ?? value) : 'Sélectionner…')}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {users?.map((u) => (
@@ -190,7 +195,9 @@ function EditWaterPointForm({ waterPoint }: { waterPoint: WaterPoint }) {
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
               <SelectTrigger id="wp-status">
-                <SelectValue placeholder="Sélectionner…" />
+                <SelectValue placeholder="Sélectionner…">
+                  {(value: (typeof waterPointStatusOptions)[number]) => statusLabels[value]}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {waterPointStatusOptions.map((status) => (

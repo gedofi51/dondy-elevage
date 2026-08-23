@@ -11,6 +11,15 @@ export function useSalesByWaterPoint(waterPointId: string) {
   });
 }
 
+export function useSalesByBatch(batchId: string) {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['sales', { batchId }],
+    queryFn: () => apiFetch<Sale[]>('/sales', { searchParams: { batchId } }),
+    enabled: !!batchId,
+  });
+}
+
 export function useCreateSale() {
   const apiFetch = useApiFetch();
   const queryClient = useQueryClient();
@@ -20,6 +29,10 @@ export function useCreateSale() {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       if (sale.waterPointId) {
         queryClient.invalidateQueries({ queryKey: ['water-points', sale.waterPointId, 'kpi'] });
+      }
+      if (sale.batchId) {
+        queryClient.invalidateQueries({ queryKey: ['broiler-batches', sale.batchId] });
+        queryClient.invalidateQueries({ queryKey: ['broiler-batches', sale.batchId, 'profitability'] });
       }
     },
   });
