@@ -45,16 +45,19 @@ function todayIsoDate(): string {
 
 export function SaleForm({ productType, presetFk, customerRequired = false, onSuccess }: SaleFormProps) {
   const { data: customers } = useCustomers();
+  const customersById = new Map((customers ?? []).map((c) => [c.id, c.name]));
   const createMutation = useCreateSale();
   const {
     register,
     control,
+    watch,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<CreateSaleFormInput, unknown, CreateSaleFormValues>({
     resolver: zodResolver(createSaleSchema),
     defaultValues: { date: todayIsoDate(), saleMode: 'UNITE', quantity: 1, discountFcfa: 0 },
   });
+  const saleMode = watch('saleMode');
 
   async function onSubmit(values: CreateSaleFormValues) {
     try {
@@ -65,6 +68,7 @@ export function SaleForm({ productType, presetFk, customerRequired = false, onSu
         customerId: values.customerId || undefined,
         saleMode: values.saleMode,
         quantity: values.quantity,
+        weightKg: values.saleMode === 'POIDS' ? values.weightKg : undefined,
         unitPriceFcfa: values.unitPriceFcfa,
         discountFcfa: values.discountFcfa,
         observation: values.observation || undefined,
@@ -94,7 +98,15 @@ export function SaleForm({ productType, presetFk, customerRequired = false, onSu
           render={({ field }) => (
             <Select value={field.value ?? ''} onValueChange={field.onChange}>
               <SelectTrigger id="sale-customer">
-                <SelectValue placeholder={customerRequired ? 'Sélectionner…' : 'Vente comptoir'} />
+                <SelectValue placeholder={customerRequired ? 'Sélectionner…' : 'Vente comptoir'}>
+                  {(value: string) =>
+                    value
+                      ? (customersById.get(value) ?? value)
+                      : customerRequired
+                        ? 'Sélectionner…'
+                        : 'Vente comptoir'
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {customers?.map((c) => (
@@ -116,7 +128,7 @@ export function SaleForm({ productType, presetFk, customerRequired = false, onSu
           render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
               <SelectTrigger id="sale-mode">
-                <SelectValue />
+                <SelectValue>{(value: (typeof saleModeOptions)[number]) => saleModeLabels[value]}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {saleModeOptions.map((mode) => (
@@ -144,6 +156,17 @@ export function SaleForm({ productType, presetFk, customerRequired = false, onSu
           ) : null}
         </div>
       </div>
+
+      {saleMode === 'POIDS' ? (
+        <div className="grid gap-1.5">
+          <Label htmlFor="sale-weight">Poids (kg)</Label>
+          <Input id="sale-weight" type="number" step="0.01" {...register('weightKg')} />
+          {errors.weightKg ? <p className="text-sm text-destructive">{errors.weightKg.message}</p> : null}
+          <p className="text-xs text-muted-foreground">
+            Informatif — le montant reste calculé sur quantité × prix unitaire.
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-1.5">
         <Label htmlFor="sale-discount">Remise (FCFA)</Label>

@@ -1,13 +1,23 @@
 'use client';
 
-import { Droplets, TriangleAlert } from 'lucide-react';
+import { Bird, Droplets, HeartPulse, TriangleAlert } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { KpiCard } from '@/components/shared/kpi-card';
 import { AlertBadge } from '@/components/shared/alert-badge';
 import { Can } from '@/components/shared/permission-gate';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
+import { useAuth } from '@/components/providers/auth-provider';
 import { useWaterPoints } from '@/features/water-points/hooks';
 import { useAlerts } from '@/features/alerts/hooks';
+import { useBroilerBatches, useTodayMortalityTotal } from '@/features/broiler-batches/hooks';
+
+const ACTIVE_BROILER_STATUSES = new Set([
+  'EN_DEMARRAGE',
+  'EN_CROISSANCE',
+  'EN_FINITION',
+  'PRETE_A_VENDRE',
+  'EN_VENTE',
+]);
 
 export default function DashboardPage() {
   const { data: waterPoints } = useWaterPoints();
@@ -22,12 +32,39 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard label="Points d'eau actifs" value={activeWaterPoints} icon={Droplets} tone="info" />
+        <Can permission={PERMISSIONS.BROILER_BATCHES_READ}>
+          <BroilerBatchKpis />
+        </Can>
       </div>
 
       <Can permission={PERMISSIONS.ALERTS_READ}>
         <AlertsWidget />
       </Can>
     </div>
+  );
+}
+
+function BroilerBatchKpis() {
+  const { user } = useAuth();
+  const canReadDailyRecords = user?.permissions.includes(PERMISSIONS.BROILER_DAILY_RECORDS_READ) ?? false;
+  const { data: batches } = useBroilerBatches();
+  const activeBatches = batches?.filter((b) => ACTIVE_BROILER_STATUSES.has(b.status)).length ?? '—';
+  const totalHeadcount = batches?.reduce((sum, b) => sum + b.currentHeadcount, 0) ?? '—';
+  const todayMortality = useTodayMortalityTotal(batches, canReadDailyRecords);
+
+  return (
+    <>
+      <KpiCard label="Bandes de chair actives" value={activeBatches} icon={Bird} tone="info" />
+      <KpiCard label="Effectif vivant (chair)" value={totalHeadcount} unit="sujets" icon={Bird} />
+      <Can permission={PERMISSIONS.BROILER_DAILY_RECORDS_READ}>
+        <KpiCard
+          label="Mortalité du jour (chair)"
+          value={todayMortality ?? '—'}
+          icon={HeartPulse}
+          tone={typeof todayMortality === 'number' && todayMortality > 0 ? 'destructive' : 'default'}
+        />
+      </Can>
+    </>
   );
 }
 
