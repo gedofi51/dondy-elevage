@@ -398,6 +398,73 @@ déjà taillé pour lui dans `roles.catalog.ts`).
   session), documenté comme reporté dans le plan de mission (non
   bloquant, juste un flash de contenu protégé évitable en plus).
 
+## Phase 10 — Design system "Agritech Premium"
+
+Remplacement de la palette Phase 0 par la direction "Agritech Premium"
+d'un mockup fourni par le porteur de projet (`docs/design/DONDY
+ELEVAGE - 5 directions.html`, 5 directions présentes, une seule
+retenue). Détail complet des tokens, arbitrages et vérifications :
+`docs/architecture/DESIGN_SYSTEM.md` — ce point ne liste ici que ce qui
+relève de la dette/risque, pas la doc de référence elle-même.
+
+- **Deux couleurs de la fiche "Agritech Premium" échouaient le
+  contraste WCAG AA texte normal (4.5:1)** sur leur fond respectif :
+  texte atténué `#8A8A7A`/fond `#FAF7EF` (3,27:1) et texte vigilance
+  `#B06F12`/fond badge `#FBEFD9` (3,60:1) — pertinent vu l'usage
+  extérieur à Samba (forte luminosité). Assombries à teinte égale
+  (`#6E6E60` et `#96600F`, ~4,6-4,8:1) plutôt qu'appliquées telles
+  quelles. Point limite résiduel, signalé et non corrigé : le badge
+  "Vigilance" composé sur son propre fond dérivé (`bg-warning/10`,
+  très clair) retombe à ~4,34:1 — sous 4.5:1 mais proche, et
+  nettement au-dessus du seuil 3:1. Assombrir davantage dériverait
+  vers un brun peu distinct de "vigilance" ; à re-mesurer si un retour
+  terrain signale une difficulté de lecture. Calcul détaillé :
+  `DESIGN_SYSTEM.md` section "Accessibilité".
+- **`--shadow-kpi-hero` (carte KPI "vedette", fond primary) défini mais
+  sans usage** — le dashboard Phase 9 n'affiche qu'un seul `KpiCard`,
+  une distinction vedette/standard serait prématurée. Même logique que
+  `--chart-4`/`--chart-5` (Phase 0), déjà préparés sans usage actuel
+  pour de futurs dashboards. Le token reste documenté et disponible.
+- **`rounded-2xl` (candidat pour un futur "app frame") sans usage
+  réel** — décision assumée de ne pas encadrer l'application dans un
+  conteneur arrondi/ombré comme le fait le mockup (lecture retenue :
+  artefact de présentation d'une maquette comparative à 5 directions
+  juxtaposées, pas une intention d'habillage réel d'app web plein
+  viewport). Voir `DESIGN_SYSTEM.md` section "Décisions", point 1.
+- **`next/font/google` refuse la syntaxe de plage de poids pour
+  Newsreader/Instrument Sans** — tenté (`weight: '400 600'`/`'400
+  700'`) pour ne charger que les poids réellement utilisés, rejeté à la
+  compilation (`Unknown weight ... Available weights: 400, 500, 600,
+  700, variable`) : la syntaxe plage documentée ne s'applique qu'aux
+  polices variables à continuum réel (type Inter), pas à des paliers
+  discrets. Sans impact pratique — l'omission de `weight` (déjà
+  recommandée, comportement par défaut `'variable'`) charge de toute
+  façon un seul fichier par police. Signalé pour ne pas être retenté
+  à l'identique dans une phase future.
+- **`components/ui/table.tsx` (`TableHead`) retouché sans être listé
+  dans le plan de phase initial** — trouvé pendant la vérification
+  visuelle : le style d'en-tête du mockup (majuscules, espacement de
+  lettres) ne cascadait pas automatiquement depuis les tokens de
+  couleur/rayon, contrairement à l'essentiel des autres composants
+  shadcn. Retouché au même titre que `card.tsx`/`dialog.tsx`/etc.
+- **`app/(auth)/layout.tsx` avait une régression visuelle non
+  anticipée** — trouvée uniquement grâce à la vérification manuelle en
+  navigateur (pas repérable par grep statique) : `bg-muted`, adapté à
+  de petites pastilles d'icônes avant cette phase, devenait un fond de
+  page entier vert pâle une fois `--dondy-muted` reteinté vers
+  `#EEF1EA`. Corrigé en `bg-background`, branding aligné sur
+  `app-sidebar.tsx`. Confirme l'utilité de la vérification visuelle
+  guidée au-delà du seul contrôle statique (aucune couleur codée en
+  dur, donc invisible à un grep).
+- **4 `h1` de formulaires d'authentification sans traitement "titre"**
+  (`features/auth/components/{login,two-factor,forgot-password,
+  set-password}-form.tsx`) — non repérés par l'audit de faisabilité
+  initial (classes déjà sémantiques, `text-foreground`, pas de couleur
+  en dur) car le défaut n'était pas une valeur incorrecte mais une
+  classe `font-heading`/`text-primary` manquante, même schéma que
+  `PageHeader` (déjà identifié dans le plan). Corrigés en vérification
+  visuelle, même règle appliquée aux 4 fichiers.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

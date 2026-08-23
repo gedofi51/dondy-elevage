@@ -105,9 +105,11 @@ en échec bloque le déploiement.
 6. Proposition de la prochaine étape uniquement (pas plus)
 
 ## Identité visuelle (design tokens Tailwind)
-primary #2D4A2E · secondary #A0522D · accent #E8891D · background #FAF7EF ·
-foreground #1A1A1A · muted #E8E1D0 · border #D8CFB8 · success #3F7A3E ·
-warning #E8891D · destructive #B03A2E · info #4A6C8C
+Palette, typographies (Newsreader/Instrument Sans), rayons, ombres et
+composants de référence : `docs/architecture/DESIGN_SYSTEM.md` fait foi
+(direction "Agritech Premium", Phase 10) — ne pas dupliquer les valeurs
+ici, ce fichier ne fait qu'y renvoyer pour éviter toute dérive entre
+les deux.
 
 ## Cohabitation Docker avec d'autres projets sur cette machine
 Une autre application (`donexskill-app`) tourne déjà en local via Docker sur
