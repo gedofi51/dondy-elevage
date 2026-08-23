@@ -59,11 +59,11 @@ export function SetPasswordForm({ token, mode }: SetPasswordFormProps) {
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6"
+      className="flex flex-col gap-4 rounded-lg border border-border bg-card p-6 shadow-card"
       noValidate
     >
       <div>
-        <h1 className="text-lg font-semibold text-foreground">{title}</h1>
+        <h1 className="font-heading text-lg font-semibold text-primary">{title}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       </div>
 
