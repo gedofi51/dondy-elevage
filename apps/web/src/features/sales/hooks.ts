@@ -20,6 +20,15 @@ export function useSalesByBatch(batchId: string) {
   });
 }
 
+export function useSalesByLayerBatch(layerBatchId: string) {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['sales', { layerBatchId }],
+    queryFn: () => apiFetch<Sale[]>('/sales', { searchParams: { layerBatchId } }),
+    enabled: !!layerBatchId,
+  });
+}
+
 export function useCreateSale() {
   const apiFetch = useApiFetch();
   const queryClient = useQueryClient();
@@ -33,6 +42,11 @@ export function useCreateSale() {
       if (sale.batchId) {
         queryClient.invalidateQueries({ queryKey: ['broiler-batches', sale.batchId] });
         queryClient.invalidateQueries({ queryKey: ['broiler-batches', sale.batchId, 'profitability'] });
+      }
+      if (sale.layerBatchId) {
+        queryClient.invalidateQueries({ queryKey: ['layer-batches', sale.layerBatchId] });
+        queryClient.invalidateQueries({ queryKey: ['layer-batches', sale.layerBatchId, 'profitability'] });
+        queryClient.invalidateQueries({ queryKey: ['egg-stock', 'lots', sale.layerBatchId] });
       }
     },
   });
