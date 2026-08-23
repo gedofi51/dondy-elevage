@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Bird, Droplets, LayoutDashboard } from 'lucide-react';
+import { Bird, Droplets, Egg, LayoutDashboard } from 'lucide-react';
 import type { PermissionCode } from '@dondy-elevage/shared-types';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
 
@@ -21,5 +21,11 @@ export const navItems: NavItem[] = [
     href: '/poulets-chair',
     icon: Bird,
     permission: PERMISSIONS.BROILER_BATCHES_READ,
+  },
+  {
+    label: 'Pondeuses',
+    href: '/pondeuses',
+    icon: Egg,
+    permission: PERMISSIONS.LAYER_BATCHES_READ,
   },
 ];

@@ -1,6 +1,6 @@
 'use client';
 
-import { Bird, Droplets, HeartPulse, TriangleAlert } from 'lucide-react';
+import { Bird, Droplets, Egg, HeartPulse, TriangleAlert } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { KpiCard } from '@/components/shared/kpi-card';
 import { AlertBadge } from '@/components/shared/alert-badge';
@@ -10,6 +10,7 @@ import { useAuth } from '@/components/providers/auth-provider';
 import { useWaterPoints } from '@/features/water-points/hooks';
 import { useAlerts } from '@/features/alerts/hooks';
 import { useBroilerBatches, useTodayMortalityTotal } from '@/features/broiler-batches/hooks';
+import { useLayerBatches, useTodayEggProductionTotal } from '@/features/layer-batches/hooks';
 
 const ACTIVE_BROILER_STATUSES = new Set([
   'EN_DEMARRAGE',
@@ -18,6 +19,8 @@ const ACTIVE_BROILER_STATUSES = new Set([
   'PRETE_A_VENDRE',
   'EN_VENTE',
 ]);
+
+const ACTIVE_LAYER_STATUSES = new Set(['ELEVAGE', 'PONTE']);
 
 export default function DashboardPage() {
   const { data: waterPoints } = useWaterPoints();
@@ -34,6 +37,9 @@ export default function DashboardPage() {
         <KpiCard label="Points d'eau actifs" value={activeWaterPoints} icon={Droplets} tone="info" />
         <Can permission={PERMISSIONS.BROILER_BATCHES_READ}>
           <BroilerBatchKpis />
+        </Can>
+        <Can permission={PERMISSIONS.LAYER_BATCHES_READ}>
+          <LayerBatchKpis />
         </Can>
       </div>
 
@@ -62,6 +68,30 @@ function BroilerBatchKpis() {
           value={todayMortality ?? '—'}
           icon={HeartPulse}
           tone={typeof todayMortality === 'number' && todayMortality > 0 ? 'destructive' : 'default'}
+        />
+      </Can>
+    </>
+  );
+}
+
+function LayerBatchKpis() {
+  const { user } = useAuth();
+  const canReadDailyRecords = user?.permissions.includes(PERMISSIONS.LAYER_DAILY_RECORDS_READ) ?? false;
+  const { data: batches } = useLayerBatches();
+  const activeBatches = batches?.filter((b) => ACTIVE_LAYER_STATUSES.has(b.status)).length ?? '—';
+  const totalHeadcount = batches?.reduce((sum, b) => sum + b.currentHeadcount, 0) ?? '—';
+  const todayEggProduction = useTodayEggProductionTotal(batches, canReadDailyRecords);
+
+  return (
+    <>
+      <KpiCard label="Lots de pondeuses actifs" value={activeBatches} icon={Egg} tone="info" />
+      <KpiCard label="Effectif total (pondeuses)" value={totalHeadcount} unit="poules" icon={Egg} />
+      <Can permission={PERMISSIONS.LAYER_DAILY_RECORDS_READ}>
+        <KpiCard
+          label="Production d’œufs du jour"
+          value={todayEggProduction ?? '—'}
+          unit="œufs"
+          icon={Egg}
         />
       </Can>
     </>
