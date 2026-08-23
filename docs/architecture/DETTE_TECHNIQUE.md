@@ -465,6 +465,98 @@ relève de la dette/risque, pas la doc de référence elle-même.
   `PageHeader` (déjà identifié dans le plan). Corrigés en vérification
   visuelle, même règle appliquée aux 4 fichiers.
 
+## Phase 11 — Frontend Poulets de chair
+
+Deuxième module métier frontend complet, construit directement dans le
+design "Agritech Premium" (Phase 10) : bandes, suivi quotidien
+(45 lignes pré-générées, adressées par jour), mortalité, santé, vente,
+clôture, alertes calendaires, KPI dashboard.
+
+### Statuts « terminaux » non protégés au niveau service — catégorie transversale, 4 modules (ouverte cette phase)
+
+**À traiter ensemble dans une future phase de durcissement, pas au coup
+par coup module par module** — même logique de consolidation que la
+dette "vérification de disponibilité sans verrou" (Phases 3/5, corrigée
+d'un bloc en Phase 8, voir "✅ Corrigé" ci-dessous). Signalé
+explicitement pour ne pas laisser ce gap se disperser en mentions
+isolées phase après phase.
+
+**Le schéma exact, identique dans les 4 modules** : le DTO de
+modification documente en commentaire que les statuts "terminaux"
+(annulation/clôture) doivent passer exclusivement par un endpoint dédié
+(`/annuler`, `/cloturer`) — mais rien au niveau du service n'empêche de
+les atteindre directement via le PATCH générique, qui applique le DTO
+tel quel (`data: { ...dto }`) sans filtrer `status`. Le garde-fou est
+une convention documentée, pas un contrôle appliqué.
+
+Occurrences confirmées (grep + lecture du service pour chacune) :
+- **`BroilerBatch`** (Chair, Phase 3/11) — `UpdateBroilerBatchDto`
+  documente "ANNULEE et CLOTUREE passent par les endpoints dédiés" ;
+  `BroilerBatchesService.update()` (`data: { ...dto }`) ne filtre rien.
+  **Contourné côté frontend cette phase** : le `<Select>` statut du
+  formulaire de modification n'affiche que les 8 valeurs libres
+  (`BROILER_BATCH_EDITABLE_STATUSES`, `packages/shared-types/src/
+  broiler-batches.ts`) — un contournement UI, pas une correction de la
+  source.
+- **`LayerBatch`** (Pondeuses, Phase 4) — même schéma
+  (`layer-batches.service.ts`, `data: { ...dto, entryDate: ... }`),
+  **non contourné même côté frontend** : ce module n'a pas encore
+  d'écran (Phase 12+ probable).
+- **`BreederBatch`** (Reproductrices, Phase 5) — même schéma
+  (`breeder-batches.service.ts`, `data: { ...dto, constitutionDate:
+  ... }`), statuts libres `ACTIF`/`REFORME`. Non contourné (pas
+  d'écran).
+- **`IncubationBatch`** (Couvoir, Phase 5) — même commentaire DTO
+  ("ANNULEE et CLOTURE passent par les endpoints dédiés"), transition
+  libre `EN_INCUBATION`→`ECLOS`. Non contourné (pas d'écran).
+
+**Pourquoi ce n'est pas corrigé côté backend cette phase** : Phase 11
+est explicitement frontend seulement (voir Contexte du plan de
+mission) — le contournement UI sur Chair est la seule action possible
+dans ce périmètre. Une correction backend correcte (rejeter `status`
+dans le PATCH générique si la valeur cible est terminale, sur les 4
+modules à la fois) est un chantier de durcissement ciblé, pas une
+correction ponctuelle module par module.
+
+### Autres points
+
+- **KPI dashboard "mortalité du jour" (toutes bandes Chair) — fetch par
+  bande active plutôt qu'un agrégat serveur** : `BroilerBatchWithComputed`
+  n'expose aucun champ de mortalité agrégée, et aucun endpoint
+  farm-wide n'existe. Un fetch `GET .../daily-records/:dayNumber` est
+  émis par bande **active et dans son cycle** (`useTodayMortalityTotal`,
+  `features/broiler-batches/hooks.ts`), gaté sur
+  `BROILER_DAILY_RECORDS_READ` pour éviter des 403 en boucle sur les
+  rôles qui n'ont que `BROILER_BATCHES_READ` (ex. Vendeur/Caisse).
+  Borné par le nombre de bandes actives d'une ferme (pas un vrai N+1 à
+  grande échelle), mais c'est un **arbitrage réel contre la contrainte
+  permanente "faible consommation réseau" de CLAUDE.md** — accepté
+  faute d'alternative sans modification backend, pas ignoré
+  silencieusement.
+- **GMQ (gain moyen quotidien) non affiché** — calculé et testé côté
+  backend (`broiler-growth.calculations.ts`) mais jamais exposé par
+  aucune route (dette déjà documentée Phase 8). Non recalculé côté
+  client : reproduire cette logique dans le frontend créerait une
+  double source de vérité, contraire au principe directeur CLAUDE.md
+  ("jamais de recalcul manuel"). Reste une limite d'affichage connue.
+- **`GET /broiler-batches` toujours sans filtre/pagination serveur**
+  (confirmé inchangé depuis `BILAN_COMPLETUDE_V1_V5.md`, non corrigé en
+  Phase 8) — mitigé par un toggle "Actives"/"Toutes" **purement
+  côté client** sur `poulets-chair/page.tsx` (filtrage en mémoire sur
+  les données déjà entièrement récupérées). Un palliatif d'affichage,
+  pas une résolution du gap réseau — le gap backend reste ouvert.
+- **Onglets Mortalité et Santé sans test de composant** (comme les 4
+  formulaires d'authentification en Phase 9) — honnêteté sur le
+  périmètre testé : validation manuelle en navigateur uniquement cette
+  phase, aucun test Vitest écrit pour `mortality-form.tsx`/
+  `health-event-form.tsx`/`daily-record-form.tsx` faute de temps.
+- **`weightKg` ajouté à `SaleForm`/`sales/schemas.ts`, purement
+  descriptif** : le montant d'une vente reste `quantity ×
+  unitPriceFcfa` quel que soit `saleMode` côté API — un `saleMode=POIDS`
+  avec `weightKg` renseigné n'affecte aucun calcul, comportement API
+  préexistant confirmé (pas une régression introduite ici), juste
+  rendu visible côté formulaire pour la première fois.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
