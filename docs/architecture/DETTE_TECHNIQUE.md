@@ -977,6 +977,77 @@ lignes de commande/réception, avertissement de dépassement de solde de
 paiement) — voir `reason-type.test.ts`, `line-totals.test.ts`,
 `receipt-remaining.test.ts`, `supplier-payment-form.test.tsx`.
 
+## Phase 15 — Durcissement frontend ciblé (avant V6)
+
+Phase issue du bilan de complétude frontend
+(`docs/architecture/BILAN_COMPLETUDE_FRONTEND_V1_V5.md`) — corrige les
+points prioritaires identifiés avant V6, même logique que la Phase 8
+côté backend. Les correctifs (garde "Vendre", rollout `extractMessage`,
+KPI dashboard, 2 colonnes de liste, 4 fichiers de test) sont détaillés
+dans "✅ Corrigé" ci-dessous ; les points suivants sont des décisions de
+périmètre prises **sans code** cette phase, documentées explicitement.
+
+- **`BroilerBatchesService.cancel()` reste sans garde d'effectif,
+  décision explicite** : `cancel()` (`broiler-batches.service.ts:429-
+  443`) passe une bande à `ANNULEE` sans vérifier `currentHeadcount`,
+  contrairement à `close()` qui bloque si `currentHeadcount > 0`. Risque
+  réel confirmé par le bilan frontend, mais **désormais borné** par la
+  garde `isBatchOpen` ajoutée cette phase sur le bouton "Vendre" (voir
+  "✅ Corrigé") : une bande `ANNULEE` ne peut plus jamais afficher ce
+  bouton, quel que soit son effectif réel. `/annuler` n'est par ailleurs
+  exposé nulle part côté UI et n'a 0 couverture e2e
+  (`apps/api/test/broiler-batches.e2e-spec.ts` ne teste que
+  `/cloturer`) — même critère que Breeder/Incubation (Phase 13) : action
+  de transition sans garde métier exercée par un test → différée, pas
+  corrigée en douce. Candidat pour un futur durcissement backend
+  (aligner `cancel()` sur `close()`), au même titre que le reste de la
+  dette "statuts terminaux" déjà groupée (Phase 11).
+- **OAuth Google/Microsoft — bouton de connexion toujours absent,
+  décision explicite** : `GET /auth/oauth/{google,microsoft}` existent
+  et fonctionnent côté backend, mais `OAUTH_GOOGLE_CLIENT_ID`/
+  `OAUTH_MICROSOFT_CLIENT_ID` sont vides dans `.env.example`, et les
+  stratégies passport (`apps/api/src/modules/auth/strategies/{google,
+  microsoft}.strategy.ts`) retombent sur la chaîne littérale
+  `'not-configured'` en leur absence. Câbler un bouton qui échouerait
+  systématiquement serait une pire UX que son absence — différé jusqu'à
+  ce que de vraies credentials d'app soient enregistrées (dette connue
+  depuis Phase 1). Candidat pour cette échéance : un flag d'activation
+  conditionnelle côté frontend plutôt qu'un bouton toujours visible.
+- **Édition/suppression de mortalité et d'événements sanitaires
+  (Chair) — toujours absentes, décision explicite** : le backend expose
+  déjà `PATCH`/`DELETE /broiler-batches/:batchId/mortality/:id` et
+  `PATCH /broiler-batches/:batchId/health-events/:id` avec permissions
+  dédiées, mais `features/broiler-batches/hooks.ts` n'a que les hooks de
+  création. Aucun composant "dialog d'édition de sous-ressource"
+  générique n'existe dans le projet à réutiliser — construire ceci
+  (2 hooks + 2 dialogs + colonnes Actions + `ConfirmDialog`) représente
+  un coût net réel, différé pour ne pas déborder le périmètre déjà
+  substantiel de cette phase. Non bloquant : la création reste
+  fonctionnelle, aucune corruption de donnée possible.
+- **11 des 13 colonnes du §4.2 (liste des bandes Chair) restent
+  absentes** : seules Date d'arrivée et Bâtiment ont été ajoutées cette
+  phase (coût nul : déjà dans le payload / hook de lecture déjà
+  existant). Les colonnes restantes (mortalités cumulées, taux de
+  mortalité, poids moyen...) nécessiteraient un agrégat serveur par
+  bande sur la liste — hors périmètre, aucun endpoint agrégé de ce type
+  n'existe (`GET /broiler-batches` reste sans filtre/pagination serveur,
+  dette déjà documentée Phase 11).
+- **Aucun écran d'administration utilisateurs/rôles, décision
+  explicite** : les 11 rôles réels de `roles.catalog.ts` restent ni
+  visibles ni assignables depuis le frontend. Différé — un seul compte
+  Propriétaire/Administrateur suffit à l'usage réel actuel à Samba,
+  l'attribution de rôle reste possible via seed/API directe pour le peu
+  de comptes concernés. Candidat pour une future phase "référentiels
+  partagés" (déjà envisagée pour Buildings/Suppliers).
+- **Tests de composants (React Testing Library) toujours absents sur
+  Eau/Chair/Pondeuses** : cette phase ajoute 4 fichiers de test (3
+  fonctions pures + 1 schéma Zod, voir "✅ Corrigé"), mais aucun test de
+  composant (rendu, interaction utilisateur) sur les formulaires de ces
+  3 modules — seuls `orientation-form.test.tsx` (Phase 13) et
+  `supplier-payment-form.test.tsx` (Phase 14) existent dans tout le
+  projet. Gap honnêtement non résolu, chantier plus large que le
+  périmètre ciblé de cette phase.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
@@ -1268,6 +1339,80 @@ l'identique dans une dizaine d'autres formulaires du projet). Corrigé
 en ajoutant `date: todayIsoDate()` (helper local ajouté au fichier) aux
 `defaultValues` de `CreateExpenseForm`. `EditExpenseForm` n'était pas
 concerné (pré-rempli depuis l'entité chargée).
+
+### Bouton "Vendre" (Chair) non gardé par `isBatchOpen` — trouvé par le bilan frontend, corrigé en Phase 15
+
+`broiler-batch-detail-view.tsx` : le bouton "Vendre" n'était gardé que
+par `Can permission={SALES_CREATE}`, contrairement à "Modifier"/
+"Clôturer" (gardés par `isBatchOpen` depuis la Phase 12) — une bande
+`CLOTUREE`/`ANNULEE` restait vendable depuis l'UI. Corrigé en
+enveloppant le bouton dans `{isBatchOpen ? (...) : null}`, exactement le
+même patron que les deux boutons voisins. Combiné à cette garde, le
+risque théorique de `cancel()` sans contrôle d'effectif (voir section
+Phase 15 ci-dessus, resté non corrigé côté backend) est désormais borné
+côté UI : une bande annulée ne peut plus jamais afficher ce bouton.
+
+### `extractMessage` — rollout sur les 14 derniers formulaires (21 blocs `catch`), Phase 15
+
+Le bilan frontend a quantifié précisément la dette déjà pressentie :
+seuls 14 formulaires sur 28 utilisaient le helper mutualisé
+`extractMessage` (extrait en Phase 11), les 14 autres (`item-form`,
+`expense-form`, `layer-batch-form`, `incubator-form`,
+`chick-batch-form`, `broiler-batch-form`, `breeder-batch-form`,
+`health-event-form` ×2 [Chair/Pondeuses], `closure-dialog` ×2
+[Chair/Pondeuses], `water-point-form`, `mortality-form`,
+`daily-record-form` [Chair]) affichaient un message générique fixe au
+lieu du message métier réel renvoyé par l'API (409/400 avec le détail
+d'une règle violée). Corrigé sur les 21 blocs `catch` concernés (certains
+fichiers ont un formulaire Création + Édition), même patron partout :
+`catch (err) { toast.error(err instanceof ApiError ? extractMessage(err.body, fallback) : fallback) }`.
+Vérifié en conditions réelles (interception `fetch` renvoyant un 409
+avec un message métier crafté sur `item-form.tsx`) : le message exact de
+l'API s'affiche désormais, plus le message générique.
+
+### KPI dashboard Ventes/Dépenses/Marge — ajoutés en Phase 15
+
+Le dashboard n'affichait aucun KPI Ventes/Dépenses/Marge malgré des
+modules Ventes/Dépenses complets ailleurs dans l'app — écart avec
+`docs/reference/TABLEAU_DE_BORD.md` signalé par le bilan frontend.
+Corrigé : `TreasuryKpis()` (`app/(app)/page.tsx`) consomme
+`useTreasurySummary(from, to)` (déjà existant, même endpoint et même clé
+de cache React Query que la page Trésorerie), période fixe "mois
+courant → aujourd'hui", **un seul GET supplémentaire**, gaté
+`TREASURY_READ` comme `PayablesKpi`. Vérifié en conditions réelles
+(données du farm de test : Ventes 413 000 FCFA, Dépenses 0 FCFA, Marge
+brute 413 000 FCFA, cohérent avec `GET /treasury/summary`).
+
+### Colonnes Date d'arrivée et Bâtiment — liste des bandes Chair, Phase 15
+
+`broiler-batch-table.tsx` n'affichait que 5 colonnes sur les 13 du §4.2
+du cahier. Ajout de 2 colonnes à coût nul : Date d'arrivée (déjà dans
+`BroilerBatchWithComputed.arrivalDate`) et Bâtiment (résolu via
+`useBuildings()`, même patron `Map` que `useUsers()` déjà utilisé dans
+ce fichier). Le rôle Vendeur/Caisse a `BROILER_BATCHES_READ` mais pas
+`BUILDINGS_READ` (`roles.catalog.ts`) — géré par un fallback gracieux
+(`isError` sur `useBuildings()` → `—` plutôt qu'un 403 silencieux),
+même patron que `SupplierField` (`broiler-batch-form.tsx`). Les 11
+colonnes restantes du §4.2 nécessiteraient un agrégat serveur par bande
+(N+1) — non ajoutées, voir section Phase 15 ci-dessus.
+
+### 4 nouveaux fichiers de test — fonctions pures + schéma Eau, Phase 15
+
+Candidats identifiés par le bilan frontend comme faciles à tester
+(fonctions pures, pas de DOM, risque de divergence avec le backend) :
+`features/broiler-batches/day-number.test.ts` (`computeDayNumber`/
+`isDayNumberInCycle`), `features/layer-batches/hen-count.test.ts`
+(`computeSuggestedHenCount`, réplique une formule backend),
+`features/layer-batches/age.test.ts` (`computeCurrentAgeWeeks`). Un
+4ᵉ candidat non anticipé dans le plan initial, trouvé pendant la revue :
+`features/water-points/schemas.test.ts` — le module Eau n'a aucune
+fonction pure extraite (0 fichier de test avant cette phase, confirmé
+par le bilan), mais `createWaterReadingSchema.superRefine` (le seul
+contrôle du §7.3 réellement dupliqué côté client) est testable via
+`.safeParse()` à coût quasi nul. 4 fichiers, exécutés avec succès
+(`npx vitest run --pool=forks` — `--pool=forks` nécessaire sur cette
+machine Windows, le pool `threads` par défaut échoue avec un timeout de
+démarrage de worker, sans lien avec le code applicatif).
 
 ## Comment utiliser ce document
 

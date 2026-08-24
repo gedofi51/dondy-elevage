@@ -3,6 +3,8 @@
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import type { CreateHealthEventInput } from '@dondy-elevage/shared-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -80,8 +82,12 @@ export function HealthEventForm({ batchId, onSuccess }: { batchId: string; onSuc
       await createMutation.mutateAsync(input);
       toast.success('Événement sanitaire enregistré.');
       onSuccess?.();
-    } catch {
-      toast.error('Échec de l’enregistrement.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement.')
+          : 'Échec de l’enregistrement.',
+      );
     }
   }
 

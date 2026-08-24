@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import { CircleCheck, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,8 +48,12 @@ export function ClosureDialog({
       toast.success('Bande clôturée.');
       onOpenChange(false);
       router.push(`/poulets-chair/${batchId}`);
-    } catch {
-      toast.error('Échec de la clôture — vérifiez qu’aucun sujet ne reste vivant/disponible.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de la clôture — vérifiez qu’aucun sujet ne reste vivant/disponible.')
+          : 'Échec de la clôture — vérifiez qu’aucun sujet ne reste vivant/disponible.',
+      );
     } finally {
       setConfirming(false);
     }

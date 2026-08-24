@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import { CircleCheck, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -48,8 +50,12 @@ export function ClosureDialog({
       toast.success('Lot clôturé.');
       onOpenChange(false);
       router.push(`/pondeuses/${batchId}`);
-    } catch {
-      toast.error('Échec de la clôture.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de la clôture.')
+          : 'Échec de la clôture.',
+      );
     } finally {
       setConfirming(false);
     }

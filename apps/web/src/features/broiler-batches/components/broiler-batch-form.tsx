@@ -4,6 +4,8 @@ import { Controller, useForm, type Control, type FieldValues, type Path } from '
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import type { BroilerBatchWithComputed } from '@dondy-elevage/shared-types';
 import { BROILER_BATCH_EDITABLE_STATUSES } from '@dondy-elevage/shared-types';
 import { Button } from '@/components/ui/button';
@@ -136,8 +138,12 @@ function CreateBroilerBatchForm() {
       });
       toast.success('Bande créée.');
       router.push(`/poulets-chair/${created.id}`);
-    } catch {
-      toast.error('Échec de la création — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de la création — vérifiez les champs.')
+          : 'Échec de la création — vérifiez les champs.',
+      );
     }
   }
 
@@ -315,8 +321,12 @@ function EditBroilerBatchForm({ batch }: { batch: BroilerBatchWithComputed }) {
       });
       toast.success('Bande modifiée.');
       router.push(`/poulets-chair/${batch.id}`);
-    } catch {
-      toast.error('Échec de l’enregistrement — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement — vérifiez les champs.')
+          : 'Échec de l’enregistrement — vérifiez les champs.',
+      );
     }
   }
 

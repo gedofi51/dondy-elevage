@@ -4,6 +4,8 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import type { LayerBatchWithComputed } from '@dondy-elevage/shared-types';
 import { LAYER_BATCH_EDITABLE_STATUSES } from '@dondy-elevage/shared-types';
 import { Button } from '@/components/ui/button';
@@ -59,8 +61,12 @@ function CreateLayerBatchForm() {
       });
       toast.success('Lot créé.');
       router.push(`/pondeuses/${created.id}`);
-    } catch {
-      toast.error('Échec de la création — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de la création — vérifiez les champs.')
+          : 'Échec de la création — vérifiez les champs.',
+      );
     }
   }
 
@@ -151,8 +157,12 @@ function EditLayerBatchForm({ batch }: { batch: LayerBatchWithComputed }) {
       });
       toast.success('Lot modifié.');
       router.push(`/pondeuses/${batch.id}`);
-    } catch {
-      toast.error('Échec de l’enregistrement — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement — vérifiez les champs.')
+          : 'Échec de l’enregistrement — vérifiez les champs.',
+      );
     }
   }
 

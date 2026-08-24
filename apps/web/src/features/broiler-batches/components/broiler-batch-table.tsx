@@ -5,6 +5,7 @@ import type { BroilerBatchStatus, BroilerBatchWithComputed } from '@dondy-elevag
 import { DataTable, type DataTableColumn } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { useUsers } from '@/features/users/hooks';
+import { useBuildings } from '@/features/buildings/hooks';
 import { computeDayNumber } from '../day-number';
 
 type Tone = 'default' | 'success' | 'warning' | 'destructive' | 'info' | 'muted';
@@ -30,6 +31,11 @@ interface BroilerBatchTableProps {
 export function BroilerBatchTable({ data, isLoading }: BroilerBatchTableProps) {
   const { data: users } = useUsers();
   const usersById = new Map((users ?? []).map((u) => [u.id, u.name]));
+  // Vendeur/Caisse a BROILER_BATCHES_READ mais pas BUILDINGS_READ
+  // (roles.catalog.ts) — isError distingue un 403 gracieux d'un chargement,
+  // même patron que SupplierField (broiler-batch-form.tsx).
+  const { data: buildings, isError: buildingsError } = useBuildings();
+  const buildingsById = new Map((buildings ?? []).map((b) => [b.id, b.name]));
 
   const columns: DataTableColumn<BroilerBatchWithComputed>[] = [
     {
@@ -40,6 +46,11 @@ export function BroilerBatchTable({ data, isLoading }: BroilerBatchTableProps) {
           {b.code}
         </Link>
       ),
+    },
+    {
+      key: 'arrivalDate',
+      header: 'Date d’arrivée',
+      render: (b) => new Date(b.arrivalDate).toLocaleDateString('fr-FR'),
     },
     {
       key: 'age',
@@ -61,6 +72,11 @@ export function BroilerBatchTable({ data, isLoading }: BroilerBatchTableProps) {
       key: 'headcount',
       header: 'Effectif vivant',
       render: (b) => b.currentHeadcount.toLocaleString('fr-FR'),
+    },
+    {
+      key: 'building',
+      header: 'Bâtiment',
+      render: (b) => (buildingsError ? '—' : (buildingsById.get(b.buildingId) ?? '—')),
     },
     {
       key: 'responsible',

@@ -4,6 +4,8 @@ import { Controller, useForm, type Control, type FieldValues, type Path } from '
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import type { CreateExpenseInput, Expense, UpdateExpenseInput } from '@dondy-elevage/shared-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -185,8 +187,12 @@ function CreateExpenseForm() {
       await createMutation.mutateAsync(input);
       toast.success('Dépense créée.');
       router.push('/depenses');
-    } catch {
-      toast.error('Échec de la création — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de la création — vérifiez les champs.')
+          : 'Échec de la création — vérifiez les champs.',
+      );
     }
   }
 
@@ -308,8 +314,12 @@ function EditExpenseForm({ expense }: { expense: Expense }) {
       await updateMutation.mutateAsync(input);
       toast.success('Dépense modifiée.');
       router.push('/depenses');
-    } catch {
-      toast.error('Échec de l’enregistrement — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement — vérifiez les champs.')
+          : 'Échec de l’enregistrement — vérifiez les champs.',
+      );
     }
   }
 

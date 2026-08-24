@@ -4,6 +4,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import type { ChickBatchWithComputed } from '@dondy-elevage/shared-types';
 import { Button } from '@/components/ui/button';
 import { BuildingSelect } from '@/components/shared/entity-select';
@@ -30,8 +32,12 @@ export function ChickBatchForm({ batch }: { batch: ChickBatchWithComputed }) {
       await updateMutation.mutateAsync(values);
       toast.success('Lot modifié.');
       router.push(`/poussins/${batch.id}`);
-    } catch {
-      toast.error('Échec de l’enregistrement — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement — vérifiez les champs.')
+          : 'Échec de l’enregistrement — vérifiez les champs.',
+      );
     }
   }
 
