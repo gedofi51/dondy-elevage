@@ -11,8 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useUsers } from '@/features/users/hooks';
-import { useBuildings } from '@/features/buildings/hooks';
+import { BuildingSelect, UserSelect } from '@/components/shared/entity-select';
 import { useSuppliers } from '@/features/suppliers/hooks';
 import { useCreateBroilerBatch, useUpdateBroilerBatch } from '../hooks';
 import {
@@ -40,96 +39,6 @@ const statusLabels: Record<(typeof BROILER_BATCH_EDITABLE_STATUSES)[number], str
   EN_VENTE: 'En vente',
   VENDUE: 'Vendue',
 };
-
-function UserSelect<T extends FieldValues>({
-  name,
-  label,
-  control,
-  error,
-}: {
-  name: Path<T>;
-  label: string;
-  control: Control<T>;
-  error?: string;
-}) {
-  const { data: users } = useUsers();
-  const usersById = new Map((users ?? []).map((u) => [u.id, u.name]));
-  return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={name}>{label}</Label>
-      <Controller
-        name={name}
-        control={control}
-        render={({ field }) => (
-          <Select value={field.value} onValueChange={field.onChange}>
-            <SelectTrigger id={name}>
-              {/* SelectValue sans `items`/`itemToStringLabel` affiche la
-                  `value` brute (ici un UUID) une fois une sélection faite —
-                  comportement documenté de base-ui, pas un défaut par
-                  défaut cosmétique. Mapping explicite requis dès qu'un
-                  Select est peuplé dynamiquement (voir DETTE_TECHNIQUE.md
-                  Phase 11 : même correctif appliqué rétroactivement aux
-                  Select Phase 9 affectés). */}
-              {/* `placeholder` est ignoré par SelectValue dès qu'un enfant
-                  fonction est fourni (voir DETTE_TECHNIQUE.md Phase 11) —
-                  le cas value vide doit être géré explicitement ici. */}
-              <SelectValue placeholder="Sélectionner…">
-                {(value: string) => (value ? (usersById.get(value) ?? value) : 'Sélectionner…')}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {users?.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      />
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
-  );
-}
-
-function BuildingSelect<T extends FieldValues>({
-  name,
-  control,
-  error,
-}: {
-  name: Path<T>;
-  control: Control<T>;
-  error?: string;
-}) {
-  const { data: buildings } = useBuildings();
-  const buildingsById = new Map((buildings ?? []).map((b) => [b.id, b.name]));
-  return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={name}>Bâtiment</Label>
-      <Controller
-        name={name}
-        control={control}
-        render={({ field }) => (
-          <Select value={field.value} onValueChange={field.onChange}>
-            <SelectTrigger id={name}>
-              <SelectValue placeholder="Sélectionner…">
-                {(value: string) => (value ? (buildingsById.get(value) ?? value) : 'Sélectionner…')}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {buildings?.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {b.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      />
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
-  );
-}
 
 /** origin=ACHAT affiche le select fournisseur — masqué (pas seulement
  * désactivé) si le rôle courant n'a pas SUPPLIERS_READ (403 gracieux, voir

@@ -1,6 +1,6 @@
 'use client';
 
-import { Bird, Droplets, Egg, HeartPulse, TriangleAlert } from 'lucide-react';
+import { Bird, Droplets, Egg, EggFried, Feather, HeartPulse, TriangleAlert } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { KpiCard } from '@/components/shared/kpi-card';
 import { AlertBadge } from '@/components/shared/alert-badge';
@@ -11,6 +11,9 @@ import { useWaterPoints } from '@/features/water-points/hooks';
 import { useAlerts } from '@/features/alerts/hooks';
 import { useBroilerBatches, useTodayMortalityTotal } from '@/features/broiler-batches/hooks';
 import { useLayerBatches, useTodayEggProductionTotal } from '@/features/layer-batches/hooks';
+import { useBreederBatches } from '@/features/breeder-batches/hooks';
+import { useIncubationBatches } from '@/features/incubation-batches/hooks';
+import { computeHatchRatePercent } from '@/features/incubation-batches/kpi';
 
 const ACTIVE_BROILER_STATUSES = new Set([
   'EN_DEMARRAGE',
@@ -21,6 +24,7 @@ const ACTIVE_BROILER_STATUSES = new Set([
 ]);
 
 const ACTIVE_LAYER_STATUSES = new Set(['ELEVAGE', 'PONTE']);
+const ACTIVE_BREEDER_STATUSES = new Set(['ACTIF', 'REFORME']);
 
 export default function DashboardPage() {
   const { data: waterPoints } = useWaterPoints();
@@ -40,6 +44,12 @@ export default function DashboardPage() {
         </Can>
         <Can permission={PERMISSIONS.LAYER_BATCHES_READ}>
           <LayerBatchKpis />
+        </Can>
+        <Can permission={PERMISSIONS.BREEDER_BATCHES_READ}>
+          <BreederBatchKpi />
+        </Can>
+        <Can permission={PERMISSIONS.INCUBATION_BATCHES_READ}>
+          <IncubationBatchKpis />
         </Can>
       </div>
 
@@ -94,6 +104,42 @@ function LayerBatchKpis() {
           icon={Egg}
         />
       </Can>
+    </>
+  );
+}
+
+function BreederBatchKpi() {
+  const { data: batches } = useBreederBatches();
+  const activeBatches = batches?.filter((b) => ACTIVE_BREEDER_STATUSES.has(b.status)).length ?? '—';
+
+  return (
+    <KpiCard label="Lots reproducteurs actifs" value={activeBatches} icon={Feather} tone="info" />
+  );
+}
+
+/** Taux d'éclosion moyen : calculé sur la liste déjà chargée pour le compte
+ * "incubations en cours" (aucun fetch supplémentaire, contrairement au
+ * "production du jour" côté Pondeuses qui nécessite un fetch par lot actif
+ * — voir DETTE_TECHNIQUE.md Phase 12/13). Formule répliquée côté client,
+ * jamais exposée par l'API (voir features/incubation-batches/kpi.ts). */
+function IncubationBatchKpis() {
+  const { data: batches } = useIncubationBatches();
+  const inProgress = batches?.filter((b) => b.status === 'EN_INCUBATION').length ?? '—';
+  const withBilan = (batches ?? []).filter((b) => b.chicksHatched !== null);
+  const averageHatchRate =
+    withBilan.length > 0
+      ? withBilan.reduce((sum, b) => sum + computeHatchRatePercent(b.chicksHatched!, b.eggCount), 0) /
+        withBilan.length
+      : undefined;
+
+  return (
+    <>
+      <KpiCard label="Incubations en cours" value={inProgress} icon={EggFried} tone="info" />
+      <KpiCard
+        label="Taux d’éclosion moyen"
+        value={averageHatchRate != null ? `${averageHatchRate.toFixed(1)} %` : '—'}
+        icon={EggFried}
+      />
     </>
   );
 }
