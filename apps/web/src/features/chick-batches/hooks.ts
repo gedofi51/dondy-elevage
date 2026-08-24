@@ -2,11 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ChickBatchWithComputed, UpdateChickBatchInput } from '@dondy-elevage/shared-types';
 import { useApiFetch } from '@/lib/api/use-api-fetch';
 
-export function useChickBatches() {
+export function useChickBatches(options?: { enabled?: boolean }) {
   const apiFetch = useApiFetch();
   return useQuery({
     queryKey: ['chick-batches'],
     queryFn: () => apiFetch<ChickBatchWithComputed[]>('/chick-batches'),
+    enabled: options?.enabled,
   });
 }
 

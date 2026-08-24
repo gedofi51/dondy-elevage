@@ -13,11 +13,12 @@ import type {
 import { ApiError } from '@/lib/api/client';
 import { useApiFetch } from '@/lib/api/use-api-fetch';
 
-export function useLayerBatches() {
+export function useLayerBatches(options?: { enabled?: boolean }) {
   const apiFetch = useApiFetch();
   return useQuery({
     queryKey: ['layer-batches'],
     queryFn: () => apiFetch<LayerBatchWithComputed[]>('/layer-batches'),
+    enabled: options?.enabled,
   });
 }
 
