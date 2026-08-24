@@ -1,6 +1,6 @@
 'use client';
 
-import { Bird, Droplets, Egg, EggFried, Feather, HeartPulse, TriangleAlert } from 'lucide-react';
+import { Bird, Droplets, Egg, EggFried, Feather, HeartPulse, Package, TriangleAlert, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { KpiCard } from '@/components/shared/kpi-card';
 import { AlertBadge } from '@/components/shared/alert-badge';
@@ -14,6 +14,8 @@ import { useLayerBatches, useTodayEggProductionTotal } from '@/features/layer-ba
 import { useBreederBatches } from '@/features/breeder-batches/hooks';
 import { useIncubationBatches } from '@/features/incubation-batches/hooks';
 import { computeHatchRatePercent } from '@/features/incubation-batches/kpi';
+import { useItems } from '@/features/items/hooks';
+import { useTreasuryPayables } from '@/features/treasury/hooks';
 
 const ACTIVE_BROILER_STATUSES = new Set([
   'EN_DEMARRAGE',
@@ -50,6 +52,12 @@ export default function DashboardPage() {
         </Can>
         <Can permission={PERMISSIONS.INCUBATION_BATCHES_READ}>
           <IncubationBatchKpis />
+        </Can>
+        <Can permission={PERMISSIONS.ITEMS_READ}>
+          <ItemsStockKpi />
+        </Can>
+        <Can permission={PERMISSIONS.TREASURY_READ}>
+          <PayablesKpi />
         </Can>
       </div>
 
@@ -141,6 +149,37 @@ function IncubationBatchKpis() {
         icon={EggFried}
       />
     </>
+  );
+}
+
+function ItemsStockKpi() {
+  const { data: items } = useItems();
+  const inAlert = items?.filter((i) => i.status !== 'VERT').length ?? '—';
+
+  return (
+    <KpiCard
+      label="Articles en alerte"
+      value={inAlert}
+      icon={Package}
+      tone={typeof inAlert === 'number' && inAlert > 0 ? 'warning' : 'default'}
+    />
+  );
+}
+
+/** Un seul GET déjà agrégé côté serveur (GET /treasury/payables) — pas
+ * d'arbitrage réseau coûteux, contrairement aux KPI "du jour" des modules
+ * d'élevage (fetch par lot actif). */
+function PayablesKpi() {
+  const { data: payables } = useTreasuryPayables();
+  const totalPayables = payables?.reduce((sum, p) => sum + p.balanceFcfa, 0);
+
+  return (
+    <KpiCard
+      label="Dettes fournisseurs"
+      value={totalPayables != null ? totalPayables.toLocaleString('fr-FR') : '—'}
+      unit="FCFA"
+      icon={Wallet}
+    />
   );
 }
 

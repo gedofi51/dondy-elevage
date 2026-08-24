@@ -1,5 +1,17 @@
 import type { LucideIcon } from 'lucide-react';
-import { Bird, Droplets, Egg, EggFried, Feather, LayoutDashboard, Thermometer } from 'lucide-react';
+import {
+  Bird,
+  Droplets,
+  Egg,
+  EggFried,
+  Feather,
+  LayoutDashboard,
+  Package,
+  Receipt,
+  ShoppingCart,
+  Thermometer,
+  Wallet,
+} from 'lucide-react';
 import type { PermissionCode } from '@dondy-elevage/shared-types';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
 
@@ -51,5 +63,29 @@ export const navItems: NavItem[] = [
     href: '/poussins',
     icon: Bird,
     permission: PERMISSIONS.CHICK_BATCHES_READ,
+  },
+  {
+    label: 'Stocks',
+    href: '/stocks',
+    icon: Package,
+    permission: PERMISSIONS.ITEMS_READ,
+  },
+  {
+    label: 'Achats',
+    href: '/achats',
+    icon: ShoppingCart,
+    permission: PERMISSIONS.PURCHASE_ORDERS_READ,
+  },
+  {
+    label: 'Dépenses',
+    href: '/depenses',
+    icon: Receipt,
+    permission: PERMISSIONS.EXPENSES_READ,
+  },
+  {
+    label: 'Trésorerie',
+    href: '/tresorerie',
+    icon: Wallet,
+    permission: PERMISSIONS.TREASURY_READ,
   },
 ];
