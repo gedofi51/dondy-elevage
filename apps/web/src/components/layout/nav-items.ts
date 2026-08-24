@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
-import { Bird, Droplets, Egg, LayoutDashboard } from 'lucide-react';
+import { Bird, Droplets, Egg, EggFried, Feather, LayoutDashboard, Thermometer } from 'lucide-react';
 import type { PermissionCode } from '@dondy-elevage/shared-types';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
 
@@ -27,5 +27,29 @@ export const navItems: NavItem[] = [
     href: '/pondeuses',
     icon: Egg,
     permission: PERMISSIONS.LAYER_BATCHES_READ,
+  },
+  {
+    label: 'Reproducteurs',
+    href: '/reproducteurs',
+    icon: Feather,
+    permission: PERMISSIONS.BREEDER_BATCHES_READ,
+  },
+  {
+    label: 'Couveuses',
+    href: '/couveuses',
+    icon: Thermometer,
+    permission: PERMISSIONS.INCUBATORS_READ,
+  },
+  {
+    label: 'Couvoir',
+    href: '/couvoir',
+    icon: EggFried,
+    permission: PERMISSIONS.INCUBATION_BATCHES_READ,
+  },
+  {
+    label: 'Poussins',
+    href: '/poussins',
+    icon: Bird,
+    permission: PERMISSIONS.CHICK_BATCHES_READ,
   },
 ];
