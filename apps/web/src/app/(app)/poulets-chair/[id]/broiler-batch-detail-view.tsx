@@ -49,12 +49,15 @@ export function BroilerBatchDetailView({ batchId }: { batchId: string }) {
 
   const dayNumber = computeDayNumber(batch.arrivalDate);
   const dayInCycle = isDayNumberInCycle(dayNumber);
-  // Garde client sur Modifier ET Clôturer — trouvé en vérification manuelle
-  // Phase 12 (même défaut latent que sur la fiche Layer, corrigé au même
-  // endroit) : un statut terminal (ANNULEE/CLOTUREE) est hors de
-  // BROILER_BATCH_EDITABLE_STATUSES, donc ouvrir "Modifier" sur une bande
-  // déjà terminale bloquait silencieusement l'enregistrement (Select
-  // statut vide, aucune valeur valide à soumettre).
+  // Garde client sur Modifier, Clôturer ET Vendre — trouvé en vérification
+  // manuelle Phase 12 pour Modifier/Clôturer (même défaut latent que sur la
+  // fiche Layer, corrigé au même endroit) : un statut terminal (ANNULEE/
+  // CLOTUREE) est hors de BROILER_BATCH_EDITABLE_STATUSES, donc ouvrir
+  // "Modifier" sur une bande déjà terminale bloquait silencieusement
+  // l'enregistrement (Select statut vide, aucune valeur valide à soumettre).
+  // "Vendre" restait non gardé (bilan frontend Phase 15,
+  // BILAN_COMPLETUDE_FRONTEND_V1_V5.md) — corrigé ici au même endroit,
+  // même garde.
   const isBatchOpen = batch.status !== 'CLOTUREE' && batch.status !== 'ANNULEE';
 
   return (
@@ -92,10 +95,12 @@ export function BroilerBatchDetailView({ batchId }: { batchId: string }) {
               )}
             </Can>
             <Can permission={PERMISSIONS.SALES_CREATE}>
-              <Button nativeButton={false} render={<Link href={`/poulets-chair/${batchId}/vendre`} />}>
-                <ShoppingCart className="h-4 w-4" aria-hidden="true" />
-                Vendre
-              </Button>
+              {isBatchOpen ? (
+                <Button nativeButton={false} render={<Link href={`/poulets-chair/${batchId}/vendre`} />}>
+                  <ShoppingCart className="h-4 w-4" aria-hidden="true" />
+                  Vendre
+                </Button>
+              ) : null}
             </Can>
             <Can permission={PERMISSIONS.BROILER_BATCHES_UPDATE}>
               {isBatchOpen ? (
