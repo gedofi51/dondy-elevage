@@ -509,11 +509,21 @@ Occurrences confirmées (grep + lecture du service pour chacune) :
   UI, pas une correction de la source.
 - **`BreederBatch`** (Reproductrices, Phase 5) — même schéma
   (`breeder-batches.service.ts`, `data: { ...dto, constitutionDate:
-  ... }`), statuts libres `ACTIF`/`REFORME`. Non contourné (pas
-  d'écran).
+  ... }`), statuts libres `ACTIF`/`REFORME`. **Select statut désormais
+  contourné côté frontend (Phase 13)** : `BREEDER_BATCH_EDITABLE_STATUSES`
+  restreint le formulaire de modification aux 2 valeurs libres, garde
+  `isBatchOpen` appliquée sur le bouton Modifier. Nuance par rapport à
+  Layer/Broiler : `/cloturer` et `/annuler` eux-mêmes ne sont **pas**
+  construits côté UI cette phase (voir section Phase 13 ci-dessous) —
+  aucun bouton n'expose donc encore le chemin réel vers un statut
+  terminal, la garde reste pour l'instant purement défensive/anticipatoire.
 - **`IncubationBatch`** (Couvoir, Phase 5) — même commentaire DTO
   ("ANNULEE et CLOTURE passent par les endpoints dédiés"), transition
-  libre `EN_INCUBATION`→`ECLOS`. Non contourné (pas d'écran).
+  libre `EN_INCUBATION`→`ECLOS`. **Select statut désormais contourné
+  côté frontend (Phase 13)** : `INCUBATION_BATCH_EDITABLE_STATUSES`
+  restreint le formulaire de modification aux 2 valeurs libres, même
+  garde `isBatchOpen`, même nuance que `BreederBatch` ci-dessus
+  (`/cloturer`/`/annuler` non construits cette phase).
 
 **Pourquoi ce n'est pas corrigé côté backend cette phase** : Phase 11
 est explicitement frontend seulement (voir Contexte du plan de
@@ -682,6 +692,189 @@ Comme pour Chair (Phase 11) : validation manuelle en navigateur
 uniquement cette phase, aucun test Vitest écrit pour
 `health-event-form.tsx`, `daily-record-form.tsx` (les deux variantes
 création/édition) ou `egg-stock-movement-form.tsx` faute de temps.
+
+## Phase 13 — Frontend Reproduction/Couvoir
+
+Quatrième module métier frontend complet, construit directement dans le
+design "Agritech Premium" : couveuses (référentiel), lots reproducteurs
+(suivi journalier créé à la demande, comme Pondeuses), lots d'incubation
+(bilan de mirage/éclosion, 4 KPI couvoir), orientation des poussins vers
+4 destinations (chair/renouvellement/vente/réforme-perte), lots de
+poussins, filiation consultable dans les deux sens. Backend 100%
+construit et testé depuis les Phases 5/8 — phase strictement frontend,
+sauf une retouche additive sur `broiler-batch-detail-view.tsx` (Phase 11,
+Card "Origine") et la documentation.
+
+### Clôture/annulation `BreederBatch` et `IncubationBatch` — différées, avec un risque concret trouvé au passage
+
+`POST /:id/cloturer` et `POST /:id/annuler` existent pour les deux
+entités mais **aucun des 4 endpoints n'a de couverture e2e** (grep sur
+`annuler|cloturer` dans `apps/api/test/` : zéro occurrence pour
+`breeder-batches`/`incubation-batches` — la seule couverture indirecte
+vient de `create`/`read` utilisés comme fixtures dans
+`incubation-batches.e2e-spec.ts`). Même critère que celui fixé pour la
+clôture Pondeuses en Phase 12 (existence + couverture e2e réelle avant
+d'exposer une action de transition irréversible) : non satisfait pour
+les 4 endpoints → différés, aucun bouton Clôturer/Annuler construit
+cette phase sur les fiches Reproducteurs/Couvoir. Cette décision **tranche
+explicitement** le point ouvert en Phase 8 ci-dessus ("à trancher lors
+de la construction du frontend, qui révélera l'usage réel de la
+clôture") — verdict : l'usage réel révélé est qu'aucun des deux
+endpoints n'est assez éprouvé pour être exposé sans garde-fou de
+précondition.
+
+**Fait concret trouvé en lisant `IncubationBatchesService` pendant cette
+phase, pas seulement "non testé"** : `computeAvailableFertileEggsForBatch`
+(`breeder-batches.service.ts`) exclut les `IncubationBatch` de statut
+`ANNULEE` du calcul d'`availableFertileEggs` — **annuler un lot
+d'incubation recrédite donc silencieusement ses œufs dans le solde
+disponible du lot reproducteur parent**, y compris si `chicksHatched` est
+déjà renseigné et que des `BatchLineage`/`ChickBatch`/`BroilerBatch`
+réels ont déjà été créés par orientation. Rien ne bloque cette
+incohérence côté service. Ce risque, spécifique à `/annuler` (absent de
+`/cloturer`, un simple changement de statut sans effet de bord), rend la
+décision de différer d'autant plus justifiée — et candidat concret pour
+une Phase 14 : soit bloquer `/annuler` si `chicksHatched !== null` /
+des `BatchLineage` existent, soit documenter explicitement que
+l'exclusion est voulue.
+
+Statuts "libres" (`ACTIF`/`REFORME` pour Breeder, `EN_INCUBATION`/
+`ECLOS` pour Incubation) restent éditables via un formulaire de
+modification classique, avec garde `isBatchOpen` appliquée
+défensivement dès cette phase (voir mise à jour de la catégorie
+transversale "Statuts terminaux non protégés", Phase 11 ci-dessus).
+
+### `ChickBatch` — aucun endpoint dédié de clôture/annulation, gap structurellement différent des 4 autres modules
+
+Contrairement à `BroilerBatch`/`LayerBatch`/`BreederBatch`/
+`IncubationBatch`, `ChickBatch` n'a **aucune route `/cloturer` ni
+`/annuler`** (`chick-batches.controller.ts`) — le PATCH générique
+(`{buildingId?, status?}`) est donc le **seul** chemin possible vers
+`CLOTURE`/`ANNULE`, sans précondition serveur, et sans convention
+"transitions libres vs endpoint dédié" documentée dans son DTO (il n'y a
+rien à contourner). Exposer `status` dans le formulaire d'édition
+créerait de facto la seule UI de transition de statut jamais testée pour
+ce module. **Décision** : le formulaire de modification `ChickBatch`
+n'expose que `buildingId` — aucun sélecteur de statut cette phase.
+Candidat Phase 14 : ajouter un endpoint dédié avec précondition (ex.
+`currentHeadcount === 0` ou `null` avant clôture) plutôt que de
+contourner via le PATCH générique.
+
+### 4 KPI couvoir + solde de poussins orientables + `availableFertileEggs` — jamais exposés par l'API, recalculés côté client
+
+Les 4 formules (`computeHatchRatePercent`, `computeFertilityRatePercent`,
+`computeEmbryonicMortalityRatePercent`, `computeInfectedRatePercent`,
+`calculations/incubation-kpi.calculations.ts`) sont calculées et testées
+unitairement côté backend mais **ne sont exposées par aucune route** —
+ni dans `GET /incubation-batches/:id`, ni par un endpoint dédié.
+Précision par rapport au point Phase 8 déjà existant ("2 KPI couvoir...
+jamais exposés") : en réalité **les 4** taux sont concernés, pas
+seulement `computeFertilityRatePercent`/`computeInfectedRatePercent` —
+`computeHatchRatePercent` et `computeEmbryonicMortalityRatePercent` ne
+sont pas exposés non plus. Répliqués fidèlement côté client
+(`features/incubation-batches/kpi.ts`, testé unitairement).
+
+Même situation pour le solde de poussins orientables
+(`chicksHatched − SUM(BatchLineage.quantity)`, aucun endpoint GET dédié
+— `features/batch-lineage/available-chicks.ts`, testé unitairement) et
+pour `BreederBatch.availableFertileEggs` (celui-ci **est** déjà exposé
+en lecture par `GET /breeder-batches/:id`, contrairement aux deux
+premiers — pas de recalcul nécessaire côté client, juste affiché tel
+quel).
+
+### Cohérence du bilan de mirage/éclosion — vérification uniquement asynchrone (cron), pas au moment de la saisie
+
+`IncubationBatchesService.update()` (le PATCH générique, qui porte aussi
+le bilan) n'a **aucune vérification synchrone** que
+`eggsInfertile + eggsInfected + embryonicMortality + chicksHatched =
+eggCount` — seul le cron quotidien (`BreederAlertsCronService.
+checkCoherence`) lève une alerte asynchrone non bloquante
+(`incubation_coherence`, sévérité CRITIQUE) en cas d'écart, une fois par
+jour. L'indicateur client ajouté sur le formulaire d'édition ("Somme du
+bilan : X / Y œufs incubés", `incubation-batch-form.tsx`) est une **aide
+à la saisie**, pas une garantie — un enregistrement incohérent est
+toujours accepté par le serveur, l'utilisateur ne le découvre qu'au
+prochain passage du cron (jusqu'à 24h de latence).
+
+### `GET /breeder-batches`, `GET /incubation-batches`, `GET /chick-batches` — toujours sans filtre/pagination serveur
+
+Les trois `findAll()` sont structurellement identiques à `GET
+/broiler-batches`/`GET /layer-batches` (Phases 11/12, non corrigé
+depuis) : `findMany({ where: { farmId } })` sans aucun filtre ni
+pagination. Même mitigation "toggle Actifs/Tous purement côté client"
+appliquée aux trois nouvelles listes (`reproducteurs/page.tsx`,
+`couvoir/page.tsx`, `poussins/page.tsx`) — palliatif d'affichage, gap
+réseau backend toujours ouvert pour 5 modules désormais.
+
+### `Incubator.remove()` sans contrôle FK préalable — risque de 500 générique
+
+`IncubatorsService.remove()` (`incubators.service.ts`) appelle
+directement `prisma.incubator.delete()` sans vérifier au préalable
+l'existence d'`IncubationBatch` liés — contrairement à
+`BreederBatchesService.remove()`, qui fait ce contrôle explicitement et
+renvoie un 409 propre. Aucun filtre d'exception global ne gère les
+erreurs Prisma `P2003` (contrainte FK) dans `apps/api/src/common`. Une
+suppression sur une couveuse en cours d'usage échouera donc
+probablement avec une erreur non interceptée proprement (500
+générique), pas un message métier clair.
+
+**Vérifié en manipulation réelle cette phase** (suppression d'une
+couveuse référencée par `INC-2026-001`) : le serveur renvoie
+effectivement une erreur non gérée, avec un corps JSON
+`{statusCode: 500, message: "Internal server error"}` — le filtre
+d'exception NestJS par défaut. Le message de fallback préparé côté UI
+(`extractMessage` avec un texte dédié, `couveuses/page.tsx`) **ne
+s'affiche en réalité jamais** dans ce cas précis : `extractMessage`
+trouve `body.message` (une vraie chaîne, "Internal server error") et
+l'utilise en priorité, avant d'atteindre le fallback — l'utilisateur
+voit donc "Internal server error" tel quel, pas le message construit.
+Comportement stable (aucune corruption de données, la couveuse reste
+listée), mais UX dégradée. Corriger proprement nécessiterait soit un
+409 métier explicite côté backend (comme `BreederBatchesService.
+remove()`), soit un cas spécial côté `extractMessage`/l'appelant pour
+ignorer les messages génériques NestJS ("Internal server error",
+"Bad Request", etc.) — hors périmètre frontend cette phase, candidat
+Phase 14 au même titre que le 409 manquant côté service.
+
+### Bouton "Orienter les poussins" — pas de rafraîchissement optimiste multi-onglets
+
+Le solde disponible affiché avant orientation (`OrientationForm`) est
+calculé au chargement de la page et non re-synchronisé en continu — si
+un second onglet/utilisateur oriente une partie du même solde entre le
+chargement et la soumission, le nombre affiché devient obsolète. Choix
+assumé : le 409 serveur (verrouillage `SELECT ... FOR UPDATE`, testé en
+concurrence réelle côté backend Phase 8) reste la seule source de
+vérité en cas de dépassement — construire un mécanisme de
+rafraîchissement optimiste supplémentaire aurait été de la
+sur-ingénierie pour un cas à faible fréquence déjà correctement
+protégé côté serveur.
+
+### Navigation mobile — 4 nouvelles entrées, défilement horizontal défensif, pas de sous-menu
+
+`nav-items.ts` passe de 4 à 8 entrées avec cette phase (Reproducteurs/
+Couveuses/Couvoir/Poussins ajoutés, chacun gaté par sa propre
+permission, cohérent avec le fait que `Vendeur/Caisse` n'a que
+`CHICK_BATCHES_READ` sans les 3 autres). `app-bottom-nav.tsx`
+(`justify-around`, hauteur fixe, aucune notion de groupe/sous-menu) ne
+tenait pas 8 icônes sur la largeur d'un mobile — `overflow-x-auto` +
+`shrink-0` ajoutés pour absorber le débordement sans les tasser
+illisiblement. Reste une dette UX réelle, non résolue ici : un
+Gérant/Administrateur avec toutes les permissions doit désormais faire
+défiler la barre du bas pour atteindre les derniers modules ; une
+vraie sous-navigation par domaine (Élevage/Couvoir/Ventes...) serait la
+correction propre, hors périmètre d'une simple correction défensive.
+
+### Suivi journalier reproducteurs, bilan mirage-éclosion, formulaire ChickBatch et couveuses sans test de composant
+
+Comme pour Chair/Pondeuses (Phases 11/12) : validation manuelle en
+navigateur uniquement cette phase pour `breeder-batches/components/
+daily-record-form.tsx`, `incubation-batch-form.tsx` (bilan), les
+formulaires `incubator-form.tsx`/`chick-batch-form.tsx`, faute de temps.
+Priorité donnée aux tests de la logique la plus à risque de divergence
+avec le backend (les 4 KPI, le solde de poussins orientables, le rendu
+conditionnel du formulaire d'orientation) — voir tests unitaires/
+composant ajoutés cette phase (`kpi.test.ts`, `available-chicks.test.ts`,
+`schemas.test.ts`, `orientation-form.test.tsx`).
 
 ## ✅ Corrigé
 
