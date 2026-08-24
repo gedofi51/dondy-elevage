@@ -4,6 +4,8 @@ import { Controller, useForm, type Control, type FieldValues, type Path } from '
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -92,8 +94,12 @@ function CreateWaterPointForm() {
       const created = await createMutation.mutateAsync(values);
       toast.success('Point d’eau créé.');
       router.push(`/points-eau/${created.id}`);
-    } catch {
-      toast.error('Échec de la création — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de la création — vérifiez les champs.')
+          : 'Échec de la création — vérifiez les champs.',
+      );
     }
   }
 
@@ -159,8 +165,12 @@ function EditWaterPointForm({ waterPoint }: { waterPoint: WaterPoint }) {
       await updateMutation.mutateAsync(values);
       toast.success('Point d’eau modifié.');
       router.push(`/points-eau/${waterPoint.id}`);
-    } catch {
-      toast.error('Échec de l’enregistrement — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement — vérifiez les champs.')
+          : 'Échec de l’enregistrement — vérifiez les champs.',
+      );
     }
   }
 

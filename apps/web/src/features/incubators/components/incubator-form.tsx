@@ -4,6 +4,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import type { Incubator } from '@dondy-elevage/shared-types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,8 +41,12 @@ function CreateIncubatorForm() {
       await createMutation.mutateAsync({ ...values, notes: values.notes || undefined });
       toast.success('Couveuse créée.');
       router.push('/couveuses');
-    } catch {
-      toast.error('Échec de la création — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de la création — vérifiez les champs.')
+          : 'Échec de la création — vérifiez les champs.',
+      );
     }
   }
 
@@ -90,8 +96,12 @@ function EditIncubatorForm({ incubator }: { incubator: Incubator }) {
       await updateMutation.mutateAsync({ ...values, notes: values.notes || undefined });
       toast.success('Couveuse modifiée.');
       router.push('/couveuses');
-    } catch {
-      toast.error('Échec de l’enregistrement — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement — vérifiez les champs.')
+          : 'Échec de l’enregistrement — vérifiez les champs.',
+      );
     }
   }
 

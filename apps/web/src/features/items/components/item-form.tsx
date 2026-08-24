@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { SupplierSelect } from '@/components/shared/entity-select';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import { useItems, useCreateItem, useUpdateItem } from '../hooks';
 import {
   createItemSchema,
@@ -75,8 +77,12 @@ function CreateItemForm() {
       });
       toast.success('Article créé.');
       router.push(`/stocks/${created.id}`);
-    } catch {
-      toast.error('Échec de la création — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de la création — vérifiez les champs.')
+          : 'Échec de la création — vérifiez les champs.',
+      );
     }
   }
 
@@ -138,8 +144,12 @@ function EditItemForm({ item }: { item: Item }) {
       });
       toast.success('Article modifié.');
       router.push(`/stocks/${item.id}`);
-    } catch {
-      toast.error('Échec de l’enregistrement — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement — vérifiez les champs.')
+          : 'Échec de l’enregistrement — vérifiez les champs.',
+      );
     }
   }
 

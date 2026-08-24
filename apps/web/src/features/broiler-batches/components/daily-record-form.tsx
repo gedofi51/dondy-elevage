@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import type { BroilerDailyRecord, UpdateDailyRecordInput } from '@dondy-elevage/shared-types';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -115,8 +117,12 @@ export function DailyRecordForm({ batchId, record }: { batchId: string; record: 
       await updateMutation.mutateAsync(input);
       toast.success(`Jour ${record.dayNumber} enregistré.`);
       router.push(`/poulets-chair/${batchId}`);
-    } catch {
-      toast.error('Échec de l’enregistrement.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement.')
+          : 'Échec de l’enregistrement.',
+      );
     }
   }
 

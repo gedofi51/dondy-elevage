@@ -3,6 +3,8 @@
 import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,8 +52,12 @@ export function MortalityForm({ batchId, onSuccess }: { batchId: string; onSucce
       await createMutation.mutateAsync({ ...values, observation: values.observation || undefined });
       toast.success('Mortalité enregistrée.');
       onSuccess?.();
-    } catch {
-      toast.error('Échec de l’enregistrement.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement.')
+          : 'Échec de l’enregistrement.',
+      );
     }
   }
 

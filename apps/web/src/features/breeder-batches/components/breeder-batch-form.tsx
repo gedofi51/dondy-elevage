@@ -4,6 +4,8 @@ import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { ApiError } from '@/lib/api/client';
+import { extractMessage } from '@/lib/api/extract-error-message';
 import type { BreederBatchWithComputed } from '@dondy-elevage/shared-types';
 import { BREEDER_BATCH_EDITABLE_STATUSES } from '@dondy-elevage/shared-types';
 import { Button } from '@/components/ui/button';
@@ -56,8 +58,12 @@ function CreateBreederBatchForm() {
       });
       toast.success('Lot créé.');
       router.push(`/reproducteurs/${created.id}`);
-    } catch {
-      toast.error('Échec de la création — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de la création — vérifiez les champs.')
+          : 'Échec de la création — vérifiez les champs.',
+      );
     }
   }
 
@@ -145,8 +151,12 @@ function EditBreederBatchForm({ batch }: { batch: BreederBatchWithComputed }) {
       });
       toast.success('Lot modifié.');
       router.push(`/reproducteurs/${batch.id}`);
-    } catch {
-      toast.error('Échec de l’enregistrement — vérifiez les champs.');
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? extractMessage(err.body, 'Échec de l’enregistrement — vérifiez les champs.')
+          : 'Échec de l’enregistrement — vérifiez les champs.',
+      );
     }
   }
 
