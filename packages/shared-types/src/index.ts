@@ -14,3 +14,8 @@ export * from './suppliers';
 export * from './items';
 export * from './layer-batches';
 export * from './egg-stock';
+export * from './breeder-batches';
+export * from './incubators';
+export * from './incubation-batches';
+export * from './chick-batches';
+export * from './batch-lineage';
