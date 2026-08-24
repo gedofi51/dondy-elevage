@@ -876,6 +876,107 @@ conditionnel du formulaire d'orientation) — voir tests unitaires/
 composant ajoutés cette phase (`kpi.test.ts`, `available-chicks.test.ts`,
 `schemas.test.ts`, `orientation-form.test.tsx`).
 
+## Phase 14 — Frontend Stocks/Achats/Finances (dernier module V1-V5)
+
+Cinquième et dernier module métier frontend du périmètre V1-V5 : Items/
+StockMovement (catalogue, statut VERT/ORANGE/ROUGE, mouvement manuel),
+PurchaseOrder/GoodsReceipt/SupplierPayment (cycle d'achat complet,
+premier `useFieldArray` du frontend), Expense (dépenses générales et
+rattachées), Treasury (journal, créances, dettes, rentabilité
+consolidée — 4 endpoints déjà agrégés côté API). Backend 100% construit
+et testé depuis les Phases 7/8 — phase strictement frontend, sauf la
+mutualisation du widget d'alertes (voir "✅ Corrigé") et la
+documentation.
+
+### Catégorie `Item` — dérive de casse trouvée et corrigée cette phase
+
+Aucune valeur canonique n'existe en base (pas de seed `Item`), et le
+code existant contenait déjà 2 casses différentes pour le même concept
+(`'aliments'` en frontend Chair/Pondeuses vs `'Alimentation'` dans les
+fixtures e2e backend, cette dernière non normative). `docs/reference/
+STOCKS.md` tranche : 8 catégories canoniques (*aliments, médicaments,
+vaccins, désinfectants, litière, équipements, carburant,
+consommables*), cohérentes avec le frontend existant. Corrigé en
+amont : `ItemForm` utilise un `<Input list="item-categories">` avec un
+`<datalist>` pré-rempli de ces 8 valeurs + les catégories déjà
+observées en base — le champ reste texte libre côté API (aucune
+contrainte ajoutée côté serveur), juste guidé côté saisie. N'a pas
+touché les fichiers Chair/Pondeuses déjà mergés (hors périmètre).
+
+### `POST /purchase-orders/:id/annuler` — différé (0 couverture e2e)
+
+Endpoint existe (permission `PURCHASE_ORDERS_CLOSE`, garde 409 si des
+réceptions existent déjà) mais aucune occurrence dans
+`apps/api/test/*.e2e-spec.ts` (grep confirmé). Même critère que
+Breeder/Incubation Phase 13 (action de transition + garde métier
+conditionnelle jamais exercée par un test → pas de bouton construit).
+`PurchaseOrder` n'a par ailleurs pas le bug "statut terminal non
+protégé" des 4 modules d'élevage : `PurchaseOrdersService.update()`
+vérifie réellement `status='COMMANDE'` uniquement depuis `BROUILLON`
+(400/409 selon le cas) — seule la garde d'`/annuler` elle-même reste
+non exercée.
+
+### Réception sur une commande `BROUILLON` — techniquement acceptée côté serveur, restreinte côté UI
+
+`GoodsReceiptsService.create()` ne rejette que `status ∈ {ANNULE,
+RECU}` — une commande encore en `BROUILLON` (jamais confirmée) peut
+donc techniquement recevoir une réception, sans qu'aucune garde ne
+l'en empêche. `docs/reference/ACHATS_ET_FOURNISSEURS.md` définit
+pourtant un cycle linéaire explicite (Brouillon → Commandé →
+Partiellement reçu → Reçu → Annulé) où une réception n'a de sens
+qu'après confirmation — ce silence serveur ressemble à une garde
+manquante plutôt qu'à une fonctionnalité voulue. **Décision** : le
+bouton "Réceptionner" n'est affiché côté UI que si `status ∈
+{COMMANDE, PARTIELLEMENT_RECU}` — restriction UX assumée, pas une
+correction du gap serveur (hors périmètre frontend), candidat Phase 15
+(ajouter la garde manquante côté `GoodsReceiptsService`).
+
+### 4 KPI couvoir et taux de rentabilité : formules jamais exposées, recalculées côté client
+
+Sans lien avec ce module directement, mais confirmé à nouveau ce
+phase : `computeReceiptDiscrepancy` (écart de réception), lui, EST
+exposé (`PurchaseOrderItemWithComputed.discrepancy`) — contrairement
+aux KPI couvoir (Phase 13), aucun recalcul client n'est nécessaire ici,
+juste un affichage direct. Mentionné pour mémoire : ne pas supposer
+systématiquement qu'un calcul métier doit être répliqué côté frontend
+sans avoir vérifié si le serveur l'expose déjà (ce fut le cas ici,
+contrairement à l'hypothèse initiale du kickoff).
+
+### Pas d'écran de gestion des Fournisseurs (ni Buildings) — candidat "référentiels partagés"
+
+Le kickoff ne demande que la *sélection* de fournisseurs (Items/
+PurchaseOrder/Expense), jamais leur CRUD. `Building` a une API CRUD
+complète côté backend depuis la Phase 3 mais aucune UI de création
+n'existe après 5 phases frontend — `Supplier` est dans la même
+situation. Pas un oubli isolé : un pattern déjà établi de deux
+référentiels transverses jamais rattachés à un module propriétaire
+unique. Candidat pour une future phase "référentiels partagés"
+(Buildings + Suppliers ensemble, même gap structurel, même solution),
+à traiter groupé plutôt que redécouvert séparément.
+
+### `GET /items`, `/purchase-orders`, `/expenses` — pagination/filtre serveur
+
+`GET /purchase-orders` et `GET /expenses` n'ont aucun filtre/pagination
+serveur (même gap que tous les modules précédents) — mitigé par le
+toggle "Actifs/Tous" habituel sur `achats/page.tsx` (`expenses/page.tsx`
+n'a pas ce toggle, `Expense` n'ayant pas de notion de statut/cycle de
+vie comparable). `GET /items` fait exception notable : `belowThreshold`
+est un **vrai filtre serveur** (`ListItemsQueryDto`), pas un palliatif
+client — premier module du projet où le toggle "liste réduite" est
+réellement offload côté API plutôt que du filtrage en mémoire sur une
+liste déjà entièrement récupérée.
+
+### Formulaires sans test de composant
+
+Comme les phases précédentes : validation manuelle en navigateur
+uniquement pour `item-form.tsx`, `expense-form.tsx`,
+`goods-receipt-form.tsx`, faute de temps. Priorité donnée aux tests de
+la logique la plus à risque de divergence/régression silencieuse
+(mapping reason→type des mouvements de stock, calculs d'affichage des
+lignes de commande/réception, avertissement de dépassement de solde de
+paiement) — voir `reason-type.test.ts`, `line-totals.test.ts`,
+`receipt-remaining.test.ts`, `supplier-payment-form.test.tsx`.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
@@ -1122,6 +1223,51 @@ Corrigé dans les deux fichiers (`layer-batch-form.tsx`,
 formulaires d'édition (`Edit*BatchForm`) n'étaient pas concernés : leurs
 `defaultValues` renseignent déjà `buildingId`/`primaryManagerId` depuis
 l'entité chargée.
+
+### `BatchAlertsWidget` mutualisé en `EntityAlertsWidget` — ferme le gap Broiler documenté depuis la Phase 11/12 (Phase 14)
+
+Le widget d'alertes filtrées côté client par `entityId` n'existait que
+sur la fiche Layer (Phase 12) — le plan Phase 11 (Chair) le prévoyait
+explicitement mais ne l'avait jamais construit, gap documenté deux
+phases de suite sans être corrigé. Extrait en
+`components/shared/entity-alerts-widget.tsx` (prop renommée `batchId`→
+`entityId`, corps identique) pour être réutilisé par Item et
+PurchaseOrder (Phase 14) — 3 usages simultanés ont justifié la
+mutualisation immédiate. Le gap Broiler a été fermé dans le même
+mouvement (~3 lignes d'ajout une fois le composant généralisé) plutôt
+que laissé en dette une 3e phase consécutive.
+
+### `CreateStockMovementDto`/schéma frontend — `itemId` requis par le schéma Zod mais jamais rempli par le formulaire, échec de validation silencieux (trouvé et corrigé en Phase 14)
+
+**Trouvé en vérification manuelle** (dialog "Nouveau mouvement" sur la
+fiche d'un article, aucune requête réseau émise malgré un clic sur
+"Enregistrer", aucune erreur visible). Cause : `createStockMovementSchema`
+incluait `itemId: z.string().min(1)` par calque involontaire du DTO
+backend (`CreateStockMovementDto.itemId`), alors que `StockMovementForm`
+ne rend jamais de champ `itemId` — l'identifiant de l'article est connu
+du contexte (prop du composant, `itemId` de la fiche déjà ouverte) et
+injecté directement dans le payload final au moment de la soumission,
+jamais géré par React Hook Form. La validation Zod échouait donc
+systématiquement sur ce champ fantôme, sans qu'aucun message d'erreur
+ne puisse s'afficher puisqu'aucun élément du JSX ne lui est associé —
+échec silencieux total. Corrigé en retirant `itemId` du schéma
+(`features/stock-movements/schemas.ts`) ; le composant l'injecte déjà
+correctement dans `onSubmit`, aucun autre changement nécessaire.
+Reproductible à coup sûr (pas un cas limite) : tout mouvement manuel
+échouait avant ce correctif.
+
+### `ExpenseForm` (création) — `date` sans valeur par défaut, contrairement à tous les autres formulaires du projet (trouvé et corrigé en Phase 14)
+
+**Trouvé en vérification manuelle** (formulaire "Nouvelle dépense",
+erreur "Date requise" affichée immédiatement après soumission malgré
+un remplissage complet des autres champs). `CreateExpenseForm` était
+le seul formulaire de tout le frontend à ne pas initialiser `date` via
+`todayIsoDate()` dans `defaultValues` — un oubli d'inattention (le
+patron `defaultValues: { date: todayIsoDate(), ... }` est répété à
+l'identique dans une dizaine d'autres formulaires du projet). Corrigé
+en ajoutant `date: todayIsoDate()` (helper local ajouté au fichier) aux
+`defaultValues` de `CreateExpenseForm`. `EditExpenseForm` n'était pas
+concerné (pré-rempli depuis l'entité chargée).
 
 ## Comment utiliser ce document
 
