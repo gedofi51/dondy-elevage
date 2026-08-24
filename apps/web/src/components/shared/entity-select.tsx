@@ -7,6 +7,8 @@ import { useUsers } from '@/features/users/hooks';
 import { useBuildings } from '@/features/buildings/hooks';
 import { useIncubators } from '@/features/incubators/hooks';
 import { useBreederBatches } from '@/features/breeder-batches/hooks';
+import { useSuppliers } from '@/features/suppliers/hooks';
+import { useItems } from '@/features/items/hooks';
 
 /** Mutualisation Phase 13 — BuildingSelect/UserSelect étaient dupliqués mot
  * pour mot dans layer-batch-form.tsx et broiler-batch-form.tsx (voir
@@ -126,6 +128,93 @@ export function IncubatorSelect<T extends FieldValues>({
             </SelectContent>
           </Select>
         )}
+      />
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
+/** Mutualisation Phase 14 — 3 usages prévus (Item, PurchaseOrder,
+ * Expense), même seuil que BuildingSelect/UserSelect en Phase 13. */
+export function SupplierSelect<T extends FieldValues>({
+  name,
+  control,
+  error,
+  label = 'Fournisseur',
+}: Omit<EntitySelectProps<T>, 'label'> & { label?: string }) {
+  const { data: suppliers } = useSuppliers();
+  const suppliersById = new Map((suppliers ?? []).map((s) => [s.id, s.name]));
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={name}>{label}</Label>
+      <Controller
+        name={name}
+        control={control}
+        render={({ field }) => (
+          <Select value={field.value ?? ''} onValueChange={field.onChange}>
+            <SelectTrigger id={name}>
+              <SelectValue placeholder="Sélectionner…">
+                {(value: string) => (value ? (suppliersById.get(value) ?? value) : 'Sélectionner…')}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {suppliers?.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      />
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
+/** Mutualisation Phase 14 — 2 usages (mouvement de stock, lignes de
+ * commande fournisseur). Affiche le stock disponible en aide, même
+ * précédent que BreederBatchSelect. */
+export function ItemSelect<T extends FieldValues>({
+  name,
+  control,
+  error,
+  label = 'Article',
+}: Omit<EntitySelectProps<T>, 'label'> & { label?: string }) {
+  const { data: items } = useItems();
+  const itemsById = new Map((items ?? []).map((i) => [i.id, i]));
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={name}>{label}</Label>
+      <Controller
+        name={name}
+        control={control}
+        render={({ field }) => {
+          const selected = field.value ? itemsById.get(field.value) : undefined;
+          return (
+            <>
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger id={name}>
+                  <SelectValue placeholder="Sélectionner…">
+                    {(value: string) => (value ? (itemsById.get(value)?.name ?? value) : 'Sélectionner…')}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {items?.map((i) => (
+                    <SelectItem key={i.id} value={i.id}>
+                      {i.name} ({i.unit})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selected ? (
+                <p className="text-sm text-muted-foreground">
+                  Stock actuel : {selected.currentStock} {selected.unit}.
+                </p>
+              ) : null}
+            </>
+          );
+        }}
       />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>

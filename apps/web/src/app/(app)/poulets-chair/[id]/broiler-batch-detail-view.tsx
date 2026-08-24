@@ -29,6 +29,7 @@ import { SaleTable } from '@/features/sales/components/sale-table';
 import { ClosureDialog } from '@/features/broiler-batches/components/closure-dialog';
 import { computeDayNumber, isDayNumberInCycle } from '@/features/broiler-batches/day-number';
 import { OriginCard } from '@/features/batch-lineage/components/origin-card';
+import { EntityAlertsWidget } from '@/components/shared/entity-alerts-widget';
 
 export function BroilerBatchDetailView({ batchId }: { batchId: string }) {
   const { data: batch, isLoading } = useBroilerBatch(batchId);
@@ -119,6 +120,8 @@ export function BroilerBatchDetailView({ batchId }: { batchId: string }) {
           </div>
         }
       />
+
+      <EntityAlertsWidget entityId={batchId} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard label="Effectif vivant" value={batch.currentHeadcount} unit="sujets" />

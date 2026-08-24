@@ -9,11 +9,12 @@ import type {
 } from '@dondy-elevage/shared-types';
 import { useApiFetch } from '@/lib/api/use-api-fetch';
 
-export function useWaterPoints() {
+export function useWaterPoints(options?: { enabled?: boolean }) {
   const apiFetch = useApiFetch();
   return useQuery({
     queryKey: ['water-points'],
     queryFn: () => apiFetch<WaterPoint[]>('/water-points'),
+    enabled: options?.enabled,
   });
 }
 

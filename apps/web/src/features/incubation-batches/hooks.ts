@@ -7,11 +7,12 @@ import type {
 } from '@dondy-elevage/shared-types';
 import { useApiFetch } from '@/lib/api/use-api-fetch';
 
-export function useIncubationBatches() {
+export function useIncubationBatches(options?: { enabled?: boolean }) {
   const apiFetch = useApiFetch();
   return useQuery({
     queryKey: ['incubation-batches'],
     queryFn: () => apiFetch<IncubationBatchWithComputed[]>('/incubation-batches'),
+    enabled: options?.enabled,
   });
 }
 

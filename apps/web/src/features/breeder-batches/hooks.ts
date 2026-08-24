@@ -9,11 +9,12 @@ import type {
 } from '@dondy-elevage/shared-types';
 import { useApiFetch } from '@/lib/api/use-api-fetch';
 
-export function useBreederBatches() {
+export function useBreederBatches(options?: { enabled?: boolean }) {
   const apiFetch = useApiFetch();
   return useQuery({
     queryKey: ['breeder-batches'],
     queryFn: () => apiFetch<BreederBatchWithComputed[]>('/breeder-batches'),
+    enabled: options?.enabled,
   });
 }
 

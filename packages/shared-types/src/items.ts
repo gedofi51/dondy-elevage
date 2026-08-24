@@ -1,9 +1,8 @@
 export type StockStatus = 'VERT' | 'ORANGE' | 'ROUGE';
 
-/** Donnée de référence en lecture seule côté frontend cette phase (select
- * `feedItemId` du suivi quotidien Chair, `itemId` des événements santé) —
- * pas de mutation. `currentStock`/`minThreshold` sont des `Decimal` Prisma
- * sérialisés en chaîne (voir WaterPoint.initialIndex). */
+/** `currentStock`/`minThreshold` sont des `Decimal` Prisma sérialisés en
+ * chaîne (voir WaterPoint.initialIndex). `status` calculé côté service à
+ * chaque lecture (jamais stocké), toujours présent dans la réponse. */
 export interface Item {
   id: string;
   name: string;
@@ -14,4 +13,23 @@ export interface Item {
   averageUnitCostFcfa: number;
   supplierId: string | null;
   status: StockStatus;
+}
+
+/** currentStock/averageUnitCostFcfa volontairement absents : écrits
+ * exclusivement par StockMovementsService.recordMovementInTransaction,
+ * jamais via ce DTO (voir stock-movements.ts). */
+export interface CreateItemInput {
+  name: string;
+  category: string;
+  unit: string;
+  minThreshold?: number;
+  supplierId?: string;
+}
+
+export interface UpdateItemInput {
+  name?: string;
+  category?: string;
+  unit?: string;
+  minThreshold?: number;
+  supplierId?: string;
 }

@@ -14,11 +14,12 @@ import type {
 import { useApiFetch } from '@/lib/api/use-api-fetch';
 import { computeDayNumber, isDayNumberInCycle } from './day-number';
 
-export function useBroilerBatches() {
+export function useBroilerBatches(options?: { enabled?: boolean }) {
   const apiFetch = useApiFetch();
   return useQuery({
     queryKey: ['broiler-batches'],
     queryFn: () => apiFetch<BroilerBatchWithComputed[]>('/broiler-batches'),
+    enabled: options?.enabled,
   });
 }
 

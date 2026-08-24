@@ -4,14 +4,18 @@ import { TriangleAlert } from 'lucide-react';
 import { AlertBadge } from '@/components/shared/alert-badge';
 import { useAlerts } from '@/features/alerts/hooks';
 
-/** GET /alerts n'a pas de filtre serveur par entityId (seulement
- * status/limit) — filtrage côté client sur un lot élargi d'alertes
- * déclenchées, pas un vrai fetch scopé au lot. Borné par `limit`, comme le
- * widget du tableau de bord ; documenté comme arbitrage réseau dans
- * DETTE_TECHNIQUE.md. */
-export function BatchAlertsWidget({ batchId }: { batchId: string }) {
+/** Mutualisation Phase 14 — GET /alerts n'a pas de filtre serveur par
+ * entityId (seulement status/limit) — filtrage côté client sur un lot
+ * élargi d'alertes déclenchées, pas un vrai fetch scopé à l'entité.
+ * Borné par `limit`, comme le widget du tableau de bord ; documenté
+ * comme arbitrage réseau dans DETTE_TECHNIQUE.md. Anciennement
+ * `BatchAlertsWidget` (Layer uniquement, Phase 12) — généralisé ici
+ * (`entityId` au lieu de `batchId`) pour Item/PurchaseOrder, et ajouté
+ * à Broiler dans le même mouvement (fermant le gap documenté Phase
+ * 11/12 : jamais construit malgré le plan Chair qui le prévoyait). */
+export function EntityAlertsWidget({ entityId }: { entityId: string }) {
   const { data } = useAlerts({ status: 'TRIGGERED', limit: 50 });
-  const alerts = (data?.items ?? []).filter((a) => a.entityId === batchId);
+  const alerts = (data?.items ?? []).filter((a) => a.entityId === entityId);
 
   if (alerts.length === 0) return null;
 
