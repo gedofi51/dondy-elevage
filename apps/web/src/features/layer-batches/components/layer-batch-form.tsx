@@ -1,6 +1,6 @@
 'use client';
 
-import { Controller, useForm, type Control, type FieldValues, type Path } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -11,8 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useUsers } from '@/features/users/hooks';
-import { useBuildings } from '@/features/buildings/hooks';
+import { BuildingSelect, UserSelect } from '@/components/shared/entity-select';
 import { useCreateLayerBatch, useUpdateLayerBatch } from '../hooks';
 import {
   createLayerBatchSchema,
@@ -28,89 +27,6 @@ const statusLabels: Record<(typeof LAYER_BATCH_EDITABLE_STATUSES)[number], strin
   PONTE: 'Ponte',
   REFORME: 'Réforme',
 };
-
-function UserSelect<T extends FieldValues>({
-  name,
-  label,
-  control,
-  error,
-}: {
-  name: Path<T>;
-  label: string;
-  control: Control<T>;
-  error?: string;
-}) {
-  const { data: users } = useUsers();
-  const usersById = new Map((users ?? []).map((u) => [u.id, u.name]));
-  return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={name}>{label}</Label>
-      <Controller
-        name={name}
-        control={control}
-        render={({ field }) => (
-          <Select value={field.value} onValueChange={field.onChange}>
-            <SelectTrigger id={name}>
-              {/* SelectValue sans `items`/`itemToStringLabel` affiche la value
-                  brute (UUID) une fois sélectionnée — bug base-ui documenté
-                  dans DETTE_TECHNIQUE.md, children-function requis. */}
-              <SelectValue placeholder="Sélectionner…">
-                {(value: string) => (value ? (usersById.get(value) ?? value) : 'Sélectionner…')}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {users?.map((u) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      />
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
-  );
-}
-
-function BuildingSelect<T extends FieldValues>({
-  name,
-  control,
-  error,
-}: {
-  name: Path<T>;
-  control: Control<T>;
-  error?: string;
-}) {
-  const { data: buildings } = useBuildings();
-  const buildingsById = new Map((buildings ?? []).map((b) => [b.id, b.name]));
-  return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={name}>Bâtiment</Label>
-      <Controller
-        name={name}
-        control={control}
-        render={({ field }) => (
-          <Select value={field.value} onValueChange={field.onChange}>
-            <SelectTrigger id={name}>
-              <SelectValue placeholder="Sélectionner…">
-                {(value: string) => (value ? (buildingsById.get(value) ?? value) : 'Sélectionner…')}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {buildings?.map((b) => (
-                <SelectItem key={b.id} value={b.id}>
-                  {b.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      />
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-    </div>
-  );
-}
 
 export function LayerBatchForm({ batch }: { batch?: LayerBatchWithComputed }) {
   return batch ? <EditLayerBatchForm batch={batch} /> : <CreateLayerBatchForm />;
