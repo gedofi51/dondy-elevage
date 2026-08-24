@@ -28,6 +28,7 @@ import { HealthEventCreateDialog } from '@/features/broiler-batches/components/h
 import { SaleTable } from '@/features/sales/components/sale-table';
 import { ClosureDialog } from '@/features/broiler-batches/components/closure-dialog';
 import { computeDayNumber, isDayNumberInCycle } from '@/features/broiler-batches/day-number';
+import { OriginCard } from '@/features/batch-lineage/components/origin-card';
 
 export function BroilerBatchDetailView({ batchId }: { batchId: string }) {
   const { data: batch, isLoading } = useBroilerBatch(batchId);
@@ -152,6 +153,16 @@ export function BroilerBatchDetailView({ batchId }: { batchId: string }) {
             </span>
           </CardContent>
         </Card>
+      ) : null}
+
+      {/* Filiation "aval" (§6.5, Phase 13) — uniquement pertinent pour une
+          bande née d'une orientation de poussins, jamais pour un achat
+          externe (évite un fetch batch-lineage inutile dans le cas
+          courant). */}
+      {batch.origin === 'NAISSANCE_INTERNE' ? (
+        <Can permission={PERMISSIONS.BATCH_LINEAGE_READ}>
+          <OriginCard childType="broiler_batch" childId={batchId} />
+        </Can>
       ) : null}
 
       <Tabs defaultValue="suivi">
