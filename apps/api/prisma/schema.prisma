@@ -38,48 +38,51 @@ model Farm {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users                    User[]
-  roles                    Role[]
-  buildings                Building[]
-  auditLogs                AuditLog[]
-  settingsEntries          Setting[]
-  suppliers                Supplier[]
-  customers                Customer[]
-  documents                Document[]
-  alerts                   Alert[]
-  notifications            Notification[]
-  broilerBatches           BroilerBatch[]
-  broilerDailyRecords      BroilerDailyRecord[]
-  broilerMortalities       BroilerMortality[]
-  broilerHealthEvents      BroilerHealthEvent[]
-  expenses                 Expense[]
-  sales                    Sale[]
-  payments                 Payment[]
-  layerBatches             LayerBatch[]
-  layerDailyRecords        LayerDailyRecord[]
-  layerHealthEvents        LayerHealthEvent[]
-  eggStockLots             EggStockLot[]
-  eggStockMovements        EggStockMovement[]
-  incubators               Incubator[]
-  breederBatches           BreederBatch[]
-  breederDailyRecords      BreederDailyRecord[]
-  incubationBatches        IncubationBatch[]
-  chickBatches             ChickBatch[]
-  batchLineageRows         BatchLineage[]
-  waterPoints              WaterPoint[]
-  waterReadings            WaterReading[]
-  items                    Item[]
-  stockMovements           StockMovement[]
-  purchaseOrders           PurchaseOrder[]
-  purchaseOrderItems       PurchaseOrderItem[]
-  goodsReceipts            GoodsReceipt[]
-  goodsReceiptItems        GoodsReceiptItem[]
-  supplierPayments         SupplierPayment[]
-  assets                   Asset[]
-  depreciationEntries      DepreciationEntry[]
-  maintenancePlans         MaintenancePlan[]
-  maintenanceTasks         MaintenanceTask[]
-  maintenanceInterventions MaintenanceIntervention[]
+  users                       User[]
+  roles                       Role[]
+  buildings                   Building[]
+  auditLogs                   AuditLog[]
+  settingsEntries             Setting[]
+  suppliers                   Supplier[]
+  customers                   Customer[]
+  documents                   Document[]
+  alerts                      Alert[]
+  notifications               Notification[]
+  broilerBatches              BroilerBatch[]
+  broilerDailyRecords         BroilerDailyRecord[]
+  broilerMortalities          BroilerMortality[]
+  broilerHealthEvents         BroilerHealthEvent[]
+  expenses                    Expense[]
+  sales                       Sale[]
+  payments                    Payment[]
+  layerBatches                LayerBatch[]
+  layerDailyRecords           LayerDailyRecord[]
+  layerHealthEvents           LayerHealthEvent[]
+  eggStockLots                EggStockLot[]
+  eggStockMovements           EggStockMovement[]
+  incubators                  Incubator[]
+  breederBatches              BreederBatch[]
+  breederDailyRecords         BreederDailyRecord[]
+  incubationBatches           IncubationBatch[]
+  chickBatches                ChickBatch[]
+  batchLineageRows            BatchLineage[]
+  waterPoints                 WaterPoint[]
+  waterReadings               WaterReading[]
+  items                       Item[]
+  stockMovements              StockMovement[]
+  purchaseOrders              PurchaseOrder[]
+  purchaseOrderItems          PurchaseOrderItem[]
+  goodsReceipts               GoodsReceipt[]
+  goodsReceiptItems           GoodsReceiptItem[]
+  supplierPayments            SupplierPayment[]
+  assets                      Asset[]
+  depreciationEntries         DepreciationEntry[]
+  maintenancePlans            MaintenancePlan[]
+  maintenanceTasks            MaintenanceTask[]
+  maintenanceInterventions    MaintenanceIntervention[]
+  waterInfrastructureReadings WaterInfrastructureReading[]
+  solarInfrastructureReadings SolarInfrastructureReading[]
+  networkStatusReadings       NetworkStatusReading[]
 
   @@map("farms")
 }
@@ -1873,14 +1876,17 @@ model Asset {
   updatedAt DateTime @updatedAt
   createdBy String?
 
-  farm                     Farm                      @relation(fields: [farmId], references: [id])
-  supplier                 Supplier?                 @relation(fields: [supplierId], references: [id])
-  responsible              User                      @relation("AssetResponsible", fields: [responsibleId], references: [id])
-  depreciationEntries      DepreciationEntry[]
-  expenses                 Expense[]
-  maintenancePlans         MaintenancePlan[]
-  maintenanceTasks         MaintenanceTask[]
-  maintenanceInterventions MaintenanceIntervention[]
+  farm                        Farm                         @relation(fields: [farmId], references: [id])
+  supplier                    Supplier?                    @relation(fields: [supplierId], references: [id])
+  responsible                 User                         @relation("AssetResponsible", fields: [responsibleId], references: [id])
+  depreciationEntries         DepreciationEntry[]
+  expenses                    Expense[]
+  maintenancePlans            MaintenancePlan[]
+  maintenanceTasks            MaintenanceTask[]
+  maintenanceInterventions    MaintenanceIntervention[]
+  waterInfrastructureReadings WaterInfrastructureReading[]
+  solarInfrastructureReadings SolarInfrastructureReading[]
+  networkStatusReadings       NetworkStatusReading[]
 
   @@unique([farmId, code])
   @@index([farmId])
@@ -2046,4 +2052,109 @@ model MaintenanceIntervention {
   @@index([assetId])
   @@index([taskId])
   @@map("maintenance_interventions")
+}
+
+/// Cahier V6 §5 — infrastructure de PRODUCTION d'eau (forage, pompe,
+/// réservoir), à ne pas confondre avec WaterPoint/WaterReading (V4, Phase
+/// 6, vente commerciale aux riverains — voir schema.prisma commentaire
+/// WaterPoint). Pas de DELETE exposé (corrections via PATCH, auditées),
+/// même discipline que WaterReading. pumpHoursCumulative : relevé simple,
+/// pas de chaîne de continuité comme WaterReading.indexMatin/indexSoir
+/// (suivi opérationnel informatif, pas facturation) — voir
+/// DETTE_TECHNIQUE.md Phase 18.
+model WaterInfrastructureReading {
+  id     String @id @default(uuid())
+  farmId String
+
+  assetId String
+  date    DateTime
+
+  /// "si mesurable" (§5) — nullable.
+  pumpedVolumeM3            Decimal? @db.Decimal(10, 2)
+  reservoirLevelPercent     Decimal? @db.Decimal(5, 2)
+  pumpHoursCumulative       Decimal? @db.Decimal(10, 2)
+  /// Saisi manuellement — aucune source mesurée existante dans le projet
+  /// pour la consommation interne de la ferme.
+  farmInternalConsumptionM3 Decimal? @db.Decimal(10, 2)
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm  Farm  @relation(fields: [farmId], references: [id])
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@unique([assetId, date])
+  @@index([farmId])
+  @@map("water_infrastructure_readings")
+}
+
+/// Cahier V6 §4 — centrale solaire. Pas de DELETE exposé (corrections via
+/// PATCH, auditées), même discipline que WaterInfrastructureReading.
+model SolarInfrastructureReading {
+  id     String @id @default(uuid())
+  farmId String
+
+  assetId String
+  date    DateTime
+
+  /// "si disponible" (§4) — nullable.
+  dailyProductionKwh   Decimal? @db.Decimal(10, 2)
+  batteryChargePercent Decimal? @db.Decimal(5, 2)
+  instantaneousPowerKw Decimal? @db.Decimal(10, 2)
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm  Farm  @relation(fields: [farmId], references: [id])
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@unique([assetId, date])
+  @@index([farmId])
+  @@map("solar_infrastructure_readings")
+}
+
+/// Statut de connectivité INSTANTANÉE (peut changer plusieurs fois par
+/// jour) — distinct de Asset.status (cycle de vie patrimonial, long
+/// terme) : un Asset ACTIF peut avoir un relevé HORS_LIGNE (Starlink en
+/// coupure) sans que l'actif lui-même change de statut. Voir
+/// DETTE_TECHNIQUE.md Phase 18.
+enum NetworkOperationalStatus {
+  OPERATIONNEL
+  DEGRADE
+  HORS_LIGNE
+}
+
+/// Cahier V6 §6 — "Le matériel Starlink et réseau est géré comme
+/// patrimoine. Les abonnements Internet sont enregistrés comme charges
+/// d'exploitation récurrentes, distinctes des immobilisations." Inventaire
+/// et coût déjà entièrement couverts par Asset/Expense — cette table
+/// n'ajoute QUE le suivi du statut opérationnel. Pas de DELETE exposé.
+model NetworkStatusReading {
+  id     String @id @default(uuid())
+  farmId String
+
+  assetId String
+  date    DateTime
+
+  /// Seul champ de mesure de cette table — requis, pas nullable.
+  operationalStatus NetworkOperationalStatus
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm  Farm  @relation(fields: [farmId], references: [id])
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@unique([assetId, date])
+  @@index([farmId])
+  @@map("network_status_readings")
 }
