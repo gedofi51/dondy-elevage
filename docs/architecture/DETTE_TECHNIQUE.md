@@ -1048,6 +1048,90 @@ périmètre prises **sans code** cette phase, documentées explicitement.
   projet. Gap honnêtement non résolu, chantier plus large que le
   périmètre ciblé de cette phase.
 
+## Phase 16 — Backend Patrimoine & Amortissements (premier module V6)
+
+Premier module backend V6 (cahier §3) : cycle de vie complet d'un actif
+(acquisition, mise en service, amortissement linéaire prorata temporis,
+transfert, réforme, sortie). Backend uniquement, aucun écran cette
+phase. Le cahier V6 est nettement moins détaillé que V1/V5 (10 pages de
+synthèse) — plusieurs zones d'ombre ont dû être tranchées explicitement,
+documentées ci-dessous comme des hypothèses assumées, pas des faits du
+cahier.
+
+- **Prorata temporis — modèle de calendrier fiscal, hypothèse non
+  vérifiable dans le cahier** : le tableau d'exemple du §3.2 (Année N
+  "Prorata temporis" / Année N+1 "Annuité" / Fin "Solde éventuel") a été
+  interprété comme des périodes alignées sur l'année civile (première
+  période de `serviceDate` au 31 décembre proratisée au jour près,
+  années intermédiaires pleines, **dernière période = solde** pour
+  garantir que la VNC finale tombe exactement sur la valeur résiduelle
+  sans dérive d'arrondi). Aucun exemple chiffré complet n'existe dans le
+  cahier pour trancher sans ambiguïté entre ce modèle et une alternative
+  anniversaire (périodes de 365 jours depuis `serviceDate`, sans
+  alignement calendaire) — l'hypothèse retenue est la plus probable
+  (convention comptable standard, cohérente OHADA) mais **reste à faire
+  valider par un comptable local avant tout usage réel en production**.
+  Implémentée et testée dans
+  `apps/api/src/modules/assets/calculations/depreciation.calculations.ts`
+  (13 tests unitaires, cas limites : durée 1 an, mise en service au 1er
+  janvier exact, année bissextile, valeur résiduelle nulle/non nulle,
+  arrondi sur une base peu divisible).
+- **`serviceDate` obligatoire à la création, pas de statut intermédiaire
+  "acquis mais pas encore en service"** : le cahier distingue "date
+  d'achat" et "date de mise en service" comme deux étapes du cycle de
+  vie ("acquisition, mise en service..."), et un vrai précédent de
+  transition différée existe dans le projet (`PurchaseOrder`
+  BROUILLON→COMMANDE). Simplification assumée pour cette phase : les
+  deux dates sont saisies ensemble à la création, le plan
+  d'amortissement est généré immédiatement — cohérent avec l'unique
+  scénario d'acceptation du cahier (§19), qui décrit un flux en un seul
+  temps. `purchaseDate`/`serviceDate` restent deux champs réellement
+  indépendants pour ne pas fermer la porte à un futur endpoint de mise
+  en service différée si l'usage réel en montre le besoin.
+- **`DepreciationEntry` supprimée en cascade avec `Asset`, pas
+  append-only comme `StockMovement`** : décision délibérée, pas un
+  oubli — contrairement à `StockMovement` (événements réels
+  indépendants), une `DepreciationEntry` est une projection déterministe
+  dérivée uniquement des paramètres de l'actif, sans valeur informative
+  propre si l'actif n'aurait jamais dû exister. Même gabarit exact que
+  `BroilerBatchesService.remove()` pour ses 45 `BroilerDailyRecord`
+  placeholder : le garde-fou de suppression (`AssetsService.remove()`)
+  porte sur l'activité RÉELLE (`Expense.assetId`), jamais sur la
+  présence des lignes de plan elles-mêmes.
+- **"Transfert" — pas d'endpoint dédié** : le cahier ne donne aucun
+  détail au-delà de la phrase d'ouverture du §3. Un changement de
+  localisation/responsable passe par le `PATCH` générique, avec l'audit
+  log standard qui capture déjà la traçabilité attendue.
+- **TCO partiel cette phase** : `TCO = Acquisition + Installation +
+  Maintenance + Réparations + Consommables + Autres` (§3.3) dépend du
+  module Maintenance (Phase 17, hors périmètre). Calculé à la lecture
+  comme `purchasePriceFcfa + installationCostFcfa + SUM(Expense.
+  amountFcfa WHERE assetId = asset.id)` — couvre déjà réparations/
+  consommables/autres dès qu'une dépense est rattachée à l'actif,
+  extensible sans refonte une fois Maintenance construit.
+- **Modèle de données simplifié vs le §18 du cahier** : le schéma
+  consolidé suggéré (`asset_categories, assets, asset_components,
+  asset_locations, asset_documents, asset_costs` +
+  `depreciation_methods, depreciation_schedules, depreciation_entries`
+  — 9 tables) a été réduit à 2 nouvelles tables (`Asset`,
+  `DepreciationEntry`) : `category`/`location` en texte libre (comme
+  `Item.category`/`WaterPoint.location`), `asset_documents` couvert par
+  le module `Document` déjà polymorphe (`entityType:'asset'`, aucune
+  extension nécessaire), `asset_costs` couvert par `Expense.assetId`
+  (8ᵉ FK optionnelle, même patron exact que l'extension Phase 7 pour
+  `breederBatchId`/`incubationBatchId`/`waterPointId`), `depreciation_
+  methods`/`depreciation_schedules` jugées superflues pour une seule
+  méthode active et des paramètres qui vivent directement sur `Asset`.
+  `asset_components` non construit — aucun des 4 points fonctionnels de
+  cette mission ne le demande ; le seul besoin proche trouvé dans le
+  cahier ("amortissement séparé des composants") est rattaché au §4
+  Autonomie solaire, un module V6 distinct et hors périmètre.
+- **Pas de recouvrement avec `Building`** : un `Asset` de catégorie
+  "Bâtiments" (enregistrement comptable) reste indépendant de l'entité
+  `Building` opérationnelle (FK des bandes d'élevage) — aucun lien
+  structurel construit, décision documentée explicitement puisque le
+  cahier V6 ne tranche pas cette frontière lui-même.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
@@ -1413,6 +1497,57 @@ contrôle du §7.3 réellement dupliqué côté client) est testable via
 (`npx vitest run --pool=forks` — `--pool=forks` nécessaire sur cette
 machine Windows, le pool `threads` par défaut échoue avec un timeout de
 démarrage de worker, sans lien avec le code applicatif).
+
+### Nettoyage `afterAll` non protégé contre un `app.close()` jamais exécuté — généralisé en helper partagé (`closeAppSafely`), Phase 16
+
+**Deuxième occurrence indépendante d'un même bug** : Phase 8
+(`treasury.e2e-spec.ts`, incident CI) avait déjà été corrigée localement
+par un `try/finally` inline autour de `app.close()`, mais la leçon
+n'avait jamais été généralisée aux 10 autres fichiers e2e. Redécouverte
+indépendamment en Phase 16 (`assets.e2e-spec.ts`) : deux appels à
+`createActiveUser()` déstructuraient `{ email }` sans capturer `id`,
+laissant deux `User` orphelins référençant `farmId` — `prisma.farm.
+deleteMany()` dans `afterAll` levait alors une violation de contrainte
+FK. Comme `app.close()` était la dernière ligne du bloc (pas dans un
+`finally`), cette exception l'empêchait de jamais s'exécuter :
+l'application Nest de test restait vivante indéfiniment (connexion
+Prisma ouverte + crons `ScheduleModule` actifs, dont
+`AssetsAlertsCronService`), bloquant Jest en silence — **plus de 3
+heures**, sans le moindre message d'erreur visible (la commande initiale
+pipait la sortie dans `| tail -150`, qui n'affiche qu'après EOF).
+
+Diagnostic mené sans corriger à l'aveugle : `information_schema.
+innodb_trx` et `SHOW FULL PROCESSLIST` vérifiés en premier (aucune
+transaction ni verrou actif — la transaction de génération du plan
+d'amortissement, C.2, initialement suspectée, a été innocentée par
+preuve directe : les 13 tests passent en ~20 s en isolation). La cause
+réelle était entièrement côté infrastructure de test, pas dans le code
+applicatif livré cette phase.
+
+**Corrigé et généralisé** : nouveau helper `closeAppSafely(app,
+cleanup)` dans `apps/api/test/helpers/e2e-test-utils.ts`
+(`try { await cleanup() } finally { await app.close() }`), documenté
+comme standard obligatoire pour tout nouveau fichier e2e directement
+dans son docstring (colocalisé avec le code que chaque fichier importe
+déjà, plutôt qu'un document de convention séparé à maintenir en plus).
+Appliqué aux 11 fichiers ayant un nettoyage `afterAll` réel :
+`assets`, `treasury` (conversion de leur `try/finally` inline existant
+vers le helper partagé, pour une seule implémentation canonique),
+`alerts-notifications`, `auth-rbac`, `broiler-batches`, `documents`,
+`incubation-batches`, `items-stock`, `layer-batches`,
+`suppliers-customers`, `water-points`. `app.e2e-spec.ts` volontairement
+non touché (`afterEach` trivial, aucune écriture Prisma, rien qui
+puisse lever avant `app.close()`). Suite e2e complète rejouée à froid
+après généralisation : **12/12 suites, 155/155 tests, 39,8 s, aucun
+processus résiduel**.
+
+### Bug source — `createActiveUser()` avec `id` non capturé dans `assets.e2e-spec.ts` (Phase 16)
+
+Corrigé en parallèle de la généralisation ci-dessus : les deux appels
+(test d'isolation multi-tenant, `beforeAll` du bloc RBAC Comptable)
+capturent désormais `{ id, email }` et poussent `id` dans
+`createdUserIds`, fermant la fuite qui causait la violation de
+contrainte FK à l'origine de l'incident.
 
 ## Comment utiliser ce document
 
