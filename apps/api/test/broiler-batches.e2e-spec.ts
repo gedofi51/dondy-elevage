@@ -8,6 +8,7 @@ import { PasswordService } from '../src/modules/auth/password.service';
 import { BroilerAlertsCronService } from '../src/modules/broiler-batches/broiler-alerts.cron';
 import {
   body,
+  closeAppSafely,
   createActiveUser,
   type ErrorResponseBody,
   type LoginResponseBody,
@@ -156,30 +157,34 @@ describe('Broiler batches — cycle de vie complet (e2e, scénario §25)', () =>
   });
 
   afterAll(async () => {
-    // Ordre sûr vis-à-vis des FK : paiements -> ventes -> dépenses ->
-    // santé/mortalité/suivi quotidien -> bandes -> références -> utilisateurs -> fermes.
-    const sales = await prisma.sale.findMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.payment.deleteMany({ where: { saleId: { in: sales.map((s) => s.id) } } });
-    await prisma.sale.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.expense.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.broilerHealthEvent.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.broilerMortality.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.broilerDailyRecord.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    // Le cron déclenche des notifications sur les alertes IMPORTANT/CRITIQUE
-    // (voir test 5, alerte J40) — à nettoyer avant les alertes elles-mêmes
-    // (Notification.alertId) et avant les utilisateurs (Notification.userId).
-    await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.alert.deleteMany({ where: { entityId: { in: createdBatchIds } } });
-    await prisma.broilerBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
-    await prisma.customer.deleteMany({ where: { id: customerId } });
-    await prisma.supplier.deleteMany({ where: { id: supplierId } });
-    await prisma.building.deleteMany({ where: { id: buildingId } });
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
-    await app.close();
+    // closeAppSafely : app.close() s'exécute même si le nettoyage échoue
+    // — voir DETTE_TECHNIQUE.md (incident Phase 8/16, généralisé en
+    // helper partagé).
+    await closeAppSafely(app, async () => {
+      // Ordre sûr vis-à-vis des FK : paiements -> ventes -> dépenses ->
+      // santé/mortalité/suivi quotidien -> bandes -> références -> utilisateurs -> fermes.
+      const sales = await prisma.sale.findMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.payment.deleteMany({ where: { saleId: { in: sales.map((s) => s.id) } } });
+      await prisma.sale.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.expense.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.broilerHealthEvent.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.broilerMortality.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.broilerDailyRecord.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      // Le cron déclenche des notifications sur les alertes IMPORTANT/CRITIQUE
+      // (voir test 5, alerte J40) — à nettoyer avant les alertes elles-mêmes
+      // (Notification.alertId) et avant les utilisateurs (Notification.userId).
+      await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.alert.deleteMany({ where: { entityId: { in: createdBatchIds } } });
+      await prisma.broilerBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
+      await prisma.customer.deleteMany({ where: { id: customerId } });
+      await prisma.supplier.deleteMany({ where: { id: supplierId } });
+      await prisma.building.deleteMany({ where: { id: buildingId } });
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
+    });
   });
 
   let batchId: string;

@@ -8,6 +8,7 @@ import { PasswordService } from '../src/modules/auth/password.service';
 import { BreederAlertsCronService } from '../src/modules/breeder-batches/breeder-alerts.cron';
 import {
   body,
+  closeAppSafely,
   createActiveUser,
   type ErrorResponseBody,
   type LoginResponseBody,
@@ -197,36 +198,42 @@ describe('Reproduction, couvoir et poussins — cycle complet (e2e, scénario §
   });
 
   afterAll(async () => {
-    // Ordre sûr vis-à-vis des FK : ventes (chickBatchId) -> filiation
-    // (incubationBatchId) -> journées de la bande chair -> lots poussins ->
-    // bandes chair -> lots d'incubation -> journées reproducteurs -> lots
-    // reproducteurs -> couveuses -> notifications -> alertes -> références ->
-    // utilisateurs -> fermes.
-    await prisma.sale.deleteMany({ where: { chickBatchId: { in: createdChickBatchIds } } });
-    await prisma.batchLineage.deleteMany({
-      where: { incubationBatchId: { in: createdIncubationBatchIds } },
+    // closeAppSafely : app.close() s'exécute même si le nettoyage échoue
+    // — voir DETTE_TECHNIQUE.md (incident Phase 8/16, généralisé en
+    // helper partagé).
+    await closeAppSafely(app, async () => {
+      // Ordre sûr vis-à-vis des FK : ventes (chickBatchId) -> filiation
+      // (incubationBatchId) -> journées de la bande chair -> lots poussins ->
+      // bandes chair -> lots d'incubation -> journées reproducteurs -> lots
+      // reproducteurs -> couveuses -> notifications -> alertes -> références ->
+      // utilisateurs -> fermes.
+      await prisma.sale.deleteMany({ where: { chickBatchId: { in: createdChickBatchIds } } });
+      await prisma.batchLineage.deleteMany({
+        where: { incubationBatchId: { in: createdIncubationBatchIds } },
+      });
+      await prisma.broilerDailyRecord.deleteMany({
+        where: { batchId: { in: createdBroilerBatchIds } },
+      });
+      await prisma.chickBatch.deleteMany({ where: { id: { in: createdChickBatchIds } } });
+      await prisma.broilerBatch.deleteMany({ where: { id: { in: createdBroilerBatchIds } } });
+      await prisma.incubationBatch.deleteMany({
+        where: { id: { in: createdIncubationBatchIds } },
+      });
+      await prisma.breederDailyRecord.deleteMany({
+        where: { batchId: { in: createdBreederBatchIds } },
+      });
+      await prisma.breederBatch.deleteMany({ where: { id: { in: createdBreederBatchIds } } });
+      await prisma.incubator.deleteMany({ where: { id: { in: createdIncubatorIds } } });
+      await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.customer.deleteMany({ where: { id: customerId } });
+      await prisma.building.deleteMany({ where: { id: buildingId } });
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
     });
-    await prisma.broilerDailyRecord.deleteMany({
-      where: { batchId: { in: createdBroilerBatchIds } },
-    });
-    await prisma.chickBatch.deleteMany({ where: { id: { in: createdChickBatchIds } } });
-    await prisma.broilerBatch.deleteMany({ where: { id: { in: createdBroilerBatchIds } } });
-    await prisma.incubationBatch.deleteMany({ where: { id: { in: createdIncubationBatchIds } } });
-    await prisma.breederDailyRecord.deleteMany({
-      where: { batchId: { in: createdBreederBatchIds } },
-    });
-    await prisma.breederBatch.deleteMany({ where: { id: { in: createdBreederBatchIds } } });
-    await prisma.incubator.deleteMany({ where: { id: { in: createdIncubatorIds } } });
-    await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.customer.deleteMany({ where: { id: customerId } });
-    await prisma.building.deleteMany({ where: { id: buildingId } });
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
-    await app.close();
   });
 
   let breederBatchId: string;

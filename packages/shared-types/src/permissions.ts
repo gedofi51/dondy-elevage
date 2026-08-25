@@ -156,6 +156,14 @@ export const PERMISSIONS = {
   SUPPLIER_PAYMENTS_DELETE: 'supplier_payments.delete',
 
   TREASURY_READ: 'treasury.read',
+
+  ASSETS_CREATE: 'assets.create',
+  ASSETS_READ: 'assets.read',
+  ASSETS_UPDATE: 'assets.update',
+  ASSETS_DELETE: 'assets.delete',
+  ASSETS_REFORM: 'assets.reform',
+
+  DEPRECIATION_READ: 'depreciation.read',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -309,4 +317,12 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
 
   [PERMISSIONS.TREASURY_READ]:
     'Consulter la trésorerie (journal, créances, dettes, vue consolidée)',
+
+  [PERMISSIONS.ASSETS_CREATE]: 'Créer un actif (fiche patrimoine)',
+  [PERMISSIONS.ASSETS_READ]: 'Consulter les actifs',
+  [PERMISSIONS.ASSETS_UPDATE]: 'Modifier un actif (désignation, localisation, responsable...)',
+  [PERMISSIONS.ASSETS_DELETE]: 'Supprimer un actif (sans dépense liée)',
+  [PERMISSIONS.ASSETS_REFORM]: 'Réformer/sortir un actif',
+
+  [PERMISSIONS.DEPRECIATION_READ]: "Consulter le plan d'amortissement d'un actif",
 };

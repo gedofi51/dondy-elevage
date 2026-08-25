@@ -8,6 +8,7 @@ import { PasswordService } from '../src/modules/auth/password.service';
 import { LayerAlertsCronService } from '../src/modules/layer-batches/layer-alerts.cron';
 import {
   body,
+  closeAppSafely,
   createActiveUser,
   type ErrorResponseBody,
   type LoginResponseBody,
@@ -177,32 +178,38 @@ describe('Layer batches — cycle de vie complet (e2e, scénario §16-B)', () =>
   });
 
   afterAll(async () => {
-    // Ordre sûr vis-à-vis des FK : mouvements de stock -> paiements -> ventes
-    // -> dépenses -> santé/journalier -> lots d'œufs -> lots pondeuses ->
-    // références -> notifications -> utilisateurs -> fermes.
-    const sales = await prisma.sale.findMany({ where: { layerBatchId: { in: createdBatchIds } } });
-    await prisma.eggStockMovement.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.payment.deleteMany({ where: { saleId: { in: sales.map((s) => s.id) } } });
-    await prisma.sale.deleteMany({ where: { layerBatchId: { in: createdBatchIds } } });
-    await prisma.expense.deleteMany({ where: { layerBatchId: { in: createdBatchIds } } });
-    await prisma.layerHealthEvent.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.eggStockLot.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.layerDailyRecord.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    // farmId (pas entityId: createdBatchIds) : le cron d'alertes pondeuses
-    // rattache aussi des alertes de vieillissement à entityType='egg_stock_lot'
-    // (entityId = id du LOT, pas du batch) — un filtre sur entityId manquerait
-    // ces lignes et bloquerait ensuite farm.deleteMany (FK).
-    await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.layerBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
-    await prisma.customer.deleteMany({ where: { id: customerId } });
-    await prisma.building.deleteMany({ where: { id: buildingId } });
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
-    await app.close();
+    // closeAppSafely : app.close() s'exécute même si le nettoyage échoue
+    // — voir DETTE_TECHNIQUE.md (incident Phase 8/16, généralisé en
+    // helper partagé).
+    await closeAppSafely(app, async () => {
+      // Ordre sûr vis-à-vis des FK : mouvements de stock -> paiements -> ventes
+      // -> dépenses -> santé/journalier -> lots d'œufs -> lots pondeuses ->
+      // références -> notifications -> utilisateurs -> fermes.
+      const sales = await prisma.sale.findMany({
+        where: { layerBatchId: { in: createdBatchIds } },
+      });
+      await prisma.eggStockMovement.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.payment.deleteMany({ where: { saleId: { in: sales.map((s) => s.id) } } });
+      await prisma.sale.deleteMany({ where: { layerBatchId: { in: createdBatchIds } } });
+      await prisma.expense.deleteMany({ where: { layerBatchId: { in: createdBatchIds } } });
+      await prisma.layerHealthEvent.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.eggStockLot.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.layerDailyRecord.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      // farmId (pas entityId: createdBatchIds) : le cron d'alertes pondeuses
+      // rattache aussi des alertes de vieillissement à entityType='egg_stock_lot'
+      // (entityId = id du LOT, pas du batch) — un filtre sur entityId manquerait
+      // ces lignes et bloquerait ensuite farm.deleteMany (FK).
+      await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.layerBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
+      await prisma.customer.deleteMany({ where: { id: customerId } });
+      await prisma.building.deleteMany({ where: { id: buildingId } });
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
+    });
   });
 
   let batchId: string;

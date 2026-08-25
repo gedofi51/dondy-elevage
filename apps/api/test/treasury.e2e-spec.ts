@@ -7,6 +7,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { PasswordService } from '../src/modules/auth/password.service';
 import {
   body,
+  closeAppSafely,
   createActiveUser,
   type ErrorResponseBody,
   type LoginResponseBody,
@@ -145,13 +146,16 @@ describe('Trésorerie — journal, créances/dettes, vue consolidée (e2e, scén
   });
 
   afterAll(async () => {
-    // app.close() dans un finally : si une des suppressions échoue (ex. FK
-    // sur une entité créée par un test ajouté plus tard sans mettre à jour
-    // cet ordre), l'app doit quand même se fermer — sinon la connexion
-    // Prisma et les crons de cette instance restent actifs indéfiniment et
+    // closeAppSafely : si une des suppressions échoue (ex. FK sur une
+    // entité créée par un test ajouté plus tard sans mettre à jour cet
+    // ordre), l'app doit quand même se fermer — sinon la connexion Prisma
+    // et les crons de cette instance restent actifs indéfiniment et
     // empêchent le worker Jest de sortir proprement (cf. incident CI Phase
-    // 8 : une erreur non catchée ici a laissé un handle ouvert).
-    try {
+    // 8 : une erreur non catchée ici a laissé un handle ouvert — même
+    // classe de bug redécouverte indépendamment Phase 16
+    // (assets.e2e-spec.ts), généralisée ici en helper partagé, voir
+    // DETTE_TECHNIQUE.md).
+    await closeAppSafely(app, async () => {
       // Ordre sûr vis-à-vis des FK : paiements -> ventes -> réceptions/lignes
       // -> commandes -> articles -> points d'eau -> références -> utilisateurs
       // -> fermes.
@@ -180,9 +184,7 @@ describe('Trésorerie — journal, créances/dettes, vue consolidée (e2e, scén
       await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
       await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
       await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
-    } finally {
-      await app.close();
-    }
+    });
   });
 
   it('0. prépare le scénario : point d’eau, 2 ventes (comptoir + client, paiement partiel), commande fournisseur + paiement partiel, dépense générale', async () => {

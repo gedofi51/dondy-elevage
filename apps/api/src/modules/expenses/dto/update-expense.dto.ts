@@ -35,6 +35,10 @@ export class UpdateExpenseDto {
   waterPointId?: string;
 
   @IsOptional()
+  @IsUUID('4')
+  assetId?: string;
+
+  @IsOptional()
   @IsDateString()
   date?: string;
 

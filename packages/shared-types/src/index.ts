@@ -25,3 +25,5 @@ export * from './goods-receipts';
 export * from './supplier-payments';
 export * from './expenses';
 export * from './treasury';
+export * from './assets';
+export * from './depreciation';
