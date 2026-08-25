@@ -314,6 +314,20 @@ export class AssetsService {
       );
     }
 
+    // Phase 17 — MaintenancePlan/MaintenanceTask/MaintenanceIntervention
+    // référencent assetId en ON DELETE RESTRICT (voir schema.prisma) :
+    // garde explicite ici pour un 409 propre plutôt qu'une erreur SQL
+    // brute non gérée.
+    const maintenanceCount = await this.prisma.maintenanceTask.count({ where: { assetId: id } });
+    const interventionCount = await this.prisma.maintenanceIntervention.count({
+      where: { assetId: id },
+    });
+    if (maintenanceCount > 0 || interventionCount > 0) {
+      throw new ConflictException(
+        'Impossible de supprimer un actif avec un historique de maintenance — utiliser la réforme (POST /:id/reformer).',
+      );
+    }
+
     await this.prisma.$transaction([
       this.prisma.depreciationEntry.deleteMany({ where: { assetId: id } }),
       this.prisma.asset.delete({ where: { id } }),
