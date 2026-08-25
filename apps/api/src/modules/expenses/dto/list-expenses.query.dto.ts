@@ -24,4 +24,8 @@ export class ListExpensesQueryDto {
   @IsOptional()
   @IsUUID('4')
   waterPointId?: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  assetId?: string;
 }

@@ -24,6 +24,7 @@ export class ExpensesService {
       breederBatchId?: string;
       incubationBatchId?: string;
       waterPointId?: string;
+      assetId?: string;
       supplierId?: string;
     },
   ): Promise<void> {
@@ -73,6 +74,12 @@ export class ExpensesService {
         throw new NotFoundException("Point d'eau introuvable.");
       }
     }
+    if (refs.assetId) {
+      const asset = await this.prisma.asset.findUnique({ where: { id: refs.assetId } });
+      if (!asset || asset.farmId !== farmId) {
+        throw new NotFoundException('Actif introuvable.');
+      }
+    }
     if (refs.supplierId) {
       const supplier = await this.prisma.supplier.findUnique({ where: { id: refs.supplierId } });
       if (!supplier || supplier.farmId !== farmId) {
@@ -97,6 +104,7 @@ export class ExpensesService {
         breederBatchId: dto.breederBatchId,
         incubationBatchId: dto.incubationBatchId,
         waterPointId: dto.waterPointId,
+        assetId: dto.assetId,
         date: new Date(dto.date),
         category: dto.category,
         description: dto.description,
@@ -132,6 +140,7 @@ export class ExpensesService {
         breederBatchId: query.breederBatchId,
         incubationBatchId: query.incubationBatchId,
         waterPointId: query.waterPointId,
+        assetId: query.assetId,
       },
       orderBy: { date: 'desc' },
     });

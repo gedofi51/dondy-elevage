@@ -34,6 +34,12 @@ export class CreateExpenseDto {
   @IsUUID('4')
   waterPointId?: string;
 
+  /** Phase 16 — coûts postérieurs à l'acquisition d'un actif (réparation,
+   * consommable, autre), alimente le TCO partiel calculé sur Asset. */
+  @IsOptional()
+  @IsUUID('4')
+  assetId?: string;
+
   @IsDateString()
   date!: string;
 
