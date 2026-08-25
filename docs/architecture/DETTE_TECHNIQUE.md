@@ -1244,6 +1244,102 @@ qu'en Phase 16 (prorata temporis).
   (concurrence, gardes, RBAC) documentés comme tels, pas comme un
   gabarit d'acceptation officiel.
 
+## Phase 18 — Backend Autonomie eau/solaire/Internet (troisième module V6)
+
+Suivi manuel des 3 infrastructures critiques (cahier V6 §4 solaire, §5
+eau/forage, §6 réseau/Starlink). **Frontière vérifiée explicitement** :
+`WaterPoint`/`WaterReading` (module V4, Phase 6) restent 100% commerciaux
+(vente d'eau comptoir/riverains) — ce module ajoute la face "production/
+infrastructure" (forage, centrale solaire, matériel réseau), sans aucun
+recouvrement ni duplication.
+
+- **3 tables séparées (`WaterInfrastructureReading`,
+  `SolarInfrastructureReading`, `NetworkStatusReading`), pas une table
+  unique** — décision initiale (1 table à colonnes nullable par domaine)
+  rejetée après revue : le précédent `BroilerDailyRecord`/
+  `LayerDailyRecord` (recouvrement de champs bien plus fort, tables quand
+  même séparées) et `MaintenancePlan`/`Task`/`Intervention` (3 tables + 3
+  groupes de permissions malgré un mandat RBAC identique) argumentent
+  tous les deux pour la séparation. Argument décisif : `PermissionsGuard`
+  est strictement endpoint-level (aucun filtrage par ligne/catégorie) —
+  une table unique aurait rendu *techniquement impossible* d'étendre le
+  rôle "Responsable eau" aux seuls relevés eau sans lui ouvrir aussi
+  solaire/réseau.
+- **Équation de contrôle eau (§5)** : "Eau produite = consommation ferme
+  + eau vendue + pertes/écarts" (citation exacte du cahier), calculée à
+  la lecture, jamais stockée (`computeWaterControlGapM3`, même
+  philosophie que `computeSalesCashGapFcfa`, Phase 6). `soldVolumeM3` =
+  `SUM(WaterReading.consumptionM3)` agrégé **ferme entière** (tous les
+  `WaterPoint` confondus) pour la même date — pas `Sale` (`Sale.quantity`
+  pour `productType=EAU` est un nombre de récipients en `saleMode=UNITE`,
+  pas un volume m³ ; `WaterReading.consumptionM3` est la seule vérité
+  métrée m³). `gapM3 = null` si `pumpedVolumeM3` absent (équation non
+  calculable, cahier : "si mesurable"). Granularité jour (même
+  périodicité que `WaterReading`) — hypothèse, le cahier ne précise
+  aucune période pour l'équation.
+- **`pumpHoursCumulative` — champ purement informatif** : relevé simple,
+  sans chaîne de continuité (contrairement à `WaterReading.indexMatin/
+  indexSoir`, enjeu moindre : suivi opérationnel, pas facturation).
+  **Ne déclenche rien automatiquement** — `MaintenanceTaskGenerationService`/
+  `computeNextDueDate` ne calculent les échéances que par périodicité
+  calendaire (`periodicityDays`), aucun crochet pour un déclenchement par
+  compteur d'heures cette phase (trou déjà documenté en Phase 17, non
+  résolu ici).
+- **`Asset.status` vs `NetworkStatusReading.operationalStatus` — deux
+  notions distinctes, pas une redondance** : le premier est un statut de
+  cycle de vie patrimonial (ACTIF/HORS_SERVICE/REFORME, long terme), le
+  second une connectivité instantanée (OPERATIONNEL/DEGRADE/HORS_LIGNE,
+  peut changer plusieurs fois par jour) — un `Asset` `ACTIF` peut avoir
+  un relevé `HORS_LIGNE` (Starlink en coupure) sans que l'actif change de
+  statut.
+- **Alertes — absence de relevé récent, ajoutée après revue** : la
+  décision initiale (aucune alerte de staleness, jugée hors du périmètre
+  littéral "disponibilité faible/panne" du cahier) a été rejetée en
+  confrontation avec un précédent direct du même domaine :
+  `WaterAlertsCronService.checkMissingEntry()` alerte déjà sur "aucun
+  relevé saisi pour hier" côté commercial. Seuil plus souple ici (défaut
+  7 jours, paramétrable par domaine via `Setting`, contre "hier" strict
+  pour `checkMissingEntry`) car ces relevés sont "si mesurable"/"si
+  disponible", pas un rituel commercial quotidien obligatoire — vérifié
+  seulement sur les `Asset` ayant déjà au moins un relevé, dédoublonnage
+  persistant (pas re-déclenché chaque jour).
+- **Sévérité `IMPORTANT`** (pas `VIGILANCE`) pour réservoir bas/batterie
+  basse/réseau hors ligne — délibéré, pour franchir
+  `NOTIFIED_SEVERITIES` et produire une vraie notification
+  (infrastructures qualifiées "critiques" par le cahier), même choix
+  qu'en Phase 17 pour la maintenance en retard.
+- **RBAC — extension du rôle "Responsable eau"** : ce rôle (mandat §11
+  "Points d'eau, relevés, ventes et encaissements") n'avait aucune
+  permission `ASSETS_*`/`MAINTENANCE_*` avant cette phase. Étendu à
+  `WATER_INFRASTRUCTURE_READINGS_CREATE/READ/UPDATE` uniquement (pas
+  solaire/réseau, hors de son mandat déclaré) — extension rendue possible
+  et sûre précisément par la séparation en 3 groupes de permissions.
+  Pas d'extension à `ASSETS_READ`/`MAINTENANCE_*_READ` pour ce rôle cette
+  phase (non demandé, raffinement futur possible).
+- **Comptable — lecture seule sur les 3 domaines** (pas de CREATE/UPDATE,
+  contrairement à son profil sur Assets/Maintenance) : ce ne sont pas des
+  actes comptables comme créer un Asset/une Expense, mais des relevés
+  opérationnels de terrain — même précédent que `WATER_READINGS_READ`
+  (Comptable a déjà lecture seule sur `WaterReading` pour la même
+  raison).
+- **Inventaire/coût des 3 infrastructures déjà entièrement couverts,
+  zéro nouveau code** : `Asset` (catégories "eau"/"solaire"/"internet",
+  déjà canoniques depuis Phase 16) + `Expense.assetId` (déjà agrégé par
+  `AssetsService.attachComputed().tcoFcfa` sans filtre de catégorie) +
+  `MaintenanceModule` (déjà générique sur tout Asset, Phase 17) couvrent
+  intégralement §5 "coût de production/distribution", §6 "coût
+  d'acquisition et amortissement"/"abonnements et dépenses récurrentes"
+  et "historique des incidents et maintenances" des 3 sections. Aucun
+  nouveau mécanisme de "dépense récurrente" (`Expense` n'a et n'aura
+  aucun champ `recurrence`) — les abonnements (ex. Starlink) restent des
+  `Expense` classiques ressaisies manuellement à chaque échéance, lecture
+  du cahier ("enregistrées comme charges d'exploitation récurrentes")
+  comme classification comptable, pas comme demande d'automatisation.
+- **Aucun scénario §19 dédié** à l'eau/solaire/Internet (vérifié
+  verbatim) — les scénarios e2e sont construits à partir des champs du
+  cahier + l'équation de contrôle, documentés comme inventés, pas comme
+  gabarit d'acceptation officiel (même discipline que Phase 17).
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
