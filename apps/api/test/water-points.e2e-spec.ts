@@ -8,6 +8,7 @@ import { PasswordService } from '../src/modules/auth/password.service';
 import { WaterAlertsCronService } from '../src/modules/water-points/water-alerts.cron';
 import {
   body,
+  closeAppSafely,
   createActiveUser,
   type ErrorResponseBody,
   type LoginResponseBody,
@@ -151,26 +152,30 @@ describe("Vente et distribution d'eau — cycle complet (e2e, scénario §16-E)"
   });
 
   afterAll(async () => {
-    // Ordre sûr vis-à-vis des FK : paiements -> ventes -> relevés -> points
-    // d'eau -> notifications -> alertes -> références -> utilisateurs -> fermes.
-    const sales = await prisma.sale.findMany({
-      where: { waterPointId: { in: createdWaterPointIds } },
+    // closeAppSafely : app.close() s'exécute même si le nettoyage échoue
+    // — voir DETTE_TECHNIQUE.md (incident Phase 8/16, généralisé en
+    // helper partagé).
+    await closeAppSafely(app, async () => {
+      // Ordre sûr vis-à-vis des FK : paiements -> ventes -> relevés -> points
+      // d'eau -> notifications -> alertes -> références -> utilisateurs -> fermes.
+      const sales = await prisma.sale.findMany({
+        where: { waterPointId: { in: createdWaterPointIds } },
+      });
+      await prisma.payment.deleteMany({ where: { saleId: { in: sales.map((s) => s.id) } } });
+      await prisma.sale.deleteMany({ where: { waterPointId: { in: createdWaterPointIds } } });
+      await prisma.waterReading.deleteMany({
+        where: { waterPointId: { in: createdWaterPointIds } },
+      });
+      await prisma.waterPoint.deleteMany({ where: { id: { in: createdWaterPointIds } } });
+      await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.customer.deleteMany({ where: { id: customerId } });
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
     });
-    await prisma.payment.deleteMany({ where: { saleId: { in: sales.map((s) => s.id) } } });
-    await prisma.sale.deleteMany({ where: { waterPointId: { in: createdWaterPointIds } } });
-    await prisma.waterReading.deleteMany({
-      where: { waterPointId: { in: createdWaterPointIds } },
-    });
-    await prisma.waterPoint.deleteMany({ where: { id: { in: createdWaterPointIds } } });
-    await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.customer.deleteMany({ where: { id: customerId } });
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
-    await app.close();
   });
 
   let waterPointId: string;

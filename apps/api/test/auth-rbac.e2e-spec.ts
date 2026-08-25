@@ -9,6 +9,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { PasswordService } from '../src/modules/auth/password.service';
 import { hashOpaqueToken } from '../src/modules/auth/tokens.util';
 import { MailService } from '../src/mail/mail.service';
+import { closeAppSafely } from './helpers/e2e-test-utils';
 
 /**
  * Test d'intégration contre une vraie base MySQL (pas de mocks) : couvre les
@@ -110,13 +111,17 @@ describe('Auth + RBAC + isolation farmId (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.building.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
-    await app.close();
+    // closeAppSafely : app.close() s'exécute même si le nettoyage échoue
+    // — voir DETTE_TECHNIQUE.md (incident Phase 8/16, généralisé en
+    // helper partagé).
+    await closeAppSafely(app, async () => {
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.building.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
+    });
   });
 
   async function createActiveUser(

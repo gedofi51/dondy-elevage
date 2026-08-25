@@ -9,6 +9,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { PasswordService } from '../src/modules/auth/password.service';
 import {
   body,
+  closeAppSafely,
   createActiveUser,
   type ErrorResponseBody,
   type LoginResponseBody,
@@ -79,26 +80,30 @@ describe('Documents — upload, téléchargement, isolation farmId (e2e)', () =>
   });
 
   afterAll(async () => {
-    // Nettoyage des octets physiquement écrits sur disque en plus du
-    // nettoyage Prisma habituel — sinon apps/api/storage/documents/
-    // accumule des fichiers orphelins à chaque run de CI.
-    const documents = await prisma.document.findMany({
-      where: { id: { in: createdDocumentIds } },
-      select: { storedName: true },
-    });
-    await Promise.all(
-      documents.map((d) =>
-        unlink(join(process.cwd(), 'storage', 'documents', d.storedName)).catch(() => undefined),
-      ),
-    );
+    // closeAppSafely : app.close() s'exécute même si le nettoyage échoue
+    // — voir DETTE_TECHNIQUE.md (incident Phase 8/16, généralisé en
+    // helper partagé).
+    await closeAppSafely(app, async () => {
+      // Nettoyage des octets physiquement écrits sur disque en plus du
+      // nettoyage Prisma habituel — sinon apps/api/storage/documents/
+      // accumule des fichiers orphelins à chaque run de CI.
+      const documents = await prisma.document.findMany({
+        where: { id: { in: createdDocumentIds } },
+        select: { storedName: true },
+      });
+      await Promise.all(
+        documents.map((d) =>
+          unlink(join(process.cwd(), 'storage', 'documents', d.storedName)).catch(() => undefined),
+        ),
+      );
 
-    await prisma.document.deleteMany({ where: { id: { in: createdDocumentIds } } });
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
-    await app.close();
+      await prisma.document.deleteMany({ where: { id: { in: createdDocumentIds } } });
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
+    });
   });
 
   async function loginAs(farmId: string, roleId: string, password: string): Promise<string> {

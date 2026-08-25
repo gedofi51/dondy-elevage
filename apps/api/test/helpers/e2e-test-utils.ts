@@ -1,6 +1,31 @@
+import type { INestApplication } from '@nestjs/common';
 import type { Response } from 'supertest';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { PasswordService } from '../../src/modules/auth/password.service';
+
+/**
+ * Garantit que `app.close()` s'exécute même si `cleanup` échoue (ex. une
+ * contrainte FK oubliée en ajoutant un test plus tard sans mettre à jour
+ * l'ordre de suppression) — sinon l'application Nest de test reste vivante
+ * indéfiniment (connexion Prisma + crons ScheduleModule ouverts) et bloque
+ * Jest en silence, sans le moindre message d'erreur si la sortie standard
+ * est pipée (`| tail`). Bug réel rencontré deux fois indépendamment :
+ * Phase 8 (treasury.e2e-spec.ts, incident CI) et Phase 16
+ * (assets.e2e-spec.ts, blocage de plusieurs heures) — voir
+ * DETTE_TECHNIQUE.md. Tout nouveau fichier e2e DOIT utiliser ce helper
+ * dans son `afterAll` plutôt que d'appeler `app.close()` en dernière
+ * ligne sans protection.
+ */
+export async function closeAppSafely(
+  app: INestApplication,
+  cleanup: () => Promise<void>,
+): Promise<void> {
+  try {
+    await cleanup();
+  } finally {
+    await app.close();
+  }
+}
 
 /**
  * Extrait de auth-rbac.e2e-spec.ts (Phase 1) pour être partagé par les

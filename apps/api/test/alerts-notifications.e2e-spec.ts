@@ -7,6 +7,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 import { PasswordService } from '../src/modules/auth/password.service';
 import {
   body,
+  closeAppSafely,
   createActiveUser,
   type ErrorResponseBody,
   type LoginResponseBody,
@@ -77,14 +78,18 @@ describe('Alerts + Notifications — cycle de vie et ciblage (e2e)', () => {
   });
 
   afterAll(async () => {
-    await prisma.notification.deleteMany({ where: { farmId: farmA.id } });
-    await prisma.alert.deleteMany({ where: { id: { in: createdAlertIds } } });
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.auditLog.deleteMany({ where: { farmId: farmA.id } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    await prisma.farm.deleteMany({ where: { id: farmA.id } });
-    await app.close();
+    // closeAppSafely : app.close() s'exécute même si le nettoyage échoue
+    // — voir DETTE_TECHNIQUE.md (incident Phase 8/16, généralisé en
+    // helper partagé).
+    await closeAppSafely(app, async () => {
+      await prisma.notification.deleteMany({ where: { farmId: farmA.id } });
+      await prisma.alert.deleteMany({ where: { id: { in: createdAlertIds } } });
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.auditLog.deleteMany({ where: { farmId: farmA.id } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      await prisma.farm.deleteMany({ where: { id: farmA.id } });
+    });
   });
 
   async function loginAs(

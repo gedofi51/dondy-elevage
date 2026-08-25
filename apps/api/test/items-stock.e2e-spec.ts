@@ -9,6 +9,7 @@ import { ItemsAlertsCronService } from '../src/modules/items/items-alerts.cron';
 import { PurchaseOrdersAlertsCronService } from '../src/modules/purchase-orders/purchase-orders-alerts.cron';
 import {
   body,
+  closeAppSafely,
   createActiveUser,
   type ErrorResponseBody,
   type LoginResponseBody,
@@ -158,38 +159,44 @@ describe('Stocks, achats et finances — cycle complet (e2e, scénario §16-F)',
   });
 
   afterAll(async () => {
-    // Ordre sûr vis-à-vis des FK : paiements fournisseur -> réceptions ->
-    // lignes/commandes -> dépenses/journées/bandes -> mouvements -> articles
-    // -> références -> utilisateurs -> fermes.
-    await prisma.supplierPayment.deleteMany({
-      where: { purchaseOrderId: { in: createdOrderIds } },
+    // closeAppSafely : app.close() s'exécute même si le nettoyage échoue
+    // — voir DETTE_TECHNIQUE.md (incident Phase 8/16, généralisé en
+    // helper partagé).
+    await closeAppSafely(app, async () => {
+      // Ordre sûr vis-à-vis des FK : paiements fournisseur -> réceptions ->
+      // lignes/commandes -> dépenses/journées/bandes -> mouvements -> articles
+      // -> références -> utilisateurs -> fermes.
+      await prisma.supplierPayment.deleteMany({
+        where: { purchaseOrderId: { in: createdOrderIds } },
+      });
+      await prisma.goodsReceiptItem.deleteMany({
+        where: { purchaseOrderItem: { purchaseOrderId: { in: createdOrderIds } } },
+      });
+      await prisma.goodsReceipt.deleteMany({
+        where: { purchaseOrderId: { in: createdOrderIds } },
+      });
+      await prisma.purchaseOrderItem.deleteMany({
+        where: { purchaseOrderId: { in: createdOrderIds } },
+      });
+      await prisma.purchaseOrder.deleteMany({ where: { id: { in: createdOrderIds } } });
+      await prisma.expense.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.broilerDailyRecord.deleteMany({ where: { batchId: { in: createdBatchIds } } });
+      await prisma.broilerBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
+      await prisma.stockMovement.deleteMany({ where: { itemId: { in: createdItemIds } } });
+      await prisma.item.deleteMany({ where: { id: { in: createdItemIds } } });
+      await prisma.supplier.deleteMany({ where: { id: supplierId } });
+      await prisma.building.deleteMany({ where: { id: buildingId } });
+      // Les crons d'alerte déclenchent des notifications sur IMPORTANT/CRITIQUE
+      // — à nettoyer avant les alertes elles-mêmes (Notification.alertId) et
+      // avant les utilisateurs (Notification.userId).
+      await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
+      await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
     });
-    await prisma.goodsReceiptItem.deleteMany({
-      where: { purchaseOrderItem: { purchaseOrderId: { in: createdOrderIds } } },
-    });
-    await prisma.goodsReceipt.deleteMany({ where: { purchaseOrderId: { in: createdOrderIds } } });
-    await prisma.purchaseOrderItem.deleteMany({
-      where: { purchaseOrderId: { in: createdOrderIds } },
-    });
-    await prisma.purchaseOrder.deleteMany({ where: { id: { in: createdOrderIds } } });
-    await prisma.expense.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.broilerDailyRecord.deleteMany({ where: { batchId: { in: createdBatchIds } } });
-    await prisma.broilerBatch.deleteMany({ where: { id: { in: createdBatchIds } } });
-    await prisma.stockMovement.deleteMany({ where: { itemId: { in: createdItemIds } } });
-    await prisma.item.deleteMany({ where: { id: { in: createdItemIds } } });
-    await prisma.supplier.deleteMany({ where: { id: supplierId } });
-    await prisma.building.deleteMany({ where: { id: buildingId } });
-    // Les crons d'alerte déclenchent des notifications sur IMPORTANT/CRITIQUE
-    // — à nettoyer avant les alertes elles-mêmes (Notification.alertId) et
-    // avant les utilisateurs (Notification.userId).
-    await prisma.notification.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.alert.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.auditLog.deleteMany({ where: { farmId: { in: [farmA.id, farmB.id] } } });
-    await prisma.refreshToken.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
-    await prisma.farm.deleteMany({ where: { id: { in: [farmA.id, farmB.id] } } });
-    await app.close();
   });
 
   let itemId: string;
