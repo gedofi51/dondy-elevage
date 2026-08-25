@@ -12,6 +12,10 @@ export interface Expense {
   breederBatchId: string | null;
   incubationBatchId: string | null;
   waterPointId: string | null;
+  /** Phase 16 — coûts postérieurs à l'acquisition d'un actif (réparation,
+   * consommable, autre), même patron d'extension incrémentale que les 6 FK
+   * ci-dessus (Phase 7). Alimente le TCO partiel calculé sur Asset. */
+  assetId: string | null;
   date: string;
   category: string;
   description: string | null;
@@ -31,6 +35,7 @@ export interface CreateExpenseInput {
   breederBatchId?: string;
   incubationBatchId?: string;
   waterPointId?: string;
+  assetId?: string;
   date: string;
   category: string;
   description?: string;
@@ -47,6 +52,7 @@ export interface UpdateExpenseInput {
   breederBatchId?: string;
   incubationBatchId?: string;
   waterPointId?: string;
+  assetId?: string;
   date?: string;
   category?: string;
   description?: string;
