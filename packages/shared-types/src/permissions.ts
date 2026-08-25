@@ -178,6 +178,18 @@ export const PERMISSIONS = {
 
   MAINTENANCE_INTERVENTIONS_CREATE: 'maintenance_interventions.create',
   MAINTENANCE_INTERVENTIONS_READ: 'maintenance_interventions.read',
+
+  WATER_INFRASTRUCTURE_READINGS_CREATE: 'water_infrastructure_readings.create',
+  WATER_INFRASTRUCTURE_READINGS_READ: 'water_infrastructure_readings.read',
+  WATER_INFRASTRUCTURE_READINGS_UPDATE: 'water_infrastructure_readings.update',
+
+  SOLAR_INFRASTRUCTURE_READINGS_CREATE: 'solar_infrastructure_readings.create',
+  SOLAR_INFRASTRUCTURE_READINGS_READ: 'solar_infrastructure_readings.read',
+  SOLAR_INFRASTRUCTURE_READINGS_UPDATE: 'solar_infrastructure_readings.update',
+
+  NETWORK_STATUS_READINGS_CREATE: 'network_status_readings.create',
+  NETWORK_STATUS_READINGS_READ: 'network_status_readings.read',
+  NETWORK_STATUS_READINGS_UPDATE: 'network_status_readings.update',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -354,4 +366,19 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.MAINTENANCE_INTERVENTIONS_CREATE]:
     'Enregistrer une intervention de maintenance (diagnostic, pièces, coût)',
   [PERMISSIONS.MAINTENANCE_INTERVENTIONS_READ]: 'Consulter les interventions de maintenance',
+
+  [PERMISSIONS.WATER_INFRASTRUCTURE_READINGS_CREATE]:
+    'Saisir un relevé d’infrastructure eau (forage, réservoir, pompe)',
+  [PERMISSIONS.WATER_INFRASTRUCTURE_READINGS_READ]: 'Consulter les relevés d’infrastructure eau',
+  [PERMISSIONS.WATER_INFRASTRUCTURE_READINGS_UPDATE]: 'Corriger un relevé d’infrastructure eau',
+
+  [PERMISSIONS.SOLAR_INFRASTRUCTURE_READINGS_CREATE]:
+    'Saisir un relevé d’infrastructure solaire (production, batteries, puissance)',
+  [PERMISSIONS.SOLAR_INFRASTRUCTURE_READINGS_READ]: 'Consulter les relevés d’infrastructure solaire',
+  [PERMISSIONS.SOLAR_INFRASTRUCTURE_READINGS_UPDATE]: 'Corriger un relevé d’infrastructure solaire',
+
+  [PERMISSIONS.NETWORK_STATUS_READINGS_CREATE]:
+    'Saisir un relevé de statut réseau (opérationnel/dégradé/hors ligne)',
+  [PERMISSIONS.NETWORK_STATUS_READINGS_READ]: 'Consulter les relevés de statut réseau',
+  [PERMISSIONS.NETWORK_STATUS_READINGS_UPDATE]: 'Corriger un relevé de statut réseau',
 };
