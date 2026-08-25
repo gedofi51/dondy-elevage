@@ -328,6 +328,20 @@ export class AssetsService {
       );
     }
 
+    // Phase 18 — WaterInfrastructureReading/SolarInfrastructureReading/
+    // NetworkStatusReading référencent aussi assetId en ON DELETE
+    // RESTRICT — même garde explicite pour un 409 propre.
+    const [waterReadingCount, solarReadingCount, networkReadingCount] = await Promise.all([
+      this.prisma.waterInfrastructureReading.count({ where: { assetId: id } }),
+      this.prisma.solarInfrastructureReading.count({ where: { assetId: id } }),
+      this.prisma.networkStatusReading.count({ where: { assetId: id } }),
+    ]);
+    if (waterReadingCount > 0 || solarReadingCount > 0 || networkReadingCount > 0) {
+      throw new ConflictException(
+        'Impossible de supprimer un actif avec des relevés d’infrastructure enregistrés — utiliser la réforme (POST /:id/reformer).',
+      );
+    }
+
     await this.prisma.$transaction([
       this.prisma.depreciationEntry.deleteMany({ where: { assetId: id } }),
       this.prisma.asset.delete({ where: { id } }),
