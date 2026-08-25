@@ -28,3 +28,4 @@ export * from './treasury';
 export * from './assets';
 export * from './depreciation';
 export * from './maintenance';
+export * from './infrastructure';
