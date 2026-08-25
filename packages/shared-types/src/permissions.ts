@@ -164,6 +164,20 @@ export const PERMISSIONS = {
   ASSETS_REFORM: 'assets.reform',
 
   DEPRECIATION_READ: 'depreciation.read',
+
+  MAINTENANCE_PLANS_CREATE: 'maintenance_plans.create',
+  MAINTENANCE_PLANS_READ: 'maintenance_plans.read',
+  MAINTENANCE_PLANS_UPDATE: 'maintenance_plans.update',
+  MAINTENANCE_PLANS_DELETE: 'maintenance_plans.delete',
+
+  MAINTENANCE_TASKS_CREATE: 'maintenance_tasks.create',
+  MAINTENANCE_TASKS_READ: 'maintenance_tasks.read',
+  MAINTENANCE_TASKS_UPDATE: 'maintenance_tasks.update',
+  MAINTENANCE_TASKS_DELETE: 'maintenance_tasks.delete',
+  MAINTENANCE_TASKS_CANCEL: 'maintenance_tasks.cancel',
+
+  MAINTENANCE_INTERVENTIONS_CREATE: 'maintenance_interventions.create',
+  MAINTENANCE_INTERVENTIONS_READ: 'maintenance_interventions.read',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -325,4 +339,19 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.ASSETS_REFORM]: 'Réformer/sortir un actif',
 
   [PERMISSIONS.DEPRECIATION_READ]: "Consulter le plan d'amortissement d'un actif",
+
+  [PERMISSIONS.MAINTENANCE_PLANS_CREATE]: 'Créer un plan de maintenance préventive',
+  [PERMISSIONS.MAINTENANCE_PLANS_READ]: 'Consulter les plans de maintenance',
+  [PERMISSIONS.MAINTENANCE_PLANS_UPDATE]: 'Modifier un plan de maintenance',
+  [PERMISSIONS.MAINTENANCE_PLANS_DELETE]: 'Supprimer un plan de maintenance (sans intervention liée)',
+
+  [PERMISSIONS.MAINTENANCE_TASKS_CREATE]: 'Créer une tâche de maintenance corrective/conditionnelle',
+  [PERMISSIONS.MAINTENANCE_TASKS_READ]: 'Consulter les tâches de maintenance',
+  [PERMISSIONS.MAINTENANCE_TASKS_UPDATE]: 'Modifier une tâche de maintenance (échéance, désignation)',
+  [PERMISSIONS.MAINTENANCE_TASKS_DELETE]: 'Supprimer une tâche de maintenance (sans intervention liée)',
+  [PERMISSIONS.MAINTENANCE_TASKS_CANCEL]: 'Annuler une tâche de maintenance',
+
+  [PERMISSIONS.MAINTENANCE_INTERVENTIONS_CREATE]:
+    'Enregistrer une intervention de maintenance (diagnostic, pièces, coût)',
+  [PERMISSIONS.MAINTENANCE_INTERVENTIONS_READ]: 'Consulter les interventions de maintenance',
 };
