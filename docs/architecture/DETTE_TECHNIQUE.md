@@ -1132,6 +1132,118 @@ cahier.
   structurel construit, décision documentée explicitement puisque le
   cahier V6 ne tranche pas cette frontière lui-même.
 
+## Phase 17 — Backend Maintenance (deuxième module V6)
+
+Module de planification et traçabilité de l'entretien/pannes/réparations
+des `Asset` (cahier V6 §7), dépendant de Patrimoine (Phase 16). **Le
+cahier V6 §7 est encore plus laconique que ne l'était le §3 (Patrimoine)**
+: 6 puces conceptuelles, aucun champ détaillé, aucune formule de
+récurrence, aucun exemple chiffré — contrairement à l'amortissement §3.2
+qui donnait au moins la mécanique de calcul. Chaque zone d'ombre est
+tranchée ci-dessous comme hypothèse explicite, avec la même discipline
+qu'en Phase 16 (prorata temporis).
+
+- **Périodicité en jours entiers, sans unité imposée par le cahier**
+  (`MaintenancePlan.periodicityDays: Int`) — hypothèse d'ingénierie
+  assumée. Le tableau d'exemples §7 associe "Pompe forage" à un
+  déclencheur possible par compteur d'usage ("heures de fonctionnement"),
+  hors de portée cette phase : aucun champ de ce type n'existe nulle part
+  dans le projet (`WaterPoint` n'a pas de compteur d'heures). Limite
+  connue, pas un oubli.
+- **Génération des tâches préventives à la demande** (pas de
+  pré-génération en masse comme `DepreciationEntry`/45
+  `BroilerDailyRecord`) : un plan de maintenance est ouvert/infini dans le
+  temps, sans durée fixe connue — analogue à `LayerBatch`, pas à
+  `BroilerBatch`/`Asset`. La première tâche est créée à `dueDate =
+  plan.startDate` directement dans la même transaction que le plan ; les
+  suivantes sont générées **immédiatement, dans la même transaction**,
+  à la clôture de la précédente (intervention ou annulation) — jamais
+  différé au cron quotidien, qui n'est qu'un filet de sécurité (rattrape
+  les tâches orphelines). Ancrage systématique sur la dernière
+  **intervention réelle** du plan (jamais une tâche annulée), pour ne pas
+  laisser le planning dériver silencieusement en l'absence de toute
+  maintenance effective.
+- **Verrouillage `SELECT ... FOR UPDATE`** sur la ligne `MaintenancePlan`
+  avant génération (`MaintenanceTaskGenerationService.ensureNextTaskGenerated`,
+  même pattern que le verrouillage `Item` dans
+  `StockMovementsService.recordMovementInTransaction`) — garantit qu'au
+  plus une tâche ouverte existe par plan actif malgré des appels
+  concurrents (clôture transactionnelle + cron de rattrapage). Couvert par
+  un test e2e dédié (deux générations concurrentes sur le même plan,
+  vérifie qu'une seule tâche est créée).
+- **`MaintenanceIntervention` append-only** (pas de PATCH/DELETE exposés)
+  — traitée comme un événement réel immuable, à l'identique de
+  `StockMovement`, PAS comme `DepreciationEntry` (projection déterministe
+  supprimable) : une intervention a déjà consommé du stock et généré un
+  coût réel au moment de sa création. Correction d'une intervention
+  erronée : aucun nouveau mécanisme construit — soft-delete de l'`Expense`
+  auto-créée (déjà exclue du TCO via `deletedAt: null`) + mouvement de
+  stock compensatoire via l'endpoint `AJUSTEMENT` déjà existant si la
+  quantité physique doit être corrigée.
+- **Pas de table `maintenance_parts`** (suggérée au §18) : le
+  `StockMovement` (`sourceType='maintenance_intervention'`,
+  `sourceId=intervention.id`, mécanisme polymorphe déjà générique) EST la
+  trace de la pièce utilisée — `partsCostFcfa`/`totalCostFcfa` recalculés
+  à la lecture, jamais stockés.
+- **Pas de table `asset_incidents`** (suggérée au §18) : une panne non
+  résolue = `MaintenanceTask(type=CORRECTIVE, planId=null, status=A_FAIRE)`
+  créée manuellement ; une réparation déjà effectuée sans planification
+  préalable = `MaintenanceIntervention(taskId=null)`. Deux mécanismes
+  complémentaires, pas de table dédiée.
+- **Coût imputé à l'actif — zéro changement de code sur `AssetsService`** :
+  `attachComputed()` sommait déjà `Expense.amountFcfa WHERE assetId=...`
+  depuis la Phase 16 (préparé explicitement pour ce module). Chaque pièce
+  consommée déclenche un mouvement de stock (`reason: MAINTENANCE`,
+  nouvelle valeur d'enum, réservée au flux automatique via
+  `AUTOMATIC_ONLY_REASONS`) PUIS une `Expense` liée
+  (`category:'Pièces maintenance'`), même pattern exact que
+  `HealthEventsService.applyHealthStockInstructions` (Phase 3/7) ; la
+  main-d'œuvre génère une `Expense` séparée (`category:"Main-d'œuvre
+  maintenance"`).
+- **Garde `REFORME`** : impossible de créer un plan, une tâche ou une
+  intervention sur un `Asset` déjà réformé (409) — absente du code Phase
+  16 (seul le cron d'alertes filtrait les actifs réformés), ajoutée ici
+  dès l'origine plutôt que découverte plus tard. `AssetsService.remove()`
+  a aussi été étendu (garde sur `MaintenanceTask`/`MaintenanceIntervention`
+  liés) : les nouvelles FK `ON DELETE RESTRICT` introduites par cette
+  phase auraient sinon fait remonter une erreur SQL brute (500) au lieu
+  d'un 409 propre lors de la suppression d'un actif à historique de
+  maintenance.
+- **`entityId` des alertes reste l'id de la tâche, jamais
+  `Asset.responsibleId`** — cohérence avec l'usage uniforme du reste du
+  projet (`entityType:'asset', entityId: asset.id`, jamais un id
+  utilisateur). Le "responsable alerté" du scénario §19 ("Maintenance
+  pompe à échéance") est **interprété comme un broadcast ferme-entière**
+  via `NotificationsService.notifyForAlert` (tous les titulaires d'un
+  rôle portant `ALERTS_ACKNOWLEDGE`) : **aucun mécanisme de ciblage
+  individuel par utilisateur n'existe nulle part dans le code actuel** —
+  en construire un aurait été hors de proportion pour cette phase.
+  Hypothèse assumée, à documenter/valider si un vrai besoin de ciblage
+  individuel émerge plus tard.
+- **Sévérité `IMPORTANT` (pas `VIGILANCE`) pour la maintenance en
+  retard** — choix délibéré : seules `IMPORTANT`/`CRITIQUE` franchissent
+  `NOTIFIED_SEVERITIES` et déclenchent une vraie notification
+  (`alerts.service.ts`). Une alerte `VIGILANCE` reste silencieuse (visible
+  seulement au tableau de bord), ce qui n'aurait pas satisfait le texte
+  littéral du §19 ("responsable alerté").
+- **Aucun rôle RBAC "technicien" inventé** — le cahier V6 n'en mentionne
+  aucun nulle part. Distribution calquée sur `ASSETS_*` (Propriétaire/
+  Gérant = accès complet, Comptable = tout sauf `DELETE`, Lecteur =
+  lecture seule) ; `Magasinier/Responsable stocks` ne reçoit rien cette
+  phase malgré son lien logique avec la consommation de pièces, cohérent
+  avec l'absence de permissions `ASSETS_*` pour ce même rôle en Phase 16.
+- **Aucun code métier auto-généré** (`PAT-AAAA-NNN` n'a pas d'équivalent
+  ici) : le cahier ne nomme jamais de champ "code" pour la maintenance,
+  contrairement à Asset (§3.1).
+- **Scénarios e2e minces** : les deux scénarios §19 utilisés ("Maintenance
+  pompe à échéance" → "Tâche créée et responsable alerté" ; "Pièce
+  utilisée en réparation" → "Stock décrémenté et coût imputé à l'actif")
+  sont chacun une seule phrase de résultat attendu, sans détail
+  exploitable — nettement plus minces que le scénario Patrimoine (§19
+  assets). Le test e2e les complète par des scénarios inventés
+  (concurrence, gardes, RBAC) documentés comme tels, pas comme un
+  gabarit d'acceptation officiel.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

@@ -38,45 +38,48 @@ model Farm {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users               User[]
-  roles               Role[]
-  buildings           Building[]
-  auditLogs           AuditLog[]
-  settingsEntries     Setting[]
-  suppliers           Supplier[]
-  customers           Customer[]
-  documents           Document[]
-  alerts              Alert[]
-  notifications       Notification[]
-  broilerBatches      BroilerBatch[]
-  broilerDailyRecords BroilerDailyRecord[]
-  broilerMortalities  BroilerMortality[]
-  broilerHealthEvents BroilerHealthEvent[]
-  expenses            Expense[]
-  sales               Sale[]
-  payments            Payment[]
-  layerBatches        LayerBatch[]
-  layerDailyRecords   LayerDailyRecord[]
-  layerHealthEvents   LayerHealthEvent[]
-  eggStockLots        EggStockLot[]
-  eggStockMovements   EggStockMovement[]
-  incubators          Incubator[]
-  breederBatches      BreederBatch[]
-  breederDailyRecords BreederDailyRecord[]
-  incubationBatches   IncubationBatch[]
-  chickBatches        ChickBatch[]
-  batchLineageRows    BatchLineage[]
-  waterPoints         WaterPoint[]
-  waterReadings       WaterReading[]
-  items               Item[]
-  stockMovements      StockMovement[]
-  purchaseOrders      PurchaseOrder[]
-  purchaseOrderItems  PurchaseOrderItem[]
-  goodsReceipts       GoodsReceipt[]
-  goodsReceiptItems   GoodsReceiptItem[]
-  supplierPayments    SupplierPayment[]
-  assets              Asset[]
-  depreciationEntries DepreciationEntry[]
+  users                    User[]
+  roles                    Role[]
+  buildings                Building[]
+  auditLogs                AuditLog[]
+  settingsEntries          Setting[]
+  suppliers                Supplier[]
+  customers                Customer[]
+  documents                Document[]
+  alerts                   Alert[]
+  notifications            Notification[]
+  broilerBatches           BroilerBatch[]
+  broilerDailyRecords      BroilerDailyRecord[]
+  broilerMortalities       BroilerMortality[]
+  broilerHealthEvents      BroilerHealthEvent[]
+  expenses                 Expense[]
+  sales                    Sale[]
+  payments                 Payment[]
+  layerBatches             LayerBatch[]
+  layerDailyRecords        LayerDailyRecord[]
+  layerHealthEvents        LayerHealthEvent[]
+  eggStockLots             EggStockLot[]
+  eggStockMovements        EggStockMovement[]
+  incubators               Incubator[]
+  breederBatches           BreederBatch[]
+  breederDailyRecords      BreederDailyRecord[]
+  incubationBatches        IncubationBatch[]
+  chickBatches             ChickBatch[]
+  batchLineageRows         BatchLineage[]
+  waterPoints              WaterPoint[]
+  waterReadings            WaterReading[]
+  items                    Item[]
+  stockMovements           StockMovement[]
+  purchaseOrders           PurchaseOrder[]
+  purchaseOrderItems       PurchaseOrderItem[]
+  goodsReceipts            GoodsReceipt[]
+  goodsReceiptItems        GoodsReceiptItem[]
+  supplierPayments         SupplierPayment[]
+  assets                   Asset[]
+  depreciationEntries      DepreciationEntry[]
+  maintenancePlans         MaintenancePlan[]
+  maintenanceTasks         MaintenanceTask[]
+  maintenanceInterventions MaintenanceIntervention[]
 
   @@map("farms")
 }
@@ -1602,6 +1605,12 @@ enum StockMovementReason {
   PERTE
   CASSE
   CONSOMMATION_INTERNE
+  /// Phase 17 — pièce consommée par une MaintenanceIntervention. Réservé
+  /// au flux automatique (voir AUTOMATIC_ONLY_REASONS,
+  /// stock-movements.service.ts) : jamais saisi manuellement via
+  /// POST /stock-movements, pour ne pas casser la traçabilité
+  /// sourceType/sourceId et fausser le coût de maintenance par actif.
+  MAINTENANCE
 }
 
 /// Append-only (comme Payment/EggStockMovement) — pas de deletedAt, pas de
@@ -1633,7 +1642,8 @@ model StockMovement {
   /// Traçabilité polymorphe optionnelle de l'origine automatique — comme
   /// Document.entityType/entityId. 'broiler_daily_record'|
   /// 'layer_daily_record'|'broiler_health_event'|'layer_health_event'|
-  /// 'goods_receipt'. NULL = mouvement manuel (ajustement/inventaire).
+  /// 'goods_receipt'|'maintenance_intervention'. NULL = mouvement manuel
+  /// (ajustement/inventaire).
   sourceType String?
   sourceId   String?
 
@@ -1863,11 +1873,14 @@ model Asset {
   updatedAt DateTime @updatedAt
   createdBy String?
 
-  farm                Farm                @relation(fields: [farmId], references: [id])
-  supplier            Supplier?           @relation(fields: [supplierId], references: [id])
-  responsible         User                @relation("AssetResponsible", fields: [responsibleId], references: [id])
-  depreciationEntries DepreciationEntry[]
-  expenses            Expense[]
+  farm                     Farm                      @relation(fields: [farmId], references: [id])
+  supplier                 Supplier?                 @relation(fields: [supplierId], references: [id])
+  responsible              User                      @relation("AssetResponsible", fields: [responsibleId], references: [id])
+  depreciationEntries      DepreciationEntry[]
+  expenses                 Expense[]
+  maintenancePlans         MaintenancePlan[]
+  maintenanceTasks         MaintenanceTask[]
+  maintenanceInterventions MaintenanceIntervention[]
 
   @@unique([farmId, code])
   @@index([farmId])
@@ -1907,4 +1920,130 @@ model DepreciationEntry {
   @@index([farmId])
   @@index([assetId])
   @@map("depreciation_entries")
+}
+
+enum MaintenanceTaskType {
+  PREVENTIVE
+  CORRECTIVE
+  CONDITIONNELLE
+}
+
+enum MaintenanceTaskStatus {
+  A_FAIRE
+  EN_COURS
+  REALISEE
+  ANNULEE
+}
+
+/// Cahier V6 §7 — "Tâches planifiées automatiquement" (préventif, cf.
+/// périodicité) ou "créées manuellement (corrective/conditionnelle)".
+/// active : simple bascule libre (pas un statut terminal) — désactiver un
+/// plan arrête la génération de tâches sans en interdire la réactivation.
+/// Pas de code métier auto-généré (contrairement à Asset) : le cahier ne
+/// nomme aucun champ "code" pour la maintenance, voir DETTE_TECHNIQUE.md
+/// Phase 17.
+model MaintenancePlan {
+  id     String @id @default(uuid())
+  farmId String
+
+  assetId String
+
+  designation     String
+  /// Aucune unité donnée par le cahier (aucune formule de récurrence, aucun
+  /// exemple chiffré, contrairement à l'amortissement §3.2) — hypothèse
+  /// d'ingénierie documentée, voir DETTE_TECHNIQUE.md Phase 17.
+  periodicityDays Int
+  startDate       DateTime
+  active          Boolean  @default(true)
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm  Farm              @relation(fields: [farmId], references: [id])
+  asset Asset             @relation(fields: [assetId], references: [id])
+  tasks MaintenanceTask[]
+
+  @@index([farmId])
+  @@index([farmId, active])
+  @@map("maintenance_plans")
+}
+
+/// "En retard" (5e statut du §10 Planning) n'est jamais stocké — calculé à
+/// la lecture (dueDate < aujourd'hui ET status IN (A_FAIRE, EN_COURS)),
+/// voir DETTE_TECHNIQUE.md Phase 17. planId=null = tâche corrective/
+/// conditionnelle créée manuellement (pas de plan de récurrence associé) ;
+/// planId renseigné = tâche préventive générée par le système
+/// (MaintenanceTasksService, voir décision C.1 : génération à la demande,
+/// jamais pré-générée en masse comme DepreciationEntry).
+model MaintenanceTask {
+  id     String @id @default(uuid())
+  farmId String
+
+  assetId String
+  planId  String?
+
+  type        MaintenanceTaskType
+  designation String
+  dueDate     DateTime
+
+  status       MaintenanceTaskStatus @default(A_FAIRE)
+  /// Renseigné uniquement par POST /maintenance-tasks/:id/annuler.
+  cancelReason String?
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm          Farm                      @relation(fields: [farmId], references: [id])
+  asset         Asset                     @relation(fields: [assetId], references: [id])
+  plan          MaintenancePlan?          @relation(fields: [planId], references: [id])
+  interventions MaintenanceIntervention[]
+
+  @@index([farmId])
+  @@index([farmId, status])
+  @@index([planId])
+  @@map("maintenance_tasks")
+}
+
+/// Append-only — pas de deletedAt, pas de PATCH/DELETE exposés, même
+/// discipline que StockMovement : une intervention a déjà consommé du
+/// stock et généré un coût réel au moment de sa création, une correction
+/// passe par les mécanismes déjà existants (soft-delete Expense +
+/// mouvement de stock compensatoire AJUSTEMENT), jamais par une édition en
+/// place. taskId=null = intervention directe sans tâche préalable (ex.
+/// réparation effectuée sur le champ sans avoir été planifiée). Pièces
+/// consommées : pas de table maintenance_parts séparée — le
+/// StockMovement (sourceType='maintenance_intervention', sourceId=id)
+/// EST la trace de la pièce utilisée. partsCostFcfa/totalCostFcfa :
+/// dérivés à la lecture depuis les StockMovement liés, jamais stockés
+/// (même philosophie que Asset.attachComputed()). Voir DETTE_TECHNIQUE.md
+/// Phase 17.
+model MaintenanceIntervention {
+  id     String @id @default(uuid())
+  farmId String
+
+  assetId String
+  taskId  String?
+
+  interventionDate DateTime
+  diagnosis        String?  @db.Text
+  laborCostFcfa    Int      @default(0)
+  performedBy      String?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+
+  farm  Farm             @relation(fields: [farmId], references: [id])
+  asset Asset            @relation(fields: [assetId], references: [id])
+  task  MaintenanceTask? @relation(fields: [taskId], references: [id])
+
+  @@index([farmId])
+  @@index([assetId])
+  @@index([taskId])
+  @@map("maintenance_interventions")
 }

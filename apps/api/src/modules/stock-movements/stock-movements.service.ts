@@ -24,8 +24,15 @@ const MAX_TRANSACTION_RETRIES = 3;
  * réel), voir plan Phase 7 section D. */
 const CUMP_NEUTRAL_ENTRY_REASONS: StockMovementReason[] = ['RETOUR', 'AJUSTEMENT'];
 /** Réservés aux flux automatiques dédiés — jamais via la saisie manuelle
- * (même discipline que EggStockService.MANUAL_MOVEMENT_TYPES). */
-const AUTOMATIC_ONLY_REASONS: StockMovementReason[] = ['ACHAT', 'DISTRIBUTION_BANDE'];
+ * (même discipline que EggStockService.MANUAL_MOVEMENT_TYPES). MAINTENANCE
+ * ajouté en Phase 17 : réservé à MaintenanceInterventionsService, pour ne
+ * pas casser la traçabilité sourceType/sourceId ni fausser le coût de
+ * maintenance par actif (§13.1). */
+const AUTOMATIC_ONLY_REASONS: StockMovementReason[] = [
+  'ACHAT',
+  'DISTRIBUTION_BANDE',
+  'MAINTENANCE',
+];
 
 export interface RecordMovementParams {
   farmId: string;
@@ -153,7 +160,7 @@ export class StockMovementsService {
   ): Promise<StockMovement> {
     if (AUTOMATIC_ONLY_REASONS.includes(dto.reason)) {
       throw new BadRequestException(
-        'Ce motif est géré automatiquement (réception de commande / distribution à une bande), pas par la saisie manuelle.',
+        'Ce motif est géré automatiquement (réception de commande / distribution à une bande / intervention de maintenance), pas par la saisie manuelle.',
       );
     }
 

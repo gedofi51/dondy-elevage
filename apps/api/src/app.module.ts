@@ -44,6 +44,7 @@ import { GoodsReceiptsModule } from './modules/purchase-orders/receipts/goods-re
 import { SupplierPaymentsModule } from './modules/supplier-payments/supplier-payments.module';
 import { TreasuryModule } from './modules/treasury/treasury.module';
 import { AssetsModule } from './modules/assets/assets.module';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 
 @Module({
   imports: [
@@ -99,6 +100,7 @@ import { AssetsModule } from './modules/assets/assets.module';
     SupplierPaymentsModule,
     TreasuryModule,
     AssetsModule,
+    MaintenanceModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
