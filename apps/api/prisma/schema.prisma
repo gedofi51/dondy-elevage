@@ -75,6 +75,8 @@ model Farm {
   goodsReceipts       GoodsReceipt[]
   goodsReceiptItems   GoodsReceiptItem[]
   supplierPayments    SupplierPayment[]
+  assets              Asset[]
+  depreciationEntries DepreciationEntry[]
 
   @@map("farms")
 }
@@ -120,6 +122,7 @@ model User {
   waterPointsAsResponsible       WaterPoint[]         @relation("WaterPointResponsible")
   waterReadingsAsOperator        WaterReading[]       @relation("WaterReadingOperator")
   goodsReceiptsAsResponsible     GoodsReceipt[]       @relation("GoodsReceiptResponsible")
+  assetsAsResponsible            Asset[]              @relation("AssetResponsible")
 
   @@unique([farmId, email])
   @@index([farmId])
@@ -310,6 +313,7 @@ model Supplier {
   expenses       Expense[]
   items          Item[]
   purchaseOrders PurchaseOrder[]
+  assets         Asset[]
 
   @@index([farmId])
   @@map("suppliers")
@@ -758,6 +762,10 @@ model Expense {
   breederBatchId    String?
   incubationBatchId String?
   waterPointId      String?
+  /// Phase 16 — coûts postérieurs à l'acquisition d'un actif (réparation,
+  /// consommable, autre), même patron d'extension incrémentale que les 6 FK
+  /// ci-dessus (Phase 7). Alimente le TCO partiel calculé sur Asset.
+  assetId           String?
 
   date          DateTime
   category      String
@@ -779,6 +787,7 @@ model Expense {
   breederBatch    BreederBatch?    @relation(fields: [breederBatchId], references: [id])
   incubationBatch IncubationBatch? @relation(fields: [incubationBatchId], references: [id])
   waterPoint      WaterPoint?      @relation(fields: [waterPointId], references: [id])
+  asset           Asset?           @relation(fields: [assetId], references: [id])
   supplier        Supplier?        @relation(fields: [supplierId], references: [id])
 
   @@index([farmId])
@@ -788,6 +797,7 @@ model Expense {
   @@index([breederBatchId])
   @@index([incubationBatchId])
   @@index([waterPointId])
+  @@index([assetId])
   @@map("expenses")
 }
 
@@ -1780,4 +1790,121 @@ model SupplierPayment {
   @@index([farmId])
   @@index([purchaseOrderId])
   @@map("supplier_payments")
+}
+
+// ---------------------------------------------------------------------
+// Phase 16 — Patrimoine & Amortissements (V6 §3, premier module V6)
+// ---------------------------------------------------------------------
+
+enum AssetStatus {
+  ACTIF
+  HORS_SERVICE
+  REFORME
+}
+
+/// Une seule valeur active : le cahier V6 §3.2 exige "au minimum"
+/// l'amortissement linéaire. Enum plutôt qu'une table depreciation_methods
+/// séparée (suggérée §18) — sans valeur ajoutée pour une seule ligne par
+/// ferme, extensible sans migration de données le jour où une 2e méthode
+/// est requise.
+enum DepreciationMethod {
+  LINEAIRE
+}
+
+/// Donnée de référence à activité financière (comme WaterPoint/Item) :
+/// suppression définitive avec garde-fou dès l'origine (voir
+/// AssetsService.remove()), pas de deletedAt. category/location = texte
+/// libre (comme Item.category/WaterPoint.location) — pas de table de
+/// référence séparée (asset_categories/asset_locations du §18, jugées
+/// superflues, voir DETTE_TECHNIQUE.md). Paramètres d'amortissement
+/// (purchasePriceFcfa/installationCostFcfa/residualValueFcfa/serviceDate/
+/// depreciationDurationYears) portés directement ici plutôt que dans une
+/// table DepreciationSchedule séparée — pas de table 1:1 quasi vide par
+/// actif.
+model Asset {
+  id     String @id @default(uuid())
+  farmId String
+  code   String
+
+  designation  String
+  category     String
+  brand        String?
+  model        String?
+  serialNumber String?
+  supplierId   String?
+
+  purchaseDate DateTime
+  /// Point de départ du plan d'amortissement — requis à la création
+  /// (voir DETTE_TECHNIQUE.md Phase 16, décision C.1 : pas de statut
+  /// intermédiaire "acquis mais pas encore en service" cette phase).
+  serviceDate  DateTime
+
+  purchasePriceFcfa    Int
+  installationCostFcfa Int @default(0)
+
+  location      String?
+  responsibleId String
+  status        AssetStatus @default(ACTIF)
+
+  warrantyExpiresAt DateTime?
+
+  residualValueFcfa         Int                @default(0)
+  depreciationMethod        DepreciationMethod @default(LINEAIRE)
+  depreciationDurationYears Int
+
+  /// Renseignés uniquement par POST /assets/:id/reformer — jamais par le
+  /// PATCH générique (voir DETTE_TECHNIQUE.md, statuts terminaux).
+  reformDate   DateTime?
+  reformReason String?
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm                Farm                @relation(fields: [farmId], references: [id])
+  supplier            Supplier?           @relation(fields: [supplierId], references: [id])
+  responsible         User                @relation("AssetResponsible", fields: [responsibleId], references: [id])
+  depreciationEntries DepreciationEntry[]
+  expenses            Expense[]
+
+  @@unique([farmId, code])
+  @@index([farmId])
+  @@index([farmId, status])
+  @@map("assets")
+}
+
+/// Générées atomiquement avec l'Asset (même transaction) — durée connue et
+/// fixe dès la création, même invariant que les 45 BroilerDailyRecord
+/// pré-générées (Phase 3). PAS append-only comme StockMovement : une
+/// projection déterministe dérivée des seuls paramètres de l'Asset, sans
+/// valeur informative propre si l'Asset lui-même n'aurait pas dû exister
+/// — supprimées en cascade avec lui (voir AssetsService.remove(), même
+/// gabarit que BroilerBatchesService.remove() pour ses 45 lignes
+/// placeholder). Voir DETTE_TECHNIQUE.md Phase 16 pour le modèle de
+/// calendrier fiscal retenu (hypothèse documentée, prorata temporis).
+model DepreciationEntry {
+  id     String @id @default(uuid())
+  farmId String
+
+  assetId      String
+  periodNumber Int
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  dotationFcfa     Int
+  cumulativeFcfa   Int
+  netBookValueFcfa Int
+
+  createdAt DateTime @default(now())
+
+  farm  Farm  @relation(fields: [farmId], references: [id])
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@unique([assetId, periodNumber])
+  @@index([farmId])
+  @@index([assetId])
+  @@map("depreciation_entries")
 }
