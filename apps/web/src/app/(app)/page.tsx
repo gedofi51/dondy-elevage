@@ -2,6 +2,7 @@
 
 import {
   Bird,
+  Boxes,
   Droplets,
   Egg,
   EggFried,
@@ -13,6 +14,7 @@ import {
   TrendingUp,
   TriangleAlert,
   Wallet,
+  Wrench,
 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { KpiCard } from '@/components/shared/kpi-card';
@@ -29,6 +31,8 @@ import { useIncubationBatches } from '@/features/incubation-batches/hooks';
 import { computeHatchRatePercent } from '@/features/incubation-batches/kpi';
 import { useItems } from '@/features/items/hooks';
 import { useTreasuryPayables, useTreasurySummary } from '@/features/treasury/hooks';
+import { useAssets } from '@/features/assets/hooks';
+import { useMaintenanceTasks } from '@/features/maintenance/hooks';
 
 const ACTIVE_BROILER_STATUSES = new Set([
   'EN_DEMARRAGE',
@@ -87,6 +91,12 @@ export default function DashboardPage() {
         </Can>
         <Can permission={PERMISSIONS.TREASURY_READ}>
           <TreasuryKpis />
+        </Can>
+        <Can permission={PERMISSIONS.ASSETS_READ}>
+          <AssetsKpi />
+        </Can>
+        <Can permission={PERMISSIONS.MAINTENANCE_TASKS_READ}>
+          <MaintenanceKpi />
         </Can>
       </div>
 
@@ -246,6 +256,36 @@ function TreasuryKpis() {
         tone={summary && summary.grossMarginFcfa < 0 ? 'destructive' : 'default'}
       />
     </>
+  );
+}
+
+/** VNC totale — un seul GET déjà utilisé par la page Patrimoine (React
+ * Query partage le cache), pas d'arbitrage réseau supplémentaire. */
+function AssetsKpi() {
+  const { data: assets } = useAssets();
+  const totalNetBookValue = assets?.reduce((sum, a) => sum + a.netBookValueFcfa, 0);
+
+  return (
+    <KpiCard
+      label="Valeur nette du patrimoine"
+      value={totalNetBookValue != null ? totalNetBookValue.toLocaleString('fr-FR') : '—'}
+      unit="FCFA"
+      icon={Boxes}
+    />
+  );
+}
+
+function MaintenanceKpi() {
+  const { data: tasks } = useMaintenanceTasks();
+  const lateTasks = tasks?.filter((t) => t.isLate).length ?? '—';
+
+  return (
+    <KpiCard
+      label="Tâches de maintenance en retard"
+      value={lateTasks}
+      icon={Wrench}
+      tone={typeof lateTasks === 'number' && lateTasks > 0 ? 'destructive' : 'default'}
+    />
   );
 }
 

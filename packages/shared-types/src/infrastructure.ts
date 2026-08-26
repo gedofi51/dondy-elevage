@@ -12,6 +12,7 @@ export interface WaterInfrastructureReading {
   pumpedVolumeM3: string | null;
   reservoirLevelPercent: string | null;
   pumpHoursCumulative: string | null;
+  farmInternalConsumptionM3: string | null;
   observations: string | null;
   createdAt: string;
   updatedAt: string;

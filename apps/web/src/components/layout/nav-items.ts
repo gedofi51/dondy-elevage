@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   Bird,
+  Boxes,
   Droplets,
   Egg,
   EggFried,
@@ -11,6 +12,7 @@ import {
   ShoppingCart,
   Thermometer,
   Wallet,
+  Wrench,
 } from 'lucide-react';
 import type { PermissionCode } from '@dondy-elevage/shared-types';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
@@ -87,5 +89,17 @@ export const navItems: NavItem[] = [
     href: '/tresorerie',
     icon: Wallet,
     permission: PERMISSIONS.TREASURY_READ,
+  },
+  {
+    label: 'Patrimoine',
+    href: '/patrimoine',
+    icon: Boxes,
+    permission: PERMISSIONS.ASSETS_READ,
+  },
+  {
+    label: 'Maintenance',
+    href: '/maintenance',
+    icon: Wrench,
+    permission: PERMISSIONS.MAINTENANCE_TASKS_READ,
   },
 ];
