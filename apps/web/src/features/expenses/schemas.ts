@@ -8,6 +8,7 @@ export const expenseEntityTypeOptions = [
   'REPRODUCTEURS',
   'COUVOIR',
   'EAU',
+  'ACTIF',
 ] as const;
 export type ExpenseEntityType = (typeof expenseEntityTypeOptions)[number];
 

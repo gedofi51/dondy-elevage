@@ -19,6 +19,7 @@ import { useChickBatches } from '@/features/chick-batches/hooks';
 import { useBreederBatches } from '@/features/breeder-batches/hooks';
 import { useIncubationBatches } from '@/features/incubation-batches/hooks';
 import { useWaterPoints } from '@/features/water-points/hooks';
+import { useAssets } from '@/features/assets/hooks';
 import { useCreateExpense, useUpdateExpense } from '../hooks';
 import {
   createExpenseSchema,
@@ -43,6 +44,7 @@ const entityTypeLabels: Record<ExpenseEntityType, string> = {
   REPRODUCTEURS: 'Lot reproducteur',
   COUVOIR: "Lot d'incubation",
   EAU: "Point d'eau",
+  ACTIF: 'Actif (patrimoine)',
 };
 
 /** Composant local, à usage unique dans ce formulaire (voir plan Phase 14,
@@ -98,6 +100,8 @@ function entityFkKey(entityType: ExpenseEntityType): keyof CreateExpenseInput | 
       return 'incubationBatchId';
     case 'EAU':
       return 'waterPointId';
+    case 'ACTIF':
+      return 'assetId';
     case 'AUCUN':
       return null;
   }
@@ -110,6 +114,7 @@ function expenseToEntityType(expense: Expense): ExpenseEntityType {
   if (expense.breederBatchId) return 'REPRODUCTEURS';
   if (expense.incubationBatchId) return 'COUVOIR';
   if (expense.waterPointId) return 'EAU';
+  if (expense.assetId) return 'ACTIF';
   return 'AUCUN';
 }
 
@@ -121,6 +126,7 @@ function entityIdOf(expense: Expense): string {
     expense.breederBatchId ??
     expense.incubationBatchId ??
     expense.waterPointId ??
+    expense.assetId ??
     ''
   );
 }
@@ -136,6 +142,7 @@ function useEntityOptions(entityType: ExpenseEntityType) {
   const { data: breederBatches } = useBreederBatches({ enabled: entityType === 'REPRODUCTEURS' });
   const { data: incubationBatches } = useIncubationBatches({ enabled: entityType === 'COUVOIR' });
   const { data: waterPoints } = useWaterPoints({ enabled: entityType === 'EAU' });
+  const { data: assets } = useAssets({ enabled: entityType === 'ACTIF' });
 
   switch (entityType) {
     case 'CHAIR':
@@ -150,6 +157,13 @@ function useEntityOptions(entityType: ExpenseEntityType) {
       return (incubationBatches ?? []).map((b) => ({ value: b.id, label: b.code }));
     case 'EAU':
       return (waterPoints ?? []).map((w) => ({ value: w.id, label: w.code }));
+    case 'ACTIF':
+      // Actifs réformés exclus — même logique déjà appliquée à
+      // BreederBatchSelect/ItemSelect pour éviter un 409 évitable (voir
+      // DETTE_TECHNIQUE.md Phase 19).
+      return (assets ?? [])
+        .filter((a) => a.status !== 'REFORME')
+        .map((a) => ({ value: a.id, label: `${a.code} — ${a.designation}` }));
     case 'AUCUN':
       return [];
   }
