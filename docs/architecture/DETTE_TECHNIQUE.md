@@ -1340,6 +1340,76 @@ recouvrement ni duplication.
   cahier + l'équation de contrôle, documentés comme inventés, pas comme
   gabarit d'acceptation officiel (même discipline que Phase 17).
 
+## Phase 19 — Frontend Patrimoine/Maintenance/Infrastructures (premier frontend V6)
+
+Premier frontend V6, construit sur les 3 modules backend Phase 16-18.
+
+- **Infrastructures = onglets conditionnels sur la fiche Patrimoine, pas
+  de module séparé** — les 3 contrôleurs backend sont nichés sous
+  `/assets/:assetId/...` (aucun contrôleur top-level), la fiche Actif est
+  le seul point d'entrée UI cohérent. La correspondance catégorie→onglet
+  (Eau/Solaire/Réseau) n'est **pas** un simple confort d'affichage : le
+  backend ne vérifie aucune correspondance catégorie/domaine
+  (`assertAssetEligible` des 3 services Infrastructure ne teste que
+  farm/statut REFORME, jamais `category`), donc une catégorie mal
+  orthographiée aurait silencieusement masqué un onglet pourtant
+  utilisable côté API. Corrigé à la source plutôt que compensé : le champ
+  `category` du formulaire Actif est un `<Select>` strict sur les 10
+  valeurs canoniques du cahier V6 §3 (`features/assets/schemas.ts`), sans
+  option "Autre" en texte libre — élimine complètement le risque de faute
+  de frappe (pas de filet de secours "afficher les 3 onglets par défaut"
+  nécessaire, décision assumée). La correspondance onglet est une simple
+  égalité (`asset.category === 'eau'`), pas une normalisation trim/
+  lowercase/diacritiques — inutile puisque la valeur est déjà canonique à
+  la source.
+- **Maintenance = présence unique, pas de double surface** — aucun
+  précédent dans le projet pour "page globale + onglet fiche" sur la
+  même sous-ressource (Ventes/Mortalité/Santé n'ont jamais de page
+  globale ; Alerts, le plus proche analogue, n'a qu'un widget dashboard +
+  un widget filtré par entité). Retenu : page globale `/maintenance` en
+  **lecture seule** (file d'attente transverse, triée par échéance,
+  `isLate` mis en évidence, à la manière d'Alerts) — aucune création
+  possible depuis cette page. Toute création/annulation se fait
+  exclusivement depuis l'onglet Maintenance de la fiche Actif
+  (`assetId` déjà connu du contexte). `MaintenanceTaskTable`
+  (`features/maintenance/components/maintenance-task-table.tsx`) est un
+  composant unique partagé entre les deux surfaces (prop
+  `showAssetColumn`) — une seule définition de colonnes/tri.
+- **Pas de nouveau composant `AssetSelect` mutualisé** — doctrine du
+  projet (confirmée par `entity-select.tsx`) : mutualiser au 2ᵉ/3ᵉ usage
+  réel, jamais par anticipation. La page Maintenance globale étant
+  lecture seule (`assetId` toujours connu du contexte ailleurs), le seul
+  site d'appel réel identifié est le formulaire Dépenses — lacune fermée
+  directement (voir "✅ Corrigé" ci-dessous) plutôt que de créer un
+  composant partagé sans second consommateur.
+- **Aperçu de coût des pièces d'intervention — informatif, estimation
+  assumée, pas un miroir garanti du calcul serveur**
+  (`features/maintenance/intervention-cost-preview.ts`) : contrairement à
+  `PurchaseOrderForm` (prix saisi par l'utilisateur des deux côtés,
+  aucune divergence possible hors arrondi), le CUMP utilisé ici
+  (`Item.averageUnitCostFcfa`) peut évoluer entre l'ouverture du Dialog
+  et la soumission (réception de stock concurrente) — le serveur reste
+  seul autoritaire sur `partsCostFcfa`. Mention explicite affichée sous
+  l'aperçu plutôt que silence sur cette divergence possible.
+- **Relevés d'infrastructure — création seulement, pas de modification
+  depuis le frontend** cette phase, malgré `PATCH /assets/:assetId/
+  {water,solar,network}-infrastructure-readings/:date` déjà exposé côté
+  API. Choix aligné sur le seul précédent direct du projet pour ce type
+  d'entité (`WaterReadingForm`, module V4 Phase 6 : création uniquement,
+  aucune UI d'édition d'un relevé passé). Raffinement possible plus tard,
+  non bloquant (une correction se fait par un nouveau relevé à la même
+  date restant impossible sans UI d'édition — contrainte d'unicité par
+  jour côté API, à corriger manuellement en base si nécessaire d'ici là).
+- **Tâches de maintenance — pas de modification de désignation/échéance
+  depuis le frontend** (`MAINTENANCE_TASKS_UPDATE` existe côté API,
+  non câblé côté UI cette phase) : seules création (manuelle,
+  CORRECTIVE/CONDITIONNELLE) et annulation sont exposées, cohérent avec
+  le flux réel attendu (une tâche PREVENTIVE est générée automatiquement,
+  une tâche manuelle mal saisie s'annule et se recrée plutôt que de se
+  corriger). Idem pour `MaintenancePlan` (`MAINTENANCE_PLANS_UPDATE/
+  DELETE` non câblés — un plan mal configuré se corrige aujourd'hui
+  uniquement côté API/support).
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
@@ -1701,10 +1771,15 @@ Candidats identifiés par le bilan frontend comme faciles à tester
 fonction pure extraite (0 fichier de test avant cette phase, confirmé
 par le bilan), mais `createWaterReadingSchema.superRefine` (le seul
 contrôle du §7.3 réellement dupliqué côté client) est testable via
-`.safeParse()` à coût quasi nul. 4 fichiers, exécutés avec succès
-(`npx vitest run --pool=forks` — `--pool=forks` nécessaire sur cette
-machine Windows, le pool `threads` par défaut échoue avec un timeout de
-démarrage de worker, sans lien avec le code applicatif).
+`.safeParse()` à coût quasi nul. 4 fichiers, exécutés avec succès.
+
+**Correction (Phase 19)** : la note ci-dessus recommandant
+`--pool=forks` était erronée/obsolète — `apps/web/vitest.config.mts`
+utilise `pool: 'threads'` (le défaut Vitest) et fonctionne de façon
+fiable sur cette même machine Windows, reconfirmé à froid en Phase 19
+(16 fichiers, 68/68 tests). Signalée comme contradictoire par l'agent de
+revue du plan Phase 19 ; aucune trace du timeout de démarrage de worker
+décrit initialement n'a pu être reproduite.
 
 ### Nettoyage `afterAll` non protégé contre un `app.close()` jamais exécuté — généralisé en helper partagé (`closeAppSafely`), Phase 16
 
@@ -1756,6 +1831,31 @@ Corrigé en parallèle de la généralisation ci-dessus : les deux appels
 capturent désormais `{ id, email }` et poussent `id` dans
 `createdUserIds`, fermant la fuite qui causait la violation de
 contrainte FK à l'origine de l'incident.
+
+### `WaterInfrastructureReading` — `farmInternalConsumptionM3` manquant côté type frontend (Phase 18, corrigé en Phase 19)
+
+`packages/shared-types/src/infrastructure.ts` omettait ce champ sur le
+type de sortie `WaterInfrastructureReading` alors que l'API le retourne
+bien (présent depuis l'origine sur `CreateWaterInfrastructureReadingInput`/
+`UpdateWaterInfrastructureReadingInput` du même fichier, et sur le
+`return {...reading, soldVolumeM3, gapM3}` du service). Trouvé par
+l'agent de recherche backend du plan Phase 19 avant l'écriture de toute
+UI consommatrice — corrigé en premier, avant `WaterReadingTable`
+(onglet Eau de la fiche Actif).
+
+### `Expense.assetId` exposé côté backend depuis la Phase 16, jamais exposé côté formulaire Dépenses (corrigé en Phase 19)
+
+`Expense.assetId` existe côté API/`shared-types` depuis la Phase 16
+(alimente `AssetsService.attachComputed().tcoFcfa`) mais
+`expense-form.tsx`/`schemas.ts` n'exposaient que 6 types de
+rattachement (CHAIR/PONDEUSES/POUSSINS/REPRODUCTEURS/COUVOIR/EAU) —
+"Actif" en était absent, rendant le TCO structurellement incomplet pour
+toute dépense manuelle (assurance, facture externe) non passée par une
+`MaintenanceIntervention`. Trouvé par l'agent de challenge du plan
+Phase 19 (hors périmètre initial de la mission) ; ajouté comme 7ᵉ cas
+au sélecteur local `EntityRefSelect` déjà existant dans ce même fichier
+(pas de nouveau composant partagé), actifs `REFORME` exclus de la liste
+proposée.
 
 ## Comment utiliser ce document
 
