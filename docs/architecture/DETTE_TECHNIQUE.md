@@ -1657,6 +1657,65 @@ farmId + existence/non-suppression de l'employé en un seul appel).
   la base. Prévu comme un rappel pour tout lot futur qui touche au RBAC
   suivi de tests e2e.
 
+## Personnel — Lot 4 (module EmployeeTask : tâches assignées, CRUD, RBAC)
+
+**Investigation préalable menée avant tout code, comme exigé par le
+cadrage du lot** : recherche exhaustive d'un moteur de tâches/alertes
+transverse dans le dépôt. **Aucun trouvé** :
+- `Alert`/`Notification` (modèles réellement transverses,
+  `entityType`/`entityId` polymorphe) sont un pipeline d'alertes/
+  notifications (cycle CREATED→TRIGGERED→ACKNOWLEDGED, sévérité) — pas
+  d'assigné, pas de `dueDate` de travail, pas de statut de progression.
+  Structurellement inadapté à "assigner une tâche et suivre sa
+  réalisation".
+- `MaintenanceTask` (Phase 17), bien que nommé comme un "moteur", est
+  câblé en dur sur `Asset` (`assetId` non polymorphe) — c'est déjà le
+  précédent réel du projet : une table de tâches par domaine, jamais un
+  moteur partagé. Créer un moteur générique maintenant impliquerait de
+  retrofiter `MaintenanceTask` dessus pour ne pas dupliquer un second
+  système — chantier transversal hors périmètre d'un lot.
+- La référence "Phase 11" du cadrage (`MODULE_PERSONNEL.md` §5) pointe
+  en réalité vers le frontend Poulets de chair (`## Phase 11 — Frontend
+  Poulets de chair`) — sans lien avec un quelconque moteur de tâches ;
+  référence erronée dans le cadrage initial, à corriger si le document
+  est retouché.
+
+**Décision confirmée avant implémentation** (question remontée,
+tranchée par le porteur de projet, pas décidée seule) : `EmployeeTask`
+autonome, même patron que `MaintenanceTask` (déjà le précédent établi).
+
+Adaptations délibérées au patron `MaintenanceTasksService`, chacune
+signalée avant d'être appliquée :
+- **`REALISEE` reste directement accessible en `PATCH`** (contrairement
+  à `MaintenanceTask`, où REALISEE n'est atteignable que comme effet de
+  bord de la création d'une `MaintenanceIntervention`) — `EmployeeTask`
+  n'a pas d'entité équivalente pour produire ce statut en side-effect ;
+  sans ce PATCH direct, "suivre sa réalisation" (objectif explicite du
+  lot) serait impossible. `ANNULEE`, en revanche, reste isolé dans son
+  propre endpoint (`POST .../annuler`), même discipline que Maintenance
+  (une annulation mérite un motif et une action distincte).
+- **Pas de permission `EMPLOYEE_TASKS_CANCEL` séparée** — contrairement
+  à `MaintenanceTask` (`MAINTENANCE_TASKS_CANCEL` distinct
+  d'`_UPDATE`), la matrice donnée par le cadrage (complet/CREATE+READ+
+  UPDATE/lecture seule, 3 paliers) n'en prévoit pas une 4ᵉ ; dans les 3
+  occurrences existantes de `MAINTENANCE_TASKS_CANCEL`, elle est de
+  toute façon toujours accordée avec `_UPDATE`, jamais séparément —
+  `/annuler` gardé sous `EMPLOYEE_TASKS_UPDATE` directement.
+- **Pas de verrou `FOR UPDATE`** sur les transitions de statut —
+  contrairement à `MaintenanceTasksService` (7ᵉ occurrence du défaut de
+  concurrence corrigée en Phase 20), `EmployeeTask` ne déclenche la
+  création d'aucune entité liée en effet de bord (pas d'équivalent à
+  `MaintenanceIntervention`) : aucun risque de concurrence réel identifié
+  qui justifierait le coût. Décision proportionnée, pas un oubli — à
+  revoir si un besoin réel émerge.
+- **`isLate` calculé à la lecture**, jamais stocké — même patron exact
+  que `MaintenanceTasksService.attachComputed()` (dueDate dépassée ET
+  statut encore ouvert).
+
+Aucun nouveau format/validation transversal introduit ce lot
+(`designation`/`dueDate`/`observations` suivent les conventions déjà en
+place ailleurs).
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

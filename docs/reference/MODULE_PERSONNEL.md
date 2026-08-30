@@ -152,25 +152,36 @@ Lot 1, pour le détail complet des écarts.
 ajouté au-delà de la liste ci-dessus (confirmé avant implémentation,
 absent au départ), nécessaire pour compléter un `checkOutTime` après le
 `checkInTime` (pointage en 2 temps) ou corriger une saisie ; pas de
-`DELETE` (append-only, comme `StockMovement`). Le reste
-(tasks/payroll/advances) n'est pas encore construit.
+`DELETE` (append-only, comme `StockMovement`).
+
+**Réalisé (Lot 4)** : `GET/POST /api/v1/employees/:employeeId/tasks`,
+`GET/PATCH /api/v1/employees/:employeeId/tasks/:id`,
+`POST /api/v1/employees/:employeeId/tasks/:id/annuler` — annulation
+isolée dans son propre endpoint (motif tracé), même discipline que
+`MaintenanceTasksService`. Aucun moteur de tâches transverse trouvé dans
+le dépôt (voir `DETTE_TECHNIQUE.md`) : `EmployeeTask` autonome, décision
+confirmée avant implémentation. Le reste (payroll/advances) n'est pas
+encore construit.
 
 ## 8. Permissions
 
 Corrigé contre le catalogue réel (`apps/api/src/common/rbac/
 roles.catalog.ts`, 11 rôles système) — les noms provisoires du
 brouillon initial de ce cadrage sont remplacés par les noms réels.
-Entités construites : `Employee` (Lot 2), `Attendance` (Lot 3). Les
-mentions "paie" ci-dessous anticipent une entité pas encore construite.
+Entités construites : `Employee` (Lot 2), `Attendance` (Lot 3),
+`EmployeeTask` (Lot 4). Les mentions "paie" ci-dessous anticipent une
+entité pas encore construite.
 
 * **Propriétaire / Administrateur** : accès complet (`Employee` +
-  `Attendance`).
+  `Attendance` + `EmployeeTask`).
 * **Gérant / Responsable ferme** : accès complet (`Employee` +
-  `Attendance`).
+  `Attendance` + `EmployeeTask`).
 * **Responsable élevage** : aucun accès `Employee`, mais **écriture sur
-  `Attendance`** (`ATTENDANCE_CREATE`/`ATTENDANCE_UPDATE`) — nouvelle
-  permission confirmée au Lot 3 (ce rôle n'avait rien sur Employee, le
-  cadrage prévoit qu'il enregistre le pointage). `ATTENDANCE_READ`
+  `Attendance` et `EmployeeTask`** (`*_CREATE`/`*_UPDATE`, `*_READ`
+  inclus) — nouvelle permission confirmée au Lot 3 pour `Attendance` (ce
+  rôle n'avait rien sur Employee, le cadrage prévoit qu'il enregistre le
+  pointage), reconduite explicitement pour `EmployeeTask` au Lot 4
+  ("cohérent avec Attendance", donné tel quel par le cadrage). `*_READ`
   inclus avec CREATE/UPDATE : "écriture" au sens strict n'était pas
   assez précis pour trancher seul — décision prise par cohérence avec
   chaque rôle "propriétaire de domaine" du catalogue (ex. Responsable
@@ -179,15 +190,16 @@ mentions "paie" ci-dessous anticipent une entité pas encore construite.
   `DETTE_TECHNIQUE.md`.
 * **Comptable / Responsable financier** : accès complet à la paie
   (`Payroll`/`SalaryAdvance`, non encore construits), lecture seule des
-  fiches employés et des pointages (`EMPLOYEES_READ` + `ATTENDANCE_READ`
-  seuls).
+  fiches employés, des pointages et des tâches (`EMPLOYEES_READ` +
+  `ATTENDANCE_READ` + `EMPLOYEE_TASKS_READ` seuls).
 * **Lecteur / Lecture seule** : lecture des fiches et plannings, paie
   masquée. **Correction apportée au Lot 2** suite à ce cadrage : ce
   rôle n'avait reçu *aucun* accès Personnel en Lot 2 (principe de
   moindre privilège appliqué sans confirmation à l'époque, faute de ce
   document) — `EMPLOYEES_READ` lui est ajouté a posteriori, et
-  `ATTENDANCE_READ` accordé directement au Lot 3 (le pointage relève des
-  "plannings" mentionnés). Nuance non résolue : `baseSalaryFcfa` est un
+  `ATTENDANCE_READ`/`EMPLOYEE_TASKS_READ` accordés directement aux Lots
+  3/4 (pointage et tâches relèvent des "plannings" mentionnés). Nuance
+  non résolue : `baseSalaryFcfa` est un
   champ de `Employee` (pas séparé dans `Payroll`) — un Lecteur avec
   `EMPLOYEES_READ` voit donc aussi le salaire de base, alors que "paie
   masquée" suggérait plutôt une exclusion. Pas de restriction
@@ -203,11 +215,11 @@ mentions "paie" ci-dessous anticipent une entité pas encore construite.
   liaison `Employee.userId` ? correspondance par email ? autre ?) avant
   de pouvoir être implémentée — **point ouvert, à trancher avant un lot
   qui l'implémenterait**. Ce rôle reste sans aucun accès Personnel pour
-  l'instant (ni `Employee`, ni `Attendance`).
+  l'instant (ni `Employee`, ni `Attendance`, ni `EmployeeTask`).
 * **Responsable couvoir, Responsable eau, Magasinier / Responsable
   stocks, Vendeur / Caisse** : non mentionnés dans ce cadrage — aucun
   accès par défaut (moindre privilège), sur `Employee` comme sur
-  `Attendance`.
+  `Attendance`/`EmployeeTask`.
 
 ## 9. Calculs automatiques
 
@@ -259,3 +271,9 @@ aucune renumérotation des phases déjà livrées).
   implémentation (voir `DETTE_TECHNIQUE.md`) : enum `AttendanceStatus`
   gardé tel quel (pas de valeur `REPOS` ajoutée), `PATCH` ajouté à
   l'endpoint malgré son absence du §7 initial.
+* **Lot 4 — Module NestJS EmployeeTask (tâches assignées, CRUD + RBAC)**
+  : LIVRÉ, validé (`feature/personnel-lot4-employee-tasks`, cible
+  `feature/personnel-lot3-attendance`) — investigation préalable menée
+  (aucun moteur de tâches transverse trouvé, décision confirmée avant
+  implémentation : `EmployeeTask` autonome, même patron que
+  `MaintenanceTask` — voir `DETTE_TECHNIQUE.md`).
