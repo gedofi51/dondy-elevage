@@ -1716,6 +1716,93 @@ Aucun nouveau format/validation transversal introduit ce lot
 (`designation`/`dueDate`/`observations` suivent les conventions déjà en
 place ailleurs).
 
+## Personnel — Lot 5 (Payroll/SalaryAdvance : suivi indicatif de la paie,
+masquage champ par champ)
+
+Modules NestJS `Payroll`/`SalaryAdvance`, nestés sous Employee, même
+patron que Attendance/EmployeeTask. **Suivi indicatif uniquement** — pas
+de calcul légal de charges sociales/fiscales, pas de bulletin à valeur
+légale (voir `MODULE_PERSONNEL.md`, précision de périmètre).
+
+**Deux décisions confirmées avant implémentation** (questions remontées,
+pas tranchées seul, même discipline que les Lots 3/4) :
+
+1. **Pas de statut `ANNULE` ajouté à `PayrollStatus`** (Lot 1, déjà en
+   base : `BROUILLON`/`VALIDE` seulement, pas de `deletedAt` sur
+   `Payroll` contrairement à `Employee`) — malgré la règle "relevé
+   validé jamais supprimé, seulement annulé/corrigé". Confirmé :
+   `BROUILLON` reste librement corrigeable (`PATCH`) ; une fois
+   `VALIDE`, statut terminal, plus aucune modification/suppression
+   possible (`assertPayrollEditable`) — "jamais supprimé" au sens
+   littéral, rien n'est jamais retiré. Une correction post-validation
+   (si un besoin réel émerge) passerait par un nouveau relevé
+   compensatoire dans un lot futur, pas un retour en arrière.
+2. **Aucun lien automatique `Payroll` ↔ `Expense` ce lot** — ouvert
+   depuis le Lot 1. Un précédent MÉCANIQUE clair existe
+   (`MaintenanceInterventionsService` crée un `Expense` en side-effect
+   transactionnel ; "Personnel" est déjà une catégorie de dépense listée
+   au cahier V1 §8.5) mais la règle "sans doublon avec des dépenses
+   saisies manuellement" (§5) est un choix PRODUIT — quand déclencher la
+   création sans compter le coût en double avec la saisie manuelle
+   actuelle du Comptable — pas seulement un câblage technique. Confirmé :
+   différé à un lot dédié, au moment où la consolidation KPI (Phase 8,
+   mentionnée par le cadrage) sera elle-même construite — c'est à ce
+   moment que "sans doublon" devient vérifiable. `Payroll` reste un
+   registre autonome ce lot.
+
+**Verrou `FOR UPDATE` réintroduit** (8ᵉ occurrence de la discipline
+Phase 8/20, absente d'Attendance/EmployeeTask à raison) — justifié cette
+fois : la création d'un relevé balaie les avances non déduites de
+l'employé (`SalaryAdvance.deductedInPayrollId IS NULL`) et les lie au
+nouveau relevé ; deux créations concurrentes pour le même employé
+pourraient toutes deux lire la même avance comme "non déduite" avant
+qu'aucune ne commette — double comptage possible sans verrou. Verrou
+posé sur la ligne `Employee` (pas sur les lignes `SalaryAdvance`
+elles-mêmes, plus simple, évite les nuances de verrou d'intervalle
+InnoDB sur un prédicat `IS NULL`) — suffisant : sérialise les créations
+concurrentes pour le même employé, sans bloquer celles d'employés
+différents. `isSerializationFailure` (P2034 + P2010/1213/1205, voir
+Phase 20) dupliqué localement, même convention que les 7 fichiers
+précédents.
+
+**"Relevé suivant" interprété littéralement** — une avance enregistrée
+après la création d'un relevé encore en `BROUILLON` n'est PAS rattrapée
+rétroactivement à sa validation ; elle reste en attente pour le
+prochain relevé créé. Le balayage n'a lieu qu'une fois, à la création.
+Vérifié explicitement par un test e2e dédié (avance créée après coup →
+non balayée dans le relevé existant → balayée dans le suivant).
+
+**Masquage champ par champ (`baseSalaryFcfa`) — premier précédent de ce
+type dans le projet, documenté ici comme réutilisable** :
+- Nouvelle permission `EMPLOYEES_VIEW_SALARY`, distincte
+  d'`EMPLOYEES_READ` — un rôle peut lire une fiche employé sans voir son
+  salaire de base.
+- Mécanisme : `EmployeesService` (lecture/écriture réelles, utilisée en
+  interne par `PayrollService` etc.) retourne TOUJOURS la valeur vraie —
+  masquer à ce niveau aurait cassé le besoin d'`Payroll` de capturer un
+  instantané fiable de `baseSalaryFcfa`, dès qu'un rôle avec
+  `PAYROLL_CREATE` sans `EMPLOYEES_VIEW_SALARY` existerait (aucun cas
+  aujourd'hui, mais un couplage fragile à éviter dès l'origine). Le
+  masquage (`maskSalaryForResponse`, `employees.validation.ts`) est
+  appliqué exclusivement à la frontière `EmployeesController` — chaque
+  méthode retourne `Omit<Employee,'baseSalaryFcfa'> &
+  {baseSalaryFcfa?}`, la clé est réellement absente du JSON (pas
+  `null`), vérifié par un test e2e dédié qui inspecte les clés brutes de
+  la réponse, pas seulement le typage TypeScript.
+- **Réutilisable tel quel** pour tout futur champ sensible sur une
+  entité déjà exposée : nouvelle permission `_VIEW_X`, fonction de
+  masquage appliquée au niveau contrôleur uniquement (jamais dans le
+  service, pour ne pas casser les consommateurs internes), test e2e
+  d'absence de clé (pas de valeur `null`/`undefined` en assertion
+  superficielle, une vraie vérification `'x' in body`).
+- Résout la nuance restée ouverte depuis les Lots 2/3/4
+  (`baseSalaryFcfa` visible par Lecteur malgré "paie masquée", faute de
+  ce mécanisme) — commentaire périmé dans `roles.catalog.ts` corrigé en
+  conséquence.
+
+Aucun autre nouveau format/validation transversal (dates, montants
+suivent les conventions déjà établies).
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
