@@ -28,9 +28,29 @@ const DEPRECIATION_CONVENTIONS: DepreciationConvention[] = ['CALENDAIRE', 'TRENT
 
 /** Même seuil que StockMovementsService/SalesService/etc. — voir
  * DETTE_TECHNIQUE.md Phase 20 (verrou reform(), même famille que la 7e
- * occurrence corrigée sur MaintenanceTask). */
+ * occurrence corrigée sur MaintenanceTask).
+ *
+ * P2034 = conflit/deadlock détecté par Prisma au niveau ORM. P2010 =
+ * "Raw query failed", code générique remonté quand le deadlock survient
+ * DANS un `$queryRaw` (ex. le verrou `FOR UPDATE` de `reform()`
+ * ci-dessous) — le vrai code MySQL (1213 deadlock / 1205 lock wait
+ * timeout) est niché dans `meta.driverAdapterError.cause.originalCode`,
+ * jamais exposé comme P2034. Trouvé en vérification manuelle Phase 20
+ * (même famille sur MaintenanceTasksService) — voir DETTE_TECHNIQUE.md. */
 function isSerializationFailure(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+    return false;
+  }
+  if (error.code === 'P2034') {
+    return true;
+  }
+  if (error.code === 'P2010') {
+    const meta = error.meta as
+      { driverAdapterError?: { cause?: { originalCode?: string } } } | undefined;
+    const originalCode = meta?.driverAdapterError?.cause?.originalCode;
+    return originalCode === '1213' || originalCode === '1205';
+  }
+  return false;
 }
 
 export interface AssetWithComputed extends Asset {

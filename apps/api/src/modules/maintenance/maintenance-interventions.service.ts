@@ -24,9 +24,32 @@ const MAX_TRANSACTION_RETRIES = 3;
  * MaintenanceTask (via markRealizedInTransaction) sans aucun retry —
  * contrairement à StockMovementsService.create(), qui a ce filet depuis
  * la Phase 7 pour le même type de verrouillage. Voir
- * DETTE_TECHNIQUE.md Phase 20. */
+ * DETTE_TECHNIQUE.md Phase 20.
+ *
+ * P2034 = conflit/deadlock détecté par Prisma au niveau ORM. P2010 =
+ * "Raw query failed", code générique remonté quand le deadlock survient
+ * DANS un `$queryRaw` (ex. le `SELECT ... FOR UPDATE` de
+ * `recordMovementInTransaction`) — le vrai code MySQL (1213 deadlock /
+ * 1205 lock wait timeout) est niché dans
+ * `meta.driverAdapterError.cause.originalCode`, pas exposé comme P2034.
+ * Trouvé en vérification manuelle Phase 20 : deux interventions
+ * concurrentes sur la même tâche ET le même article ont produit un 500
+ * brut au lieu du 409 attendu sans ce second cas — voir
+ * DETTE_TECHNIQUE.md. */
 function isSerializationFailure(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+    return false;
+  }
+  if (error.code === 'P2034') {
+    return true;
+  }
+  if (error.code === 'P2010') {
+    const meta = error.meta as
+      { driverAdapterError?: { cause?: { originalCode?: string } } } | undefined;
+    const originalCode = meta?.driverAdapterError?.cause?.originalCode;
+    return originalCode === '1213' || originalCode === '1205';
+  }
+  return false;
 }
 
 export interface MaintenanceInterventionWithComputed extends MaintenanceIntervention {
