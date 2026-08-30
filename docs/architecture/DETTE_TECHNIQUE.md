@@ -1547,16 +1547,32 @@ employees/`) — même patron que Buildings (CRUD simple) et Expenses
 `RequirePermissions`/`assertSameFarm`, aucun second mécanisme créé).
 
 - **`docs/reference/MODULE_PERSONNEL.md` référencé par le cadrage du
-  Lot 2 (§8, répartition des permissions par rôle) n'existe pas dans le
-  dépôt** — vérifié explicitement (recherche à vide) avant d'écrire le
-  RBAC. Répartition proposée puis confirmée avec le porteur de projet à
-  partir des deux ancrages donnés dans le cadrage lui-même
+  Lot 2 (§8, répartition des permissions par rôle) n'existait pas dans
+  le dépôt** — vérifié explicitement (recherche à vide) avant d'écrire
+  le RBAC. Répartition proposée puis confirmée avec le porteur de
+  projet à partir des deux ancrages donnés dans le cadrage lui-même
   (Propriétaire/Gérant = complet, Comptable = lecture seule) complétée
   par le principe de moindre privilège pour les 8 autres rôles (aucun
   accès Personnel par défaut — donnée salariale sensible, aucun mandat
-  métier existant ne le justifie dans `roles.catalog.ts` §11). Si un
-  vrai `MODULE_PERSONNEL.md` doit exister, cette répartition est la
-  candidate à formaliser dedans plutôt que l'inverse.
+  métier existant ne le justifie dans `roles.catalog.ts` §11).
+  **Résolu** : le cadrage complet (Phase 22) a depuis été livré et
+  formalisé dans `docs/reference/MODULE_PERSONNEL.md` — §8 y confirme
+  la répartition Propriétaire/Gérant/Comptable proposée ci-dessus, et
+  corrige un point que le principe de moindre privilège, appliqué sans
+  confirmation faute de document, avait tranché trop restrictivement :
+  **`Lecteur / Lecture seule` doit recevoir `EMPLOYEES_READ`** ("lecture
+  des fiches et plannings, paie masquée") — ajouté a posteriori à
+  `roles.catalog.ts` avant le merge du Lot 2. Nuance non résolue,
+  documentée explicitement dans `MODULE_PERSONNEL.md` §8 :
+  `baseSalaryFcfa` est un champ d'`Employee` (pas séparé dans
+  `Payroll`), donc visible par ce rôle aussi malgré "paie masquée" —
+  aucune restriction champ par champ nulle part dans le projet.
+  Également documenté comme point ouvert (pas implémenté, pas dans le
+  périmètre du Lot 2) : le rôle système `Employé` devrait pouvoir lire
+  sa propre fiche uniquement, ce qui suppose un lien `Employee`↔`User`
+  n'existant pas — `Employee` a été délibérément conçu sans compte de
+  connexion associé (Lot 1). Décision d'architecture à prendre
+  explicitement avant qu'un lot futur implémente ce point.
 - **Réponses API = modèle Prisma `Employee` exposé directement**
   (`Promise<Employee>`), pas de DTO de sortie dédié — reproduit fidèlement
   le patron déjà en place sur Buildings/Expenses/Assets/... (aucune
