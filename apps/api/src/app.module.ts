@@ -46,6 +46,7 @@ import { TreasuryModule } from './modules/treasury/treasury.module';
 import { AssetsModule } from './modules/assets/assets.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { InfrastructureModule } from './modules/infrastructure/infrastructure.module';
+import { EmployeesModule } from './modules/employees/employees.module';
 
 @Module({
   imports: [
@@ -103,6 +104,7 @@ import { InfrastructureModule } from './modules/infrastructure/infrastructure.mo
     AssetsModule,
     MaintenanceModule,
     InfrastructureModule,
+    EmployeesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
