@@ -1075,7 +1075,11 @@ cahier.
   `apps/api/src/modules/assets/calculations/depreciation.calculations.ts`
   (13 tests unitaires, cas limites : durée 1 an, mise en service au 1er
   janvier exact, année bissextile, valeur résiduelle nulle/non nulle,
-  arrondi sur une base peu divisible).
+  arrondi sur une base peu divisible). **Mise à jour Phase 20** : le
+  point de blocage technique (redéploiement nécessaire pour changer de
+  convention) est levé — voir "✅ Corrigé" ci-dessous — mais la
+  validation comptable elle-même reste entièrement ouverte, ce n'est
+  pas la même chose que "résolu".
 - **`serviceDate` obligatoire à la création, pas de statut intermédiaire
   "acquis mais pas encore en service"** : le cahier distingue "date
   d'achat" et "date de mise en service" comme deux étapes du cycle de
@@ -1409,6 +1413,63 @@ Premier frontend V6, construit sur les 3 modules backend Phase 16-18.
   corriger). Idem pour `MaintenancePlan` (`MAINTENANCE_PLANS_UPDATE/
   DELETE` non câblés — un plan mal configuré se corrige aujourd'hui
   uniquement côté API/support).
+
+## Phase 20 — Durcissement V6 (Patrimoine/Maintenance)
+
+Correctifs ciblés sur les 2 points 🔴 du bilan de complétude V6
+(`docs/architecture/BILAN_COMPLETUDE_V6_PATRIMOINE_MAINTENANCE_INFRA.md`)
+et 3 des 4 points 🟠 secondaires — même logique que les Phases 8 et 15
+(durcissement avant d'ajouter du nouveau). Backend uniquement, aucun
+écran cette phase. Détail des corrections dans "✅ Corrigé" ci-dessous.
+
+- **Différé, pas traité cette phase — les 6 autres points lisant
+  `asset.status==='REFORME'` sans verrou** (constat transversal n°2 du
+  bilan V6 : `MaintenancePlansService.create()`,
+  `MaintenanceTasksService.create()`,
+  `MaintenanceInterventionsService.create()`, 3×
+  `*-infrastructure-readings.service.ts` `create()`). 4 des 6 méthodes
+  concernées n'ouvrent aujourd'hui aucune transaction — le correctif
+  n'est pas une copie mécanique d'une requête raw dans un `tx` déjà
+  existant (comme pour `MaintenancePlansService.create()` et
+  `MaintenanceInterventionsService.create()`, déjà transactionnelles),
+  mais une restructuration ouvrant une nouvelle transaction, avec un
+  effet de bord réel : verrouiller `assets` pendant l'écriture d'une
+  table indépendante sérialiserait des écritures auparavant concurrentes
+  sans conflit (ex. deux relevés eau à des dates différentes sur le même
+  actif, déjà protégés par `@@unique([assetId,date])`). Combiné au fait
+  que le bilan qualifie ce risque de "probabilité très faible" (saisie
+  généralement séquentielle par un seul responsable), ce chantier
+  dépasse le périmètre d'un durcissement ciblé — à reprendre dans une
+  phase dédiée si le besoin réel se confirme.
+- **Point ouvert transversal découvert pendant cette phase, hors
+  périmètre du bilan V6 — la suite e2e `apps/api` ne démarre plus,
+  projet entier, pas spécifique à cette phase.** Confirmé en tentant de
+  vérifier les 3 nouveaux tests de concurrence de cette phase : même le
+  fichier `app.e2e-spec.ts` (health check, totalement non modifié)
+  time-out désormais sur le chargement du compilateur WASM de Prisma
+  (`WasmQueryCompilerLoader.loadQueryCompiler` /
+  `getQueryCompilerWasmModule`, `PrismaClientKnownRequestError` code
+  `45028` "pool timeout... pool connections: active=0 idle=0" — aucune
+  connexion n'atteint jamais MySQL, confirmé par `information_schema.
+  processlist` surveillé en direct pendant l'exécution). Reproduit à
+  l'identique sur l'hôte Windows ET dans le conteneur Linux
+  `dondy-elevage-api` (`docker exec ... npx jest --config ./test/
+  jest-e2e.json`), après redémarrage du conteneur `mysql` et
+  régénération du client Prisma (`npx prisma generate`) — écarte une
+  cause spécifique à l'OS, à une connexion MySQL défaillante, ou à un
+  cache corrompu. Les fichiers `.wasm-base64.js`/`.mjs` sont bien
+  présents dans `node_modules/@prisma/client/runtime/` (pas un problème
+  de fichier manquant). Correspond à une catégorie connue de problèmes
+  upstream Prisma 7.x (compilateur de requêtes WASM + chargement sous
+  Jest/CJS, `prisma-client-js` émettant des modules ES). **Aucun test
+  e2e n'a donc pu être rejoué pour cette phase** — les 3 tests de
+  concurrence dédiés sont écrits (voir "✅ Corrigé" ci-dessous) mais
+  non exécutés ; la couverture unitaire (typecheck/lint/194 tests
+  unitaires, dont les 7 nouveaux tests `TRENTE_360`) reste la seule
+  vérification automatisée disponible pour cette phase. À investiguer
+  avant la prochaine phase touchant le backend : pistes non explorées
+  faute de temps — épingler une version Prisma 7.x antérieure, ou
+  `engineType = "binary"` dans le bloc `generator` du schema.
 
 ## ✅ Corrigé
 
@@ -1856,6 +1917,123 @@ Phase 19 (hors périmètre initial de la mission) ; ajouté comme 7ᵉ cas
 au sélecteur local `EntityRefSelect` déjà existant dans ce même fichier
 (pas de nouveau composant partagé), actifs `REFORME` exclus de la liste
 proposée.
+
+### Concurrence `MaintenanceTask` — 7e occurrence du défaut "vérification sans verrou" déjà corrigé 6 fois en Phase 8 (bilan V6, corrigé en Phase 20)
+
+`MaintenanceTasksService.markRealizedInTransaction` et `cancel()`
+lisaient le statut de la tâche sans verrou avant d'écrire —
+contrairement à `MaintenanceTaskGenerationService.
+ensureNextTaskGenerated` (même module, déjà protégé depuis la Phase 17).
+Scénario concret : deux interventions concurrentes sur la même tâche
+pouvaient toutes deux passer la garde de statut terminal, dupliquant
+coût imputé et sortie de stock pour un seul événement métier.
+
+**Correction retenue** — même patron déjà validé 6 fois sur ce projet
+(`StockMovementsService.recordMovementInTransaction`,
+`MaintenanceTaskGenerationService.ensureNextTaskGenerated`, etc.) :
+nouvelle méthode privée `lockAndAssertTaskOpenInTransaction(tx,
+taskId)` (`SELECT ... FOR UPDATE` en raw SQL sur `maintenance_tasks`,
+sans filtre `farmId` — la validation farm est déjà faite par
+l'appelant avant l'ouverture de la transaction, contrat identique à
+l'ancien `markRealizedInTransaction`), appelée en tout début de
+transaction par `markRealizedInTransaction` et `cancel()`. Retry P2034
+gardé par cohérence de style avec le reste du projet — **pas une
+nécessité technique stricte ici** : un verrou sur une seule ligne (clé
+primaire) ne peut pas produire de deadlock à lui seul, une transaction
+concurrente attend simplement la libération du verrou plutôt que
+d'être avortée (confirmé par le comportement déjà en production de
+`ensureNextTaskGenerated`, qui n'a jamais eu de retry).
+
+**Gap préexistant corrigé dans le même mouvement** :
+`MaintenanceInterventionsService.create()` verrouille déjà `Item` par
+pièce (`recordMovementInTransaction`, boucle sur `dto.parts`) **sans
+aucun retry P2034**, contrairement à `StockMovementsService.create()`
+qui a ce filet depuis la Phase 7 pour le même type de verrouillage —
+gap indépendant de la concurrence `MaintenanceTask` elle-même,
+découvert en ajoutant le nouveau verrou dans cette même transaction.
+Corrigé en même temps (boucle retry standard ajoutée autour de
+l'ensemble de la transaction de création).
+
+**2 tests de concurrence dédiés** (`Promise.all` sur deux requêtes HTTP
+identiques, `[201,409]` attendu, état final vérifié cohérent — même
+gabarit que Phase 8) : deux interventions concurrentes sur la même
+tâche (une seule aboutit, stock/coût jamais dupliqués) ; une annulation
+concurrente à une intervention sur la même tâche (état final soit
+`REALISEE`+1 intervention, soit `ANNULEE`+0 intervention, jamais les
+deux). **Non exécutés à ce stade** — voir le point ouvert transversal
+"suite e2e ne démarre plus" documenté sous `## Phase 20` ci-dessus.
+
+Voir `maintenance-tasks.service.ts`, `maintenance-interventions.service.ts`,
+`maintenance.e2e-spec.ts`.
+
+### Prorata temporis rendu paramétrable via `Setting` — verrou technique de configuration levé, validation comptable toujours en attente (bilan V6, Phase 20)
+
+Le modèle de calendrier fiscal (Phase 16, voir puce correspondante sous
+`## Phase 16` ci-dessus) était figé dans le code — tout ajustement
+aurait exigé un redéploiement. Désormais paramétrable par ferme via
+`Setting{key:'assets.depreciation_convention'}`, sans migration Prisma
+(`Setting.value: Json` déjà générique) : `computeDepreciationSchedule`
+accepte un 5e paramètre optionnel `convention: 'CALENDAIRE' |
+'TRENTE_360'` (défaut `'CALENDAIRE'`, comportement historique strictement
+inchangé — les 13 tests existants passent sans modification).
+`'TRENTE_360'` = convention 30E/360 (chaque mois compté 30 jours, année
+360 jours, indépendante des années bissextiles), appliquée uniquement à
+la proratisation de la première période (les années pleines restent une
+dotation annuelle fixe, aucun day-count). Cas limite explicitement
+tranché et testé : une mise en service au 31 décembre produit la
+dotation minimale non nulle possible (1/360e), jamais 0 — comportement
+assumé, pas un sous-produit accidentel de la formule. `AssetsService.
+create()` lit le `Setting` de la ferme avant de générer le plan
+(fallback `'CALENDAIRE'` si absent ou si la valeur ne correspond pas
+exactement à l'énumération connue). **Aucun contrôleur Settings
+n'existe nulle part dans le projet** — configurable uniquement en base
+(seed/support) pour l'instant, même précédent exact que tous les autres
+`Setting` du projet (ex. `assets.warranty_expiring_days`).
+
+**Ce qui reste ouvert, sans ambiguïté** : la validation par un
+comptable local du modèle retenu (ni `CALENDAIRE` ni `TRENTE_360` n'a
+été confirmé contre une pratique comptable réelle) — ce correctif lève
+le blocage technique de configuration, pas la question de fond. Reste
+"meilleure hypothèse documentée" jusqu'à cette validation.
+
+**~8 nouveaux tests unitaires** (`depreciation.calculations.spec.ts`) :
+alignement début/milieu/fin de mois, cas limite 31 décembre,
+indépendance aux années bissextiles, cohérence de la somme des
+dotations sur un cas peu divisible.
+
+Voir `depreciation.calculations.ts`, `depreciation.calculations.spec.ts`,
+`assets.service.ts`.
+
+### 3 correctifs mineurs Patrimoine (bilan V6, corrigés en Phase 20)
+
+- **`AssetsService.remove()` omettait `MaintenancePlan`** dans son
+  garde-fou de suppression (vérifiait `Expense`/`MaintenanceTask`/
+  `MaintenanceIntervention`/3 relevés infra, jamais `MaintenancePlan`
+  directement) — un plan pouvait exister avec 0 tâche active (tâches
+  supprimables individuellement sans garde sur le plan parent), la
+  contrainte `ON DELETE RESTRICT` sur `MaintenancePlan.assetId` levait
+  alors une erreur SQL brute (P2003) non interceptée au lieu du 409
+  propre attendu. Corrigé : `maintenancePlan.count()` ajouté au bloc de
+  garde déjà existant.
+- **`AssetsService.reform()` non protégé contre le double-appel
+  concurrent** — même famille que la concurrence `MaintenanceTask`
+  ci-dessus. Corrigé : verrou `SELECT ... FOR UPDATE` sur `assets` (même
+  patron), retry P2034 par cohérence de style (même nuance : pas une
+  nécessité technique stricte pour un verrou mono-ligne). **1 test de
+  concurrence dédié** (`assets.e2e-spec.ts`, non exécuté — voir le point
+  ouvert transversal e2e ci-dessus) : deux réformes simultanées sur le
+  même actif → `[201,409]`, un seul enregistrement d'audit
+  `ASSET_REFORMED`.
+- **Aucune validation croisée de dates sur Asset** — `reformDate`/
+  `warrantyExpiresAt` pouvaient être antérieures à `purchaseDate`/
+  `serviceDate` sans erreur, ni backend ni frontend. Corrigé côté
+  backend (le seul touché cette phase) : `reformDate >= serviceDate`
+  dans `reform()`, `warrantyExpiresAt >= purchaseDate` dans `create()`
+  et `update()` (au niveau service, pas DTO — `UpdateAssetDto` n'a pas
+  de champ `purchaseDate`, immuable après création, la comparaison se
+  fait contre `existing.purchaseDate`).
+
+Voir `assets.service.ts`, `assets.e2e-spec.ts`.
 
 ## Comment utiliser ce document
 
