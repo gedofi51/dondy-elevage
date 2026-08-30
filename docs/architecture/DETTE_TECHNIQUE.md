@@ -1522,10 +1522,15 @@ section dans `schema.prisma`.
   n'existe), mais à ne pas oublier : le principe non négociable "RBAC
   vérifié en back-end" (CLAUDE.md) s'appliquera dès le premier lot qui
   expose un contrôleur, pas seulement au moment de câbler le frontend.
+  **Fait pour `Employee` en Lot 2** (voir section dédiée ci-dessous) —
+  `Attendance`/`EmployeeTask`/`Payroll`/`SalaryAdvance` restent sans
+  couche de contrôle, hors périmètre explicite du Lot 2.
 - **`Employee.code` (matricule) sans générateur** — même situation que
   `BroilerBatch.code`/`Asset.code` à leur création : le champ existe,
   la logique de génération (format, ex. `EMP-AAAA-NNN`) revient à un
-  lot applicatif ultérieur.
+  lot applicatif ultérieur. **Fait en Lot 2** (`EmployeesService.
+  generateCode()`, format `EMP-AAAA-NNN` confirmé, année = année
+  d'embauche).
 - **`Payroll.status` volontairement minimal (BROUILLON/VALIDE)** —
   aucun lien vers `Payment`/`Expense` pour le suivi du paiement effectif
   du bulletin. Le cahier V1 §8.5 liste déjà "Personnel" comme catégorie
@@ -1533,6 +1538,53 @@ section dans `schema.prisma`.
   ce mécanisme plutôt qu'en inventer un nouveau est l'option la plus
   probable, mais non tranchée : décision différée à un lot applicatif
   dédié plutôt que présumée dans ce lot schéma-only.
+
+## Personnel — Lot 2 (module Employees : CRUD, RBAC, isolation farmId)
+
+Module NestJS complet sur `Employee` uniquement (`apps/api/src/modules/
+employees/`) — même patron que Buildings (CRUD simple) et Expenses
+(soft delete), RBAC réutilisé tel quel (`PermissionsGuard`/
+`RequirePermissions`/`assertSameFarm`, aucun second mécanisme créé).
+
+- **`docs/reference/MODULE_PERSONNEL.md` référencé par le cadrage du
+  Lot 2 (§8, répartition des permissions par rôle) n'existe pas dans le
+  dépôt** — vérifié explicitement (recherche à vide) avant d'écrire le
+  RBAC. Répartition proposée puis confirmée avec le porteur de projet à
+  partir des deux ancrages donnés dans le cadrage lui-même
+  (Propriétaire/Gérant = complet, Comptable = lecture seule) complétée
+  par le principe de moindre privilège pour les 8 autres rôles (aucun
+  accès Personnel par défaut — donnée salariale sensible, aucun mandat
+  métier existant ne le justifie dans `roles.catalog.ts` §11). Si un
+  vrai `MODULE_PERSONNEL.md` doit exister, cette répartition est la
+  candidate à formaliser dedans plutôt que l'inverse.
+- **Réponses API = modèle Prisma `Employee` exposé directement**
+  (`Promise<Employee>`), pas de DTO de sortie dédié — reproduit fidèlement
+  le patron déjà en place sur Buildings/Expenses/Assets/... (aucune
+  exception dans le projet à ce jour), conformément à la consigne du
+  Lot 2 "réutiliser le patron... ne pas en recréer un second". Tension
+  non résolue avec la règle littérale de CLAUDE.md ("Ne jamais exposer
+  directement un modèle Prisma") — déjà vraie pour tous les modules
+  existants, pas introduite par ce lot ; signalée ici plutôt que
+  silencieusement suivie, à trancher un jour au niveau du projet entier
+  si elle doit vraiment changer.
+- **`assertUpdateAllowed`/cross-field `endDate >= hireDate` validés en
+  service, pas en DTO** — malgré la formulation "validation DTO" du
+  cadrage : aucun `ValidatorConstraint` class-validator custom n'existe
+  nulle part dans le projet, tous les cas comparables (ex.
+  `Asset.serviceDate >= purchaseDate`, Phase 20) sont validés côté
+  service. Suivi cette convention plutôt que d'introduire un premier
+  précédent pour ce seul cas.
+- **`managerId` : garde anti-auto-référence directe uniquement**
+  (`managerId === id` refusé), pas de détection de cycle complète
+  (A manage B manage A) — non demandé, complexité jugée disproportionnée
+  pour ce lot.
+- **Pas d'endpoint de restauration après soft delete** — une fois
+  `deletedAt` posé, la fiche est 404 pour tous les endpoints standards,
+  aucun mécanisme de retour en arrière (même limite qu'Expense/
+  SupplierPayment, qui n'en ont pas non plus). "Réactivation" au sens du
+  Lot 2 concerne uniquement les statuts SUSPENDU/DEPART (fiche encore
+  vivante), pas la restauration d'une fiche supprimée — distinction à
+  garder en tête si un besoin réel de restauration émerge plus tard.
 
 ## ✅ Corrigé
 
