@@ -1602,6 +1602,61 @@ employees/`) — même patron que Buildings (CRUD simple) et Expenses
   vivante), pas la restauration d'une fiche supprimée — distinction à
   garder en tête si un besoin réel de restauration émerge plus tard.
 
+## Personnel — Lot 3 (module Attendance : pointage, CRUD, RBAC)
+
+Module NestJS nesté sous Employee (`apps/api/src/modules/employees/
+attendance/`, routes `/employees/:employeeId/attendance`) — même
+patron structurel que `WaterReadingsModule` sous `WaterPointsModule`
+(1 relevé/jour, `@@unique([employeeId, date])`, `PATCH` de correction),
+`EmployeesModule` étendu (`exports: [EmployeesService]`) pour que
+`AttendanceService` réutilise `EmployeesService.findOne()` (isolation
+farmId + existence/non-suppression de l'employé en un seul appel).
+
+- **Deux écarts entre le cadrage (`MODULE_PERSONNEL.md`) et le schéma/
+  §7 réels, signalés avant implémentation plutôt que tranchés seul**
+  (leçon explicite du Lecteur oublié au Lot 2) :
+  1. Les règles du Lot 3 mentionnent un statut "repos", absent de
+     l'enum `AttendanceStatus` (Lot 1 : PRESENT/ABSENT/CONGE/MALADIE).
+     **Confirmé** : enum gardé tel quel, "repos" traité comme un terme
+     informel recouvrant CONGE — aucune migration.
+  2. Le §7 initial ne liste que `GET/POST` pour l'endpoint attendance,
+     mais "checkOut postérieur à checkIn si les deux sont renseignés"
+     implique un pointage en 2 temps, et le seul précédent structurel
+     comparable du projet (`WaterReadingsController`) a un `PATCH`
+     dédié. **Confirmé** : `PATCH /employees/:employeeId/attendance/
+     :date` ajouté, aligné sur ce patron. Toujours pas de `DELETE`
+     (append-only, comme `StockMovement` — aucun rôle du catalogue n'a
+     `ATTENDANCE_DELETE`, cette permission n'existe même pas).
+- **"Responsable élevage : écriture" interprété comme
+  CREATE+READ+UPDATE, pas CREATE+UPDATE seuls** — le mot "écriture" du
+  cadrage ne précisait pas si la lecture était incluse. Décision prise
+  par cohérence avec la convention déjà présente partout ailleurs dans
+  `roles.catalog.ts` : chaque rôle "propriétaire d'un domaine" reçoit
+  systématiquement READ groupé avec CREATE/UPDATE/DELETE sur ce domaine
+  (ex. Responsable couvoir sur Incubators) — jamais un rôle qui écrit
+  sans pouvoir relire ce qu'il vient de saisir. Signalé ici plutôt que
+  simplement appliqué, au cas où l'intention réelle était plus stricte.
+- **Format `HH:mm` strict sur `checkInTime`/`checkOutTime`** (regex
+  `^([01]\d|2[0-3]):[0-5]\d$`, `@Matches` côté DTO) — premier champ
+  "heure" du projet à exiger un format précis. Tous les autres champs
+  comparables (`BroilerDailyRecord.entryTime`, `BroilerBatch.
+  arrivalTime`...) restent du texte libre, jamais comparés
+  programmatiquement. Nécessaire ici uniquement parce que la règle
+  "checkOut postérieur à checkIn" exige une comparaison fiable — une
+  comparaison lexicographique de deux `HH:mm` zéro-préfixés est valide,
+  ce que du texte libre ne garantirait pas.
+- **Piège rencontré en vérifiant ce lot** : après avoir ajouté les
+  permissions `ATTENDANCE_*` à `roles.catalog.ts`, les tests e2e
+  échouaient en 403 partout (sauf le tout premier, avant que le motif
+  ne devienne clair) — cause réelle : `npm run db:seed` non relancé
+  après modification du catalogue de rôles. `AuthService.
+  resolveRolesAndPermissions()` lit les permissions depuis la table
+  `RolePermission` (base réelle), jamais directement depuis
+  `ROLES_CATALOG` (code) — toute modification de ce fichier reste sans
+  effet sur les connexions réelles tant que le seed n'a pas resynchronisé
+  la base. Prévu comme un rappel pour tout lot futur qui touche au RBAC
+  suivi de tests e2e.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
