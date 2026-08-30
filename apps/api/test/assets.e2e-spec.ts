@@ -422,6 +422,54 @@ describe('Patrimoine & Amortissements — cycle complet (e2e, scénario V6 §19)
     });
   });
 
+  describe('Concurrence — verrou reform(), même famille que MaintenanceTask (Phase 20)', () => {
+    let concurrencyAssetId: string;
+
+    beforeAll(async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/assets')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          designation: 'Actif pour test de concurrence — réforme',
+          category: 'Outillage',
+          purchaseDate: '2026-01-01',
+          serviceDate: '2026-01-01',
+          purchasePriceFcfa: 50_000,
+          responsibleId: ownerUserId,
+          depreciationDurationYears: 5,
+        })
+        .expect(201);
+      concurrencyAssetId = body<AssetResponseBody>(res).id;
+      createdAssetIds.push(concurrencyAssetId);
+    });
+
+    it('deux réformes concurrentes sur le même actif : une seule aboutit', async () => {
+      const sendReform = () =>
+        request(app.getHttpServer())
+          .post(`/api/v1/assets/${concurrencyAssetId}/reformer`)
+          .set('Authorization', `Bearer ${ownerToken}`)
+          .send({ reformDate: '2026-06-01', reformReason: 'Concurrence' });
+
+      const [resA, resB] = await Promise.all([sendReform(), sendReform()]);
+      const statuses = [resA.status, resB.status].sort();
+      // Ni les deux ne réussissent (double écriture reformDate/reformReason,
+      // double entrée d'audit), ni les deux n'échouent — exactement une des
+      // deux, l'autre un 409 métier propre.
+      expect(statuses).toEqual([201, 409]);
+
+      const assetAfter = await request(app.getHttpServer())
+        .get(`/api/v1/assets/${concurrencyAssetId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      expect(body<AssetResponseBody>(assetAfter).status).toBe('REFORME');
+
+      const reformAudits = await prisma.auditLog.findMany({
+        where: { entityType: 'asset', entityId: concurrencyAssetId, action: 'ASSET_REFORMED' },
+      });
+      expect(reformAudits).toHaveLength(1);
+    });
+  });
+
   describe('Alertes patrimoine (AssetsAlertsCronService)', () => {
     let warrantyAssetId: string;
     let fullyDepreciatedAssetId: string;
