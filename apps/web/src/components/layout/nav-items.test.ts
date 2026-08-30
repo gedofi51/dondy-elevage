@@ -44,8 +44,8 @@ describe('getVisibleNavEntries', () => {
 });
 
 describe('flatNavItems', () => {
-  it('contains exactly the 14 real routes (7 top-level links/categories flattened)', () => {
-    expect(flatNavItems).toHaveLength(14);
+  it('contains exactly the 15 real routes (8 top-level links/categories flattened)', () => {
+    expect(flatNavItems).toHaveLength(15);
   });
 
   it('preserves the order of navItems, expanding categories in place', () => {

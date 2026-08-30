@@ -14,6 +14,7 @@ import {
   ShoppingCart,
   Sprout,
   Thermometer,
+  Users,
   Wallet,
   Wrench,
 } from 'lucide-react';
@@ -157,6 +158,17 @@ export const navItems: NavEntry[] = [
         permission: PERMISSIONS.MAINTENANCE_TASKS_READ,
       },
     ],
+  },
+  // Personnel (Lot 6a) — une seule route de premier niveau (/personnel) :
+  // reste un NavLink direct, même règle que Points d'eau/Stocks/Achats
+  // (voir DETTE_TECHNIQUE.md Lot 6a pour le détail de ce choix et son
+  // effet de bord connu sur le rôle Responsable élevage).
+  {
+    type: 'link',
+    label: 'Personnel',
+    href: '/personnel',
+    icon: Users,
+    permission: PERMISSIONS.EMPLOYEES_READ,
   },
 ];
 

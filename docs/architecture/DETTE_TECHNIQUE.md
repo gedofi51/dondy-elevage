@@ -1803,6 +1803,86 @@ type dans le projet, documenté ici comme réutilisable** :
 Aucun autre nouveau format/validation transversal (dates, montants
 suivent les conventions déjà établies).
 
+## Personnel — Lot 6a (écrans Employee : liste, fiche, création/édition)
+
+Premier lot **frontend** du module Personnel. Patron mirroré sur
+Patrimoine/Assets (`apps/web/src/app/(app)/patrimoine/...`,
+`apps/web/src/features/assets/...`) — module de domaine comparable déjà
+construit côté front (liste + fiche à onglets + formulaire combiné
+RHF/Zod), conformément à la consigne du prompt de rechercher un
+précédent avant tout code.
+
+**Navigation — décision prise et signalée plutôt que tranchée
+silencieusement** (consigne explicite du prompt, répétée deux fois) :
+« Personnel » ajouté comme `NavLink` direct (`/personnel`, icône
+`Users`, gardé par `EMPLOYEES_READ`), pas une `NavCategory` — une seule
+route de premier niveau réelle, même règle que Points d'eau/Stocks/
+Achats (voir Phase 21, "≥2 routes réelles ⇒ catégorie, sinon lien
+direct"). Placé en dernière position (après « Équipements »), même
+logique de moindre perturbation que les autres entrées.
+**Effet de bord identifié, à revoir explicitement** : le rôle
+Responsable élevage a `ATTENDANCE_*`/`EMPLOYEE_TASKS_*` mais pas
+`EMPLOYEES_READ` (voir `roles.catalog.ts`, Lots 3/4) — avec ce gardage,
+il ne verra JAMAIS l'entrée « Personnel », alors qu'il a un accès réel
+au pointage/tâches assignées une fois sur la fiche employé. Aucune route
+alternative n'existe aujourd'hui pour y accéder autrement (pas de
+`/pointage` ou `/taches` transverse). Non corrigé ce lot — la solution
+correcte dépend de ce que les Lots 6b/6c/6d construisent réellement
+(un écran dédié Présence/Tâches accessible sans passer par la fiche
+employé changerait la réponse) ; à trancher explicitement quand ces
+lots seront lancés, pas anticipé ici.
+
+**Masquage du salaire — appliqué au niveau composant, pas seulement
+type** : `Employee.baseSalaryFcfa` est optionnel côté `shared-types`
+(miroir direct d'`EmployeeMaybeWithSalary` côté API, Lot 5). Règle
+appliquée systématiquement partout où le champ apparaît :
+- Liste (`EmployeeTable`) : aucune colonne salaire — le cadrage §3 ne le
+  prévoit que sur la fiche détaillée, cohérent avec une donnée
+  sensible.
+- Fiche (`EmployeeDetailView`) : ligne "Salaire de base" rendue
+  uniquement si `baseSalaryFcfa !== undefined` — jamais de ligne vide/
+  tiret à la place en son absence (aurait été un signal suspect, la
+  consigne UI l'interdit explicitement).
+- Formulaire (`EmployeeForm`, édition) : champ affiché uniquement si
+  présent dans la réponse ; **et surtout jamais soumis** dans ce cas
+  (`baseSalaryFcfa` omis du payload PATCH plutôt qu'envoyé à `0` ou
+  requis) — évite qu'un rôle sans `EMPLOYEES_VIEW_SALARY` puisse, même
+  par accident de formulaire, écraser le salaire d'un employé. En
+  pratique aucun rôle actuel n'a `EMPLOYEES_UPDATE` sans
+  `EMPLOYEES_VIEW_SALARY` (vérifié dans `roles.catalog.ts`) — le
+  composant applique la règle quand même en défense en profondeur,
+  cohérent avec le type optionnel plutôt que de présumer la matrice RBAC
+  actuelle immuable.
+- Formulaire (création) : champ toujours requis — seuls des rôles ayant
+  déjà `EMPLOYEES_VIEW_SALARY` peuvent atteindre cet écran (nav +
+  `EMPLOYEES_CREATE` combinés), donc pas de cas de masquage à la
+  création dans la matrice actuelle.
+
+**Onglets Présence/Tâches/Paie — coquille visible, contenu différé** :
+`EmployeeDetailView` construit les 3 onglets dès ce lot (fiche
+« extensible » demandée) mais chacun ne rend qu'un texte indicatif
+« à venir » — interdiction explicite du prompt de les remplir ici.
+L'onglet Paie est gardé par `PAYROLL_READ` (Lecteur ne l'a pas, voir
+Lot 5) ; Présence/Tâches restent ungated à ce niveau — vérifié dans
+`roles.catalog.ts` que tout rôle disposant d'`EMPLOYEES_READ` dispose
+aussi d'`ATTENDANCE_READ`/`EMPLOYEE_TASKS_READ` dans la matrice
+actuelle, donc pas de fuite. Le vrai contrôle d'accès aux données
+réelles sera posé composant par composant aux Lots 6b/6c/6d (même
+patron que les onglets Eau/Solaire/Réseau de `AssetDetailView`), pas
+anticipé ici.
+
+**Liste — filtre "Actifs" mirroré sur Patrimoine** : exclut uniquement
+le statut terminal `DEPART` (un employé `CONGE`/`SUSPENDU` reste dans
+l'effectif affiché par défaut), même lecture que `REFORME` sur
+Patrimoine. Décision de faible enjeu, non remontée en question — filtre
+strictement en mémoire (`GET /employees` n'a pas de filtre serveur,
+même palliatif que les autres listes du projet).
+
+**Suppression** : `EmployeeForm`/`EmployeeDetailView` utilisent le
+`useDeleteEmployee` existant (Lot 2, soft delete sans endpoint de
+restauration) — confirmation via `ConfirmDialog` avant l'appel, même
+patron que Patrimoine.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

@@ -50,10 +50,15 @@ cf. précision ci-dessus).
 
 ## 3. Écrans concernés
 
-* Liste des employés (filtres : statut, poste, bâtiment/service)
+* Liste des employés (filtres : statut, poste, bâtiment/service) —
+  **Réalisé (Lot 6a)**, filtre Actifs/Tous uniquement pour l'instant
+  (poste/bâtiment restent à ajouter, voir `DETTE_TECHNIQUE.md`).
 * Fiche employé (détail, historique de paie, historique de présence,
-  documents)
-* Création / édition employé
+  documents) — **Réalisé partiellement (Lot 6a)** : onglets Présence/
+  Tâches/Paie construits comme coquille extensible (placeholder), contenu
+  réel prévu aux Lots 6b/6c/6d ; documents non traités (hors périmètre
+  Lot 6a).
+* Création / édition employé — **Réalisé (Lot 6a)**.
 * Planning (vue calendrier, par employé ou par équipe)
 * Pointage quotidien
 * Tâches assignées (liste + création — à mutualiser avec le moteur de
@@ -292,3 +297,14 @@ aucune renumérotation des phases déjà livrées).
   `baseSalaryFcfa` désormais réellement masqué pour Lecteur — voir
   `DETTE_TECHNIQUE.md` pour le mécanisme, documenté comme précédent
   réutilisable. Toutes les entités du §6 sont désormais construites.
+* **Lot 6a — Écrans Employee (liste, fiche, création/édition)** : LIVRÉ,
+  validé (`feature/personnel-lot6a-employee-screens`, cible
+  `feature/personnel-lot5-payroll-advances`) — patron mirroré sur
+  Patrimoine/Assets (formulaire combiné, onglets extensibles, route
+  wrappers). Décisions prises et signalées plutôt que tranchées seules
+  (voir `DETTE_TECHNIQUE.md`) : entrée de navigation « Personnel » en
+  lien direct (pas une catégorie, une seule route réelle) gardée par
+  `EMPLOYEES_READ`, avec un effet de bord identifié sur le rôle
+  Responsable élevage ; règle de masquage du salaire appliquée au niveau
+  du composant (champ absent de la réponse ⇒ jamais rendu, jamais
+  soumis) aussi bien en lecture (fiche) qu'en écriture (formulaire).
