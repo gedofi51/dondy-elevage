@@ -1441,35 +1441,26 @@ et 3 des 4 points 🟠 secondaires — même logique que les Phases 8 et 15
   généralement séquentielle par un seul responsable), ce chantier
   dépasse le périmètre d'un durcissement ciblé — à reprendre dans une
   phase dédiée si le besoin réel se confirme.
-- **Point ouvert transversal découvert pendant cette phase, hors
-  périmètre du bilan V6 — la suite e2e `apps/api` ne démarre plus,
-  projet entier, pas spécifique à cette phase.** Confirmé en tentant de
-  vérifier les 3 nouveaux tests de concurrence de cette phase : même le
-  fichier `app.e2e-spec.ts` (health check, totalement non modifié)
-  time-out désormais sur le chargement du compilateur WASM de Prisma
-  (`WasmQueryCompilerLoader.loadQueryCompiler` /
-  `getQueryCompilerWasmModule`, `PrismaClientKnownRequestError` code
-  `45028` "pool timeout... pool connections: active=0 idle=0" — aucune
-  connexion n'atteint jamais MySQL, confirmé par `information_schema.
-  processlist` surveillé en direct pendant l'exécution). Reproduit à
-  l'identique sur l'hôte Windows ET dans le conteneur Linux
-  `dondy-elevage-api` (`docker exec ... npx jest --config ./test/
-  jest-e2e.json`), après redémarrage du conteneur `mysql` et
-  régénération du client Prisma (`npx prisma generate`) — écarte une
-  cause spécifique à l'OS, à une connexion MySQL défaillante, ou à un
-  cache corrompu. Les fichiers `.wasm-base64.js`/`.mjs` sont bien
-  présents dans `node_modules/@prisma/client/runtime/` (pas un problème
-  de fichier manquant). Correspond à une catégorie connue de problèmes
-  upstream Prisma 7.x (compilateur de requêtes WASM + chargement sous
-  Jest/CJS, `prisma-client-js` émettant des modules ES). **Aucun test
-  e2e n'a donc pu être rejoué pour cette phase** — les 3 tests de
-  concurrence dédiés sont écrits (voir "✅ Corrigé" ci-dessous) mais
-  non exécutés ; la couverture unitaire (typecheck/lint/194 tests
-  unitaires, dont les 7 nouveaux tests `TRENTE_360`) reste la seule
-  vérification automatisée disponible pour cette phase. À investiguer
-  avant la prochaine phase touchant le backend : pistes non explorées
-  faute de temps — épingler une version Prisma 7.x antérieure, ou
-  `engineType = "binary"` dans le bloc `generator` du schema.
+- **Point transversal découvert pendant cette phase, hors périmètre du
+  bilan V6, depuis corrigé — voir "✅ Corrigé" ci-dessous pour la cause
+  réelle et le correctif.** Diagnostic initial erroné, corrigé
+  explicitement plutôt que laissé en l'état : la suite e2e `apps/api`
+  ne démarrait plus (projet entier, pas spécifique à cette phase),
+  d'abord attribuée à un problème de chargement du compilateur WASM de
+  Prisma 7.x (`WasmQueryCompilerLoader`/`getQueryCompilerWasmModule`).
+  **Cette attribution était fausse** — le symptôme observé alors
+  (`pool timeout... active=0 idle=0`) était réel, mais sa cause ne
+  l'était pas. La vraie cause, révélée par un rapport de bug utilisateur
+  distinct ("Internal server error" au login, `docker logs` exploités
+  jusqu'au champ `cause` imbriqué de l'erreur Prisma) : authentification
+  MySQL `caching_sha2_password` sans `allowPublicKeyRetrieval`, voir
+  l'entrée dédiée ci-dessous. Le compilateur WASM n'a jamais été en
+  cause ; le pool ne se remplissait simplement jamais faute
+  d'authentification réussie, sur toute requête Prisma du projet, pas
+  seulement en test. Leçon retenue : un symptôme "pool timeout"
+  générique doit toujours être creusé jusqu'au champ `cause` imbriqué
+  avant toute attribution, jamais arrêté au premier message d'erreur de
+  surface.
 
 ## ✅ Corrigé
 
@@ -1960,8 +1951,32 @@ gabarit que Phase 8) : deux interventions concurrentes sur la même
 tâche (une seule aboutit, stock/coût jamais dupliqués) ; une annulation
 concurrente à une intervention sur la même tâche (état final soit
 `REALISEE`+1 intervention, soit `ANNULEE`+0 intervention, jamais les
-deux). **Non exécutés à ce stade** — voir le point ouvert transversal
-"suite e2e ne démarre plus" documenté sous `## Phase 20` ci-dessus.
+deux). **Exécutés avec succès après correction du blocage e2e transversal
+(voir entrée dédiée ci-dessous)** — 5 exécutions consécutives, aucun
+flake.
+
+**Second correctif découvert en les exécutant pour de vrai** : le
+premier des deux tests échouait `[201,500]` au lieu de `[201,409]` — un
+vrai deadlock MySQL (code 1213 "Deadlock found") survenant dans
+`StockMovementsService.recordMovementInTransaction` (verrouillage
+`Item` via `$queryRaw`), remonté par Prisma sous le code générique
+**P2010** ("Raw query failed"), jamais **P2034** — `isSerializationFailure`
+ne le rattrapait donc pas, le retry ne se déclenchait jamais. Le vrai
+code MySQL (1213 deadlock / 1205 lock wait timeout) est niché dans
+`error.meta.driverAdapterError.cause.originalCode`, jamais exposé
+directement. Corrigé dans les 3 nouvelles fonctions
+`isSerializationFailure` de cette phase (`maintenance-interventions.
+service.ts`, `maintenance-tasks.service.ts`, `assets.service.ts`) —
+reconnaissent désormais P2034 ET (P2010 avec code MySQL 1213/1205).
+**Risque transversal non corrigé ailleurs** : les 5 occurrences
+préexistantes du couple `MAX_TRANSACTION_RETRIES`/`isSerializationFailure`
+(`egg-stock`, `orientation`, `incubation-batches`, `sales`,
+`stock-movements`) ne reconnaissent que P2034 — aucune n'a été prouvée
+défaillante par un test réel à ce jour, mais le même angle mort
+structurel s'y trouve probablement dès que leur transaction contient un
+`$queryRaw` verrouillé. Non corrigé cette phase (hors périmètre —
+aucune de ces 5 méthodes n'est touchée par le durcissement V6), à
+vérifier si un incident similaire y survient.
 
 Voir `maintenance-tasks.service.ts`, `maintenance-interventions.service.ts`,
 `maintenance.e2e-spec.ts`.
@@ -2020,9 +2035,9 @@ Voir `depreciation.calculations.ts`, `depreciation.calculations.spec.ts`,
   ci-dessus. Corrigé : verrou `SELECT ... FOR UPDATE` sur `assets` (même
   patron), retry P2034 par cohérence de style (même nuance : pas une
   nécessité technique stricte pour un verrou mono-ligne). **1 test de
-  concurrence dédié** (`assets.e2e-spec.ts`, non exécuté — voir le point
-  ouvert transversal e2e ci-dessus) : deux réformes simultanées sur le
-  même actif → `[201,409]`, un seul enregistrement d'audit
+  concurrence dédié** (`assets.e2e-spec.ts`, exécuté avec succès — voir
+  entrée dédiée au blocage e2e ci-dessous) : deux réformes simultanées
+  sur le même actif → `[201,409]`, un seul enregistrement d'audit
   `ASSET_REFORMED`.
 - **Aucune validation croisée de dates sur Asset** — `reformDate`/
   `warrantyExpiresAt` pouvaient être antérieures à `purchaseDate`/
@@ -2034,6 +2049,51 @@ Voir `depreciation.calculations.ts`, `depreciation.calculations.spec.ts`,
   fait contre `existing.purchaseDate`).
 
 Voir `assets.service.ts`, `assets.e2e-spec.ts`.
+
+### Blocage transversal — connexion MySQL, `caching_sha2_password` sans `allowPublicKeyRetrieval` (corrigé en Phase 20, mal diagnostiqué une première fois)
+
+**Cause réelle du blocage e2e documenté plus haut sous "Phase 20" — et,
+plus grave, de l'erreur "Internal server error" au login en usage réel
+(`POST /api/v1/auth/connexion`)**, tous deux le même symptôme de
+surface : `PrismaClientKnownRequestError` code `45028`, "pool timeout...
+pool connections: active=0 idle=0", sur la toute première requête
+Prisma de chaque nouvelle instance d'app (tests, mais aussi le
+conteneur `dondy-elevage-api` en usage normal). Le diagnostic initial
+(section "Phase 20" ci-dessus, avant correction) attribuait ce
+symptôme au compilateur WASM de Prisma — **faux**, découvert en
+creusant le champ `cause` imbriqué de l'erreur réelle, remonté dans les
+logs du conteneur API (`docker logs dondy-elevage-api`) lors du rapport
+de bug utilisateur sur le login :
+
+```
+cause: '(conn:25, no: 45044, SQLState: 08S01) RSA public key is not
+available client side. Either set option `cachingRsaPublicKey` to
+indicate public key path, or allow public key retrieval with option
+`allowPublicKeyRetrieval`'
+```
+
+`dondy_user` utilise le plugin d'authentification `caching_sha2_password`
+(défaut de l'image `mysql:8.4` depuis MySQL 8.0), qui exige soit TLS,
+soit `allowPublicKeyRetrieval=true` côté client pour l'échange de clé
+RSA lors de la première connexion d'une session. Aucune des `DATABASE_URL`
+du projet ne portait ce paramètre — chaque tentative de connexion
+échouait silencieusement à l'authentification, jamais restituée au
+pool, jusqu'au timeout (d'où "pool timeout" en symptôme de surface,
+sans rapport apparent avec l'authentification).
+
+**Corrigé** : `?allowPublicKeyRetrieval=true` ajouté aux 4
+`DATABASE_URL` du projet (`docker-compose.dev.yml` — la valeur
+réellement utilisée par le conteneur `api` — ainsi que `.env`/`.env.example`
+à la racine et dans `apps/api/`, pour rester cohérents même si non
+directement consommés par le conteneur). **Dev uniquement, documenté
+explicitement comme tel dans chaque commentaire** — en production, une
+vraie configuration TLS remplace ce paramètre, jamais l'inverse.
+Vérifié en conditions réelles après correction : `POST /api/v1/auth/
+connexion` répond `200` avec un JWT valide (login réel via le navigateur,
+session authentifiée jusqu'au tableau de bord), et la suite e2e complète
+(189/189 tests, 14 fichiers) s'exécute désormais sans aucun blocage.
+
+Voir `docker/docker-compose.dev.yml`, `.env.example`, `apps/api/.env.example`.
 
 ## Comment utiliser ce document
 
