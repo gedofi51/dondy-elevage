@@ -179,6 +179,11 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.ATTENDANCE_CREATE,
       PERMISSIONS.ATTENDANCE_READ,
       PERMISSIONS.ATTENDANCE_UPDATE,
+      // Personnel — Lot 4 : accès complet, même profil qu'Employee/
+      // Attendance ci-dessus.
+      PERMISSIONS.EMPLOYEE_TASKS_CREATE,
+      PERMISSIONS.EMPLOYEE_TASKS_READ,
+      PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
     ],
   },
   {
@@ -325,6 +330,10 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.ATTENDANCE_CREATE,
       PERMISSIONS.ATTENDANCE_READ,
       PERMISSIONS.ATTENDANCE_UPDATE,
+      // Personnel — Lot 4 : accès complet, voir la note ci-dessus.
+      PERMISSIONS.EMPLOYEE_TASKS_CREATE,
+      PERMISSIONS.EMPLOYEE_TASKS_READ,
+      PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
     ],
   },
   {
@@ -388,6 +397,13 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.ATTENDANCE_CREATE,
       PERMISSIONS.ATTENDANCE_READ,
       PERMISSIONS.ATTENDANCE_UPDATE,
+      // Personnel — Lot 4 (MODULE_PERSONNEL.md, matrice confirmée avant
+      // implémentation) : CREATE+READ+UPDATE sur les tâches assignées,
+      // même profil qu'Attendance ci-dessus, explicitement donné comme
+      // "cohérent avec Attendance" par le cadrage.
+      PERMISSIONS.EMPLOYEE_TASKS_CREATE,
+      PERMISSIONS.EMPLOYEE_TASKS_READ,
+      PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
     ],
   },
   {
@@ -611,6 +627,8 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       // même logique que ci-dessus — le coût de personnel (présence)
       // relève du même mandat "rapports financiers".
       PERMISSIONS.ATTENDANCE_READ,
+      // Personnel — Lot 4 : lecture seule, même logique.
+      PERMISSIONS.EMPLOYEE_TASKS_READ,
     ],
   },
   {
@@ -690,6 +708,9 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       // Personnel — Lot 3 (MODULE_PERSONNEL.md §8) : "lecture des fiches
       // et plannings" — le pointage relève des "plannings" mentionnés.
       PERMISSIONS.ATTENDANCE_READ,
+      // Personnel — Lot 4 : lecture seule, même logique (tâches
+      // assignées = "plannings").
+      PERMISSIONS.EMPLOYEE_TASKS_READ,
     ],
   },
 ];

@@ -202,6 +202,16 @@ export const PERMISSIONS = {
   ATTENDANCE_CREATE: 'attendance.create',
   ATTENDANCE_READ: 'attendance.read',
   ATTENDANCE_UPDATE: 'attendance.update',
+
+  // Personnel — Lot 4 (module EmployeeTask, tâches assignées). Aucun
+  // moteur de tâches transverse trouvé dans le dépôt (Alert/Notification
+  // sont un pipeline d'alertes, pas d'assignation — voir
+  // DETTE_TECHNIQUE.md) : EmployeeTask autonome, même patron que
+  // MaintenanceTask. Pas de DELETE : ANNULEE (statut terminal, via
+  // EMPLOYEE_TASKS_UPDATE) joue ce rôle, comme pour Attendance.
+  EMPLOYEE_TASKS_CREATE: 'employee_tasks.create',
+  EMPLOYEE_TASKS_READ: 'employee_tasks.read',
+  EMPLOYEE_TASKS_UPDATE: 'employee_tasks.update',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -402,4 +412,9 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.ATTENDANCE_CREATE]: 'Enregistrer un pointage (présence/absence/congé/maladie)',
   [PERMISSIONS.ATTENDANCE_READ]: 'Consulter les pointages',
   [PERMISSIONS.ATTENDANCE_UPDATE]: 'Corriger un pointage déjà enregistré',
+
+  [PERMISSIONS.EMPLOYEE_TASKS_CREATE]: 'Assigner une tâche à un employé',
+  [PERMISSIONS.EMPLOYEE_TASKS_READ]: 'Consulter les tâches assignées',
+  [PERMISSIONS.EMPLOYEE_TASKS_UPDATE]:
+    'Modifier/faire progresser/annuler une tâche assignée',
 };
