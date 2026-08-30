@@ -22,8 +22,9 @@ import {
  *
  * POST /auth/connexion est throttlé à 10 requêtes/15 min par IP
  * (auth.controller.ts — protection brute force, non négociable). "Chaque
- * rôle testé" (11 rôles au total dans ce fichier) dépasse largement ce
- * budget si chaque utilisateur de test se connecte réellement en HTTP —
+ * rôle testé" (11 rôles au total dans ce fichier, RBAC §8 de
+ * docs/reference/MODULE_PERSONNEL.md) dépasse largement ce budget si
+ * chaque utilisateur de test se connecte réellement en HTTP —
  * un seul test dédié (voir plus bas) exerce le vrai flux HTTP pour
  * prouver l'intégration bout en bout ; tous les autres tokens sont signés
  * directement via TokenService (même utilisateur réel créé en base,
@@ -46,9 +47,9 @@ interface EmployeeResponseBody {
   deletedAt: string | null;
 }
 
-// Rôles sans aucune permission EMPLOYEES_* (principe de moindre privilège
-// — voir DETTE_TECHNIQUE.md, MODULE_PERSONNEL.md référencé par le cadrage
-// n'existe pas dans le dépôt).
+// Rôles sans aucune permission EMPLOYEES_* — voir docs/reference/
+// MODULE_PERSONNEL.md §8 (Lecteur/Lecture seule et Comptable sont testés
+// séparément ci-dessous, tous deux avec un accès partiel).
 const NO_ACCESS_ROLE_NAMES = [
   'Responsable élevage',
   'Responsable couvoir',
@@ -56,7 +57,6 @@ const NO_ACCESS_ROLE_NAMES = [
   'Magasinier / Responsable stocks',
   'Vendeur / Caisse',
   'Employé',
-  'Lecteur / Lecture seule',
 ] as const;
 
 describe('Employees — CRUD, RBAC et isolation farmId (e2e)', () => {
@@ -95,6 +95,7 @@ describe('Employees — CRUD, RBAC et isolation farmId (e2e)', () => {
       'Propriétaire / Administrateur',
       'Gérant / Responsable ferme',
       'Comptable / Responsable financier',
+      'Lecteur / Lecture seule',
       ...NO_ACCESS_ROLE_NAMES,
     ];
     for (const name of requiredRoleNames) {
@@ -329,6 +330,22 @@ describe('Employees — CRUD, RBAC et isolation farmId (e2e)', () => {
         .delete(`/api/v1/employees/${secondEmployeeId}`)
         .set('Authorization', `Bearer ${comptableToken}`)
         .expect(403);
+    });
+
+    it('Lecteur / Lecture seule : lecture seule (200 en GET, 403 en écriture) — MODULE_PERSONNEL.md §8', async () => {
+      const readerToken = await mintToken(farmA.id, 'Lecteur / Lecture seule');
+
+      await request(app.getHttpServer())
+        .get(`/api/v1/employees/${secondEmployeeId}`)
+        .set('Authorization', `Bearer ${readerToken}`)
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/employees')
+        .set('Authorization', `Bearer ${readerToken}`)
+        .send({ name: 'Refusé', position: 'Test', hireDate: '2026-01-01', baseSalaryFcfa: 1 })
+        .expect(403);
+      expect(body<ErrorResponseBody>(res).message).toContain('Permissions insuffisantes');
     });
 
     it.each(NO_ACCESS_ROLE_NAMES)(

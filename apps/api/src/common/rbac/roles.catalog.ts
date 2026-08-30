@@ -654,6 +654,15 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.WATER_INFRASTRUCTURE_READINGS_READ,
       PERMISSIONS.SOLAR_INFRASTRUCTURE_READINGS_READ,
       PERMISSIONS.NETWORK_STATUS_READINGS_READ,
+      // Personnel — corrigé suite à MODULE_PERSONNEL.md §8 (cadrage
+      // Phase 22, confirmé après coup) : "Lecteur — lecture des fiches
+      // et plannings, paie masquée". N'avait reçu aucun accès en Lot 2
+      // faute de ce document (moindre privilège appliqué par défaut,
+      // pas une décision confirmée). Limite assumée documentée dans
+      // DETTE_TECHNIQUE.md : baseSalaryFcfa est un champ d'Employee (pas
+      // séparé dans Payroll), donc visible ici aussi malgré "paie
+      // masquée" — aucune restriction champ par champ dans le projet.
+      PERMISSIONS.EMPLOYEES_READ,
     ],
   },
 ];
