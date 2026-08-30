@@ -1503,6 +1503,37 @@ pour la dette mobile associée, restée entière.
   mockup, sont dans le même cas mais explicitement exclus dès le
   cadrage de cette phase (aucun module réel derrière).
 
+## Personnel — Lot 1 (fondation de données)
+
+Modèles Prisma `Employee`/`Attendance`/`EmployeeTask`/`Payroll`/
+`SalaryAdvance` (migration `20260830171702_add_personnel_module`) —
+**extension de périmètre assumée par le porteur de projet le
+2026-08-30**, au-delà des cahiers V1/V5/V6 : la V5 (§17 "Hors périmètre
+et feuille de route V6") liste explicitement "Paie complète et
+comptabilité générale réglementaire" comme non prévue, aux côtés de la
+maintenance préventive (depuis construite en V6) et des prévisions IA
+(pas encore construites) ; le cahier V6 ne mentionne le Personnel nulle
+part. Fondation de données uniquement, aucun code applicatif (DTO,
+service, contrôleur, permission RBAC) — voir le commentaire en tête de
+section dans `schema.prisma`.
+
+- **Aucune couche de contrôle sur ces 5 tables pour l'instant** —
+  normal et attendu à ce stade (rien n'est exposé, aucun endpoint
+  n'existe), mais à ne pas oublier : le principe non négociable "RBAC
+  vérifié en back-end" (CLAUDE.md) s'appliquera dès le premier lot qui
+  expose un contrôleur, pas seulement au moment de câbler le frontend.
+- **`Employee.code` (matricule) sans générateur** — même situation que
+  `BroilerBatch.code`/`Asset.code` à leur création : le champ existe,
+  la logique de génération (format, ex. `EMP-AAAA-NNN`) revient à un
+  lot applicatif ultérieur.
+- **`Payroll.status` volontairement minimal (BROUILLON/VALIDE)** —
+  aucun lien vers `Payment`/`Expense` pour le suivi du paiement effectif
+  du bulletin. Le cahier V1 §8.5 liste déjà "Personnel" comme catégorie
+  de dépense existante (texte libre sur `Expense.category`) — réutiliser
+  ce mécanisme plutôt qu'en inventer un nouveau est l'option la plus
+  probable, mais non tranchée : décision différée à un lot applicatif
+  dédié plutôt que présumée dans ce lot schéma-only.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
