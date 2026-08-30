@@ -427,4 +427,65 @@ describe('Employees — CRUD, RBAC et isolation farmId (e2e)', () => {
       expect(ids).not.toContain(employeeBId);
     });
   });
+
+  describe('Masquage champ par champ de baseSalaryFcfa (Lot 5) — MODULE_PERSONNEL.md §8', () => {
+    let maskingEmployeeId: string;
+
+    beforeAll(async () => {
+      const employee = await request(app.getHttpServer())
+        .post('/api/v1/employees')
+        .set('Authorization', `Bearer ${ownerAToken}`)
+        .send({
+          name: 'Employé Test Masquage',
+          position: 'Test',
+          hireDate: '2026-01-01',
+          baseSalaryFcfa: 42_000,
+        })
+        .expect(201);
+      maskingEmployeeId = body<EmployeeResponseBody>(employee).id;
+      createdEmployeeIds.push(maskingEmployeeId);
+    });
+
+    it('un Propriétaire (EMPLOYEES_VIEW_SALARY) voit baseSalaryFcfa dans le JSON de réponse', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/employees/${maskingEmployeeId}`)
+        .set('Authorization', `Bearer ${ownerAToken}`)
+        .expect(200);
+      expect('baseSalaryFcfa' in body<Record<string, unknown>>(res)).toBe(true);
+    });
+
+    it('un Lecteur (EMPLOYEES_READ sans EMPLOYEES_VIEW_SALARY) ne voit JAMAIS baseSalaryFcfa dans le JSON — clé absente, pas juste null', async () => {
+      const readerToken = await mintToken(farmA.id, 'Lecteur / Lecture seule');
+
+      const oneRes = await request(app.getHttpServer())
+        .get(`/api/v1/employees/${maskingEmployeeId}`)
+        .set('Authorization', `Bearer ${readerToken}`)
+        .expect(200);
+      const oneBody = body<Record<string, unknown>>(oneRes);
+      expect('baseSalaryFcfa' in oneBody).toBe(false);
+      expect(JSON.stringify(oneBody)).not.toContain('baseSalaryFcfa');
+      // Les autres champs restent bien présents — seul le salaire est masqué.
+      expect(oneBody.id).toBe(maskingEmployeeId);
+      expect(oneBody.name).toBeDefined();
+
+      const listRes = await request(app.getHttpServer())
+        .get('/api/v1/employees')
+        .set('Authorization', `Bearer ${readerToken}`)
+        .expect(200);
+      const listBody = body<Record<string, unknown>[]>(listRes);
+      expect(listBody.length).toBeGreaterThan(0);
+      for (const item of listBody) {
+        expect('baseSalaryFcfa' in item).toBe(false);
+      }
+    });
+
+    it('un Comptable (EMPLOYEES_VIEW_SALARY, Lot 5) voit baseSalaryFcfa dans le JSON de réponse', async () => {
+      const accountantToken = await mintToken(farmA.id, 'Comptable / Responsable financier');
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/employees/${maskingEmployeeId}`)
+        .set('Authorization', `Bearer ${accountantToken}`)
+        .expect(200);
+      expect('baseSalaryFcfa' in body<Record<string, unknown>>(res)).toBe(true);
+    });
+  });
 });
