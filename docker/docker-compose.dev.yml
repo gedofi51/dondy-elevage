@@ -60,7 +60,14 @@ services:
     environment:
       # Depuis le réseau Docker interne : nom de service + port interne du conteneur
       # (distinct du port hôte 3307 publié ci-dessus, utile seulement hors Docker).
-      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}
+      # allowPublicKeyRetrieval=true : requis en dev pour l'authentification
+      # caching_sha2_password de MySQL 8.4 sans TLS (échange de clé RSA côté
+      # client, sinon "RSA public key is not available client side" — pool
+      # de connexions jamais alimenté, tout appel Prisma time-out en
+      # apparence sans rapport, voir DETTE_TECHNIQUE.md). Dev uniquement —
+      # en production, une vraie configuration TLS remplace ce paramètre,
+      # jamais l'inverse.
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}?allowPublicKeyRetrieval=true
       REDIS_URL: redis://redis:6379
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
