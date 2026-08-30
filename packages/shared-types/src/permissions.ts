@@ -212,6 +212,26 @@ export const PERMISSIONS = {
   EMPLOYEE_TASKS_CREATE: 'employee_tasks.create',
   EMPLOYEE_TASKS_READ: 'employee_tasks.read',
   EMPLOYEE_TASKS_UPDATE: 'employee_tasks.update',
+
+  // Personnel — Lot 5 (Payroll/SalaryAdvance, suivi indicatif de la paie
+  // — pas de calcul légal de charges/fiscalité, pas de bulletin à valeur
+  // légale, voir MODULE_PERSONNEL.md). Pas de DELETE sur les deux : une
+  // fois VALIDE, un Payroll est terminal (jamais supprimé/modifié,
+  // décision confirmée — voir DETTE_TECHNIQUE.md) ; une SalaryAdvance
+  // déjà déduite dans un relevé est immuable, mais reste visible tant
+  // qu'elle existe.
+  PAYROLL_CREATE: 'payroll.create',
+  PAYROLL_READ: 'payroll.read',
+  PAYROLL_UPDATE: 'payroll.update',
+  SALARY_ADVANCES_CREATE: 'salary_advances.create',
+  SALARY_ADVANCES_READ: 'salary_advances.read',
+  SALARY_ADVANCES_UPDATE: 'salary_advances.update',
+
+  // Personnel — Lot 5 : permission distincte d'EMPLOYEES_READ, contrôle
+  // uniquement la visibilité du champ Employee.baseSalaryFcfa dans les
+  // réponses — voir EmployeesService (masquage champ par champ,
+  // précédent documenté dans DETTE_TECHNIQUE.md).
+  EMPLOYEES_VIEW_SALARY: 'employees.view_salary',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -417,4 +437,12 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.EMPLOYEE_TASKS_READ]: 'Consulter les tâches assignées',
   [PERMISSIONS.EMPLOYEE_TASKS_UPDATE]:
     'Modifier/faire progresser/annuler une tâche assignée',
+
+  [PERMISSIONS.PAYROLL_CREATE]: 'Créer un relevé de paie (suivi indicatif)',
+  [PERMISSIONS.PAYROLL_READ]: 'Consulter les relevés de paie',
+  [PERMISSIONS.PAYROLL_UPDATE]: 'Corriger un relevé en brouillon, ou le valider',
+  [PERMISSIONS.SALARY_ADVANCES_CREATE]: 'Enregistrer une avance sur salaire',
+  [PERMISSIONS.SALARY_ADVANCES_READ]: 'Consulter les avances sur salaire',
+  [PERMISSIONS.SALARY_ADVANCES_UPDATE]: 'Corriger une avance non encore déduite',
+  [PERMISSIONS.EMPLOYEES_VIEW_SALARY]: 'Voir le salaire de base sur une fiche employé',
 };

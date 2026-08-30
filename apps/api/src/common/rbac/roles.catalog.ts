@@ -184,6 +184,15 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.EMPLOYEE_TASKS_CREATE,
       PERMISSIONS.EMPLOYEE_TASKS_READ,
       PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
+      // Personnel — Lot 5 : accès complet à la paie (suivi indicatif),
+      // voir la fiche employé en clair (EMPLOYEES_VIEW_SALARY).
+      PERMISSIONS.PAYROLL_CREATE,
+      PERMISSIONS.PAYROLL_READ,
+      PERMISSIONS.PAYROLL_UPDATE,
+      PERMISSIONS.SALARY_ADVANCES_CREATE,
+      PERMISSIONS.SALARY_ADVANCES_READ,
+      PERMISSIONS.SALARY_ADVANCES_UPDATE,
+      PERMISSIONS.EMPLOYEES_VIEW_SALARY,
     ],
   },
   {
@@ -334,6 +343,15 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.EMPLOYEE_TASKS_CREATE,
       PERMISSIONS.EMPLOYEE_TASKS_READ,
       PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
+      // Personnel — Lot 5 : accès complet, voir la note sur le rôle
+      // Propriétaire / Administrateur ci-dessus.
+      PERMISSIONS.PAYROLL_CREATE,
+      PERMISSIONS.PAYROLL_READ,
+      PERMISSIONS.PAYROLL_UPDATE,
+      PERMISSIONS.SALARY_ADVANCES_CREATE,
+      PERMISSIONS.SALARY_ADVANCES_READ,
+      PERMISSIONS.SALARY_ADVANCES_UPDATE,
+      PERMISSIONS.EMPLOYEES_VIEW_SALARY,
     ],
   },
   {
@@ -629,6 +647,18 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.ATTENDANCE_READ,
       // Personnel — Lot 4 : lecture seule, même logique.
       PERMISSIONS.EMPLOYEE_TASKS_READ,
+      // Personnel — Lot 5 (MODULE_PERSONNEL.md §8) : accès complet à la
+      // paie — "Comptable — Achats, dépenses, paiements, rapports
+      // financiers" (§11) couvre directement ce mandat, contrairement à
+      // Employee (resté lecture seule). EMPLOYEES_VIEW_SALARY inclus :
+      // ce rôle a précisément pour mandat de voir les montants.
+      PERMISSIONS.PAYROLL_CREATE,
+      PERMISSIONS.PAYROLL_READ,
+      PERMISSIONS.PAYROLL_UPDATE,
+      PERMISSIONS.SALARY_ADVANCES_CREATE,
+      PERMISSIONS.SALARY_ADVANCES_READ,
+      PERMISSIONS.SALARY_ADVANCES_UPDATE,
+      PERMISSIONS.EMPLOYEES_VIEW_SALARY,
     ],
   },
   {
@@ -700,10 +730,7 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       // Phase 22, confirmé après coup) : "Lecteur — lecture des fiches
       // et plannings, paie masquée". N'avait reçu aucun accès en Lot 2
       // faute de ce document (moindre privilège appliqué par défaut,
-      // pas une décision confirmée). Limite assumée documentée dans
-      // DETTE_TECHNIQUE.md : baseSalaryFcfa est un champ d'Employee (pas
-      // séparé dans Payroll), donc visible ici aussi malgré "paie
-      // masquée" — aucune restriction champ par champ dans le projet.
+      // pas une décision confirmée).
       PERMISSIONS.EMPLOYEES_READ,
       // Personnel — Lot 3 (MODULE_PERSONNEL.md §8) : "lecture des fiches
       // et plannings" — le pointage relève des "plannings" mentionnés.
@@ -711,6 +738,12 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       // Personnel — Lot 4 : lecture seule, même logique (tâches
       // assignées = "plannings").
       PERMISSIONS.EMPLOYEE_TASKS_READ,
+      // Personnel — Lot 5 : "paie masquée" désormais appliquée
+      // littéralement — PAS de PAYROLL_*/SALARY_ADVANCES_* (aucun accès)
+      // ET PAS d'EMPLOYEES_VIEW_SALARY (baseSalaryFcfa masqué champ par
+      // champ dans la réponse Employee malgré EMPLOYEES_READ — voir
+      // EmployeesService, mécanisme documenté dans DETTE_TECHNIQUE.md
+      // comme précédent réutilisable). Absence volontaire, pas un oubli.
     ],
   },
 ];
