@@ -96,6 +96,63 @@ describe('computeDepreciationSchedule', () => {
   });
 });
 
+describe('computeDepreciationSchedule — convention TRENTE_360 (Phase 20)', () => {
+  it('mise en service alignée sur un début de mois (1er avril, durée 1 an)', () => {
+    // Avril à décembre = 9 mois pleins - 1 jour de départ + 1 (inclusif) = 270/360.
+    const lines = computeDepreciationSchedule(360_000, 0, utc(2026, 4, 1), 1, 'TRENTE_360');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]!.dotationFcfa).toBe(270_000); // round(360000 * 270/360)
+    expect(lines[1]!.dotationFcfa).toBe(90_000); // solde
+    expect(lines[1]!.cumulativeFcfa).toBe(360_000);
+  });
+
+  it('milieu de mois (15 mars, durée 1 an)', () => {
+    const lines = computeDepreciationSchedule(360_000, 0, utc(2026, 3, 15), 1, 'TRENTE_360');
+    expect(lines[0]!.dotationFcfa).toBe(286_000); // round(360000 * 286/360)
+    expect(lines[1]!.dotationFcfa).toBe(74_000); // solde
+    expect(lines[1]!.cumulativeFcfa).toBe(360_000);
+  });
+
+  it('fin de mois — le 31 (31 janvier, durée 1 an)', () => {
+    const lines = computeDepreciationSchedule(360_000, 0, utc(2026, 1, 31), 1, 'TRENTE_360');
+    expect(lines[0]!.dotationFcfa).toBe(331_000); // round(360000 * 331/360)
+    expect(lines[1]!.dotationFcfa).toBe(29_000); // solde
+  });
+
+  it('cas limite — mise en service le 31 décembre : dotation minimale non nulle, jamais 0', () => {
+    // Jour 31 ramené à 30 pour début ET fin (30E/360) — écart de 1 jour
+    // (sémantique inclusive), pas 0 : voir commentaire de days360().
+    const lines = computeDepreciationSchedule(360_000, 0, utc(2026, 12, 31), 1, 'TRENTE_360');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]!.dotationFcfa).toBe(1_000); // round(360000 * 1/360)
+    expect(lines[0]!.dotationFcfa).toBeGreaterThan(0);
+    expect(lines[1]!.dotationFcfa).toBe(359_000); // solde
+    expect(lines[1]!.cumulativeFcfa).toBe(360_000);
+  });
+
+  it('1er janvier : prorata sautée quelle que soit la convention (identique à CALENDAIRE)', () => {
+    const trente360 = computeDepreciationSchedule(100_000, 0, utc(2026, 1, 1), 1, 'TRENTE_360');
+    const calendaire = computeDepreciationSchedule(100_000, 0, utc(2026, 1, 1), 1, 'CALENDAIRE');
+    expect(trente360).toEqual(calendaire);
+    expect(trente360).toHaveLength(1);
+    expect(trente360[0]!.dotationFcfa).toBe(100_000);
+  });
+
+  it('indépendante des années bissextiles — même dotation pour une mise en service au même jour, année bissextile ou non', () => {
+    const leap = computeDepreciationSchedule(360_000, 0, utc(2028, 3, 1), 1, 'TRENTE_360');
+    const nonLeap = computeDepreciationSchedule(360_000, 0, utc(2029, 3, 1), 1, 'TRENTE_360');
+    expect(leap[0]!.dotationFcfa).toBe(nonLeap[0]!.dotationFcfa);
+  });
+
+  it('la somme des dotations tombe toujours exactement sur la base amortissable (cas peu divisible)', () => {
+    const lines = computeDepreciationSchedule(333_333, 11_111, utc(2026, 4, 17), 7, 'TRENTE_360');
+    const base = 333_333 - 11_111;
+    const total = lines.reduce((sum, l) => sum + l.dotationFcfa, 0);
+    expect(total).toBe(base);
+    expect(lines[lines.length - 1]!.cumulativeFcfa).toBe(base);
+  });
+});
+
 describe('findCurrentDepreciationEntry', () => {
   const entries = [
     { periodEnd: utc(2026, 12, 31), label: 'year1' },
