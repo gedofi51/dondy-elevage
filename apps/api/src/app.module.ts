@@ -49,6 +49,8 @@ import { InfrastructureModule } from './modules/infrastructure/infrastructure.mo
 import { EmployeesModule } from './modules/employees/employees.module';
 import { AttendanceModule } from './modules/employees/attendance/attendance.module';
 import { EmployeeTasksModule } from './modules/employees/tasks/employee-tasks.module';
+import { PayrollModule } from './modules/employees/payroll/payroll.module';
+import { SalaryAdvancesModule } from './modules/employees/advances/salary-advances.module';
 
 @Module({
   imports: [
@@ -109,6 +111,8 @@ import { EmployeeTasksModule } from './modules/employees/tasks/employee-tasks.mo
     EmployeesModule,
     AttendanceModule,
     EmployeeTasksModule,
+    PayrollModule,
+    SalaryAdvancesModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
