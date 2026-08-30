@@ -12,7 +12,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import type { Employee } from '@prisma/client';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
@@ -22,6 +21,7 @@ import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { maskSalaryForResponse, type EmployeeMaybeWithSalary } from './employees.validation';
 
 @Controller('employees')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -34,14 +34,16 @@ export class EmployeesController {
     @CurrentUser() user: AccessTokenPayload,
     @Body() dto: CreateEmployeeDto,
     @Req() req: Request,
-  ): Promise<Employee> {
-    return this.employeesService.create(user, dto, req.ip ?? null);
+  ): Promise<EmployeeMaybeWithSalary> {
+    const employee = await this.employeesService.create(user, dto, req.ip ?? null);
+    return maskSalaryForResponse(employee, user.permissions);
   }
 
   @Get()
   @RequirePermissions(PERMISSIONS.EMPLOYEES_READ)
-  async findAll(@CurrentUser() user: AccessTokenPayload): Promise<Employee[]> {
-    return this.employeesService.findAll(user);
+  async findAll(@CurrentUser() user: AccessTokenPayload): Promise<EmployeeMaybeWithSalary[]> {
+    const employees = await this.employeesService.findAll(user);
+    return employees.map((employee) => maskSalaryForResponse(employee, user.permissions));
   }
 
   @Get(':id')
@@ -49,8 +51,9 @@ export class EmployeesController {
   async findOne(
     @CurrentUser() user: AccessTokenPayload,
     @Param('id') id: string,
-  ): Promise<Employee> {
-    return this.employeesService.findOne(user, id);
+  ): Promise<EmployeeMaybeWithSalary> {
+    const employee = await this.employeesService.findOne(user, id);
+    return maskSalaryForResponse(employee, user.permissions);
   }
 
   @Patch(':id')
@@ -60,8 +63,9 @@ export class EmployeesController {
     @Param('id') id: string,
     @Body() dto: UpdateEmployeeDto,
     @Req() req: Request,
-  ): Promise<Employee> {
-    return this.employeesService.update(user, id, dto, req.ip ?? null);
+  ): Promise<EmployeeMaybeWithSalary> {
+    const employee = await this.employeesService.update(user, id, dto, req.ip ?? null);
+    return maskSalaryForResponse(employee, user.permissions);
   }
 
   @Delete(':id')

@@ -1,6 +1,15 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import type { Employee } from '@prisma/client';
 import { EmployeeStatus } from '@prisma/client';
+import { PERMISSIONS } from '../../common/rbac/permissions.constants';
 import type { UpdateEmployeeDto } from './dto/update-employee.dto';
+
+/** Type de retour du contrôleur une fois le masquage appliqué —
+ * baseSalaryFcfa devient optionnel (absent, pas juste undefined, une
+ * fois sérialisé en JSON) plutôt que retiré du type Employee complet. */
+export type EmployeeMaybeWithSalary = Omit<Employee, 'baseSalaryFcfa'> & {
+  baseSalaryFcfa?: number;
+};
 
 /** Statuts où la fiche est gelée sauf réactivation explicite (règle du
  * Lot 2 : "un employé inactif/sorti n'est modifiable que pour
@@ -42,4 +51,30 @@ export function assertDatesConsistent(hireDate: Date, endDate: Date | null | und
   if (endDate && endDate < hireDate) {
     throw new BadRequestException("La date de sortie ne peut pas précéder la date d'embauche.");
   }
+}
+
+/**
+ * Masquage champ par champ (Lot 5) — PREMIER précédent de ce type dans
+ * le projet, documenté comme réutilisable dans DETTE_TECHNIQUE.md.
+ * Appliquée exclusivement à la frontière contrôleur (chaque méthode
+ * d'EmployeesController), jamais dans EmployeesService/getRaw : les
+ * autres services du module Personnel (Payroll notamment) ont besoin de
+ * la vraie valeur de `baseSalaryFcfa` pour leurs calculs internes
+ * (instantané à la création d'un relevé de paie) indépendamment de ce
+ * que l'utilisateur courant a le droit de VOIR dans une réponse HTTP —
+ * conflater "donnée interne" et "donnée affichée" aurait cassé ce
+ * besoin dès qu'un rôle avec PAYROLL_CREATE mais sans
+ * EMPLOYEES_VIEW_SALARY existerait (aucun cas aujourd'hui, mais un
+ * couplage fragile à éviter dès l'origine).
+ */
+export function maskSalaryForResponse<T extends { baseSalaryFcfa: number }>(
+  employee: T,
+  permissions: string[],
+): Omit<T, 'baseSalaryFcfa'> & { baseSalaryFcfa?: number } {
+  if (permissions.includes(PERMISSIONS.EMPLOYEES_VIEW_SALARY)) {
+    return employee;
+  }
+  const masked: Omit<T, 'baseSalaryFcfa'> & { baseSalaryFcfa?: number } = { ...employee };
+  delete masked.baseSalaryFcfa;
+  return masked;
 }
