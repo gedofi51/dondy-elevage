@@ -672,4 +672,110 @@ describe('Maintenance — cycle complet (e2e, scénarios V6 §19)', () => {
       expect(openTasks).toHaveLength(1);
     });
   });
+
+  describe('Concurrence — verrou MaintenanceTask, 7e occurrence du défaut Phase 8 (Phase 20)', () => {
+    it('deux interventions concurrentes sur la même tâche : une seule aboutit, coût/stock jamais dupliqués', async () => {
+      const taskRes = await request(app.getHttpServer())
+        .post('/api/v1/maintenance-tasks')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          assetId: pumpAssetId,
+          type: 'CORRECTIVE',
+          designation: 'Tâche concurrence — interventions',
+          dueDate: '2026-12-31',
+        })
+        .expect(201);
+      const concurrencyTaskId = body<MaintenanceTaskResponseBody>(taskRes).id;
+
+      const sendIntervention = () =>
+        request(app.getHttpServer())
+          .post('/api/v1/maintenance-interventions')
+          .set('Authorization', `Bearer ${ownerToken}`)
+          .send({
+            assetId: pumpAssetId,
+            taskId: concurrencyTaskId,
+            interventionDate: '2026-06-15',
+            laborCostFcfa: 1_000,
+            parts: [{ itemId: partItemId, quantity: 1 }],
+          });
+
+      const [resA, resB] = await Promise.all([sendIntervention(), sendIntervention()]);
+      const statuses = [resA.status, resB.status].sort();
+      // Ni les deux ne réussissent (double coût/stock), ni les deux
+      // n'échouent — exactement une des deux, l'autre un 409 métier propre.
+      expect(statuses).toEqual([201, 409]);
+
+      const interventions = await prisma.maintenanceIntervention.findMany({
+        where: { taskId: concurrencyTaskId },
+      });
+      expect(interventions).toHaveLength(1);
+
+      const taskAfter = await request(app.getHttpServer())
+        .get(`/api/v1/maintenance-tasks/${concurrencyTaskId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      expect(body<MaintenanceTaskResponseBody>(taskAfter).status).toBe('REALISEE');
+
+      const itemRes = await request(app.getHttpServer())
+        .get(`/api/v1/items/${partItemId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      // 8 (déjà consommé par le test 3 précédent) - 1 (une seule des deux
+      // interventions a effectivement consommé la pièce) = 7.
+      expect(Number(body<ItemResponseBody>(itemRes).currentStock)).toBe(7);
+    });
+
+    it('une annulation concurrente à une intervention sur la même tâche : état final cohérent, jamais les deux', async () => {
+      const taskRes = await request(app.getHttpServer())
+        .post('/api/v1/maintenance-tasks')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({
+          assetId: pumpAssetId,
+          type: 'CORRECTIVE',
+          designation: 'Tâche concurrence — annulation vs intervention',
+          dueDate: '2026-12-31',
+        })
+        .expect(201);
+      const raceTaskId = body<MaintenanceTaskResponseBody>(taskRes).id;
+
+      const sendIntervention = () =>
+        request(app.getHttpServer())
+          .post('/api/v1/maintenance-interventions')
+          .set('Authorization', `Bearer ${ownerToken}`)
+          .send({
+            assetId: pumpAssetId,
+            taskId: raceTaskId,
+            interventionDate: '2026-06-16',
+            laborCostFcfa: 500,
+          });
+      const sendCancel = () =>
+        request(app.getHttpServer())
+          .post(`/api/v1/maintenance-tasks/${raceTaskId}/annuler`)
+          .set('Authorization', `Bearer ${ownerToken}`)
+          .send({ cancelReason: 'Test de concurrence' });
+
+      const [resA, resB] = await Promise.all([sendIntervention(), sendCancel()]);
+      const statuses = [resA.status, resB.status].sort();
+      // .../annuler et POST /maintenance-interventions répondent tous deux
+      // 201 par défaut (aucun @HttpCode) — l'un des deux gagne la course.
+      expect(statuses).toEqual([201, 409]);
+
+      const taskAfter = await request(app.getHttpServer())
+        .get(`/api/v1/maintenance-tasks/${raceTaskId}`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .expect(200);
+      const finalStatus = body<MaintenanceTaskResponseBody>(taskAfter).status;
+      const interventions = await prisma.maintenanceIntervention.findMany({
+        where: { taskId: raceTaskId },
+      });
+      // Jamais les deux à la fois : soit REALISEE + 1 intervention, soit
+      // ANNULEE + 0 intervention — jamais un état incohérent ni un 500.
+      if (finalStatus === 'REALISEE') {
+        expect(interventions).toHaveLength(1);
+      } else {
+        expect(finalStatus).toBe('ANNULEE');
+        expect(interventions).toHaveLength(0);
+      }
+    });
+  });
 });

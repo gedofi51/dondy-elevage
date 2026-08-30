@@ -1075,7 +1075,11 @@ cahier.
   `apps/api/src/modules/assets/calculations/depreciation.calculations.ts`
   (13 tests unitaires, cas limites : durée 1 an, mise en service au 1er
   janvier exact, année bissextile, valeur résiduelle nulle/non nulle,
-  arrondi sur une base peu divisible).
+  arrondi sur une base peu divisible). **Mise à jour Phase 20** : le
+  point de blocage technique (redéploiement nécessaire pour changer de
+  convention) est levé — voir "✅ Corrigé" ci-dessous — mais la
+  validation comptable elle-même reste entièrement ouverte, ce n'est
+  pas la même chose que "résolu".
 - **`serviceDate` obligatoire à la création, pas de statut intermédiaire
   "acquis mais pas encore en service"** : le cahier distingue "date
   d'achat" et "date de mise en service" comme deux étapes du cycle de
@@ -1409,6 +1413,54 @@ Premier frontend V6, construit sur les 3 modules backend Phase 16-18.
   corriger). Idem pour `MaintenancePlan` (`MAINTENANCE_PLANS_UPDATE/
   DELETE` non câblés — un plan mal configuré se corrige aujourd'hui
   uniquement côté API/support).
+
+## Phase 20 — Durcissement V6 (Patrimoine/Maintenance)
+
+Correctifs ciblés sur les 2 points 🔴 du bilan de complétude V6
+(`docs/architecture/BILAN_COMPLETUDE_V6_PATRIMOINE_MAINTENANCE_INFRA.md`)
+et 3 des 4 points 🟠 secondaires — même logique que les Phases 8 et 15
+(durcissement avant d'ajouter du nouveau). Backend uniquement, aucun
+écran cette phase. Détail des corrections dans "✅ Corrigé" ci-dessous.
+
+- **Différé, pas traité cette phase — les 6 autres points lisant
+  `asset.status==='REFORME'` sans verrou** (constat transversal n°2 du
+  bilan V6 : `MaintenancePlansService.create()`,
+  `MaintenanceTasksService.create()`,
+  `MaintenanceInterventionsService.create()`, 3×
+  `*-infrastructure-readings.service.ts` `create()`). 4 des 6 méthodes
+  concernées n'ouvrent aujourd'hui aucune transaction — le correctif
+  n'est pas une copie mécanique d'une requête raw dans un `tx` déjà
+  existant (comme pour `MaintenancePlansService.create()` et
+  `MaintenanceInterventionsService.create()`, déjà transactionnelles),
+  mais une restructuration ouvrant une nouvelle transaction, avec un
+  effet de bord réel : verrouiller `assets` pendant l'écriture d'une
+  table indépendante sérialiserait des écritures auparavant concurrentes
+  sans conflit (ex. deux relevés eau à des dates différentes sur le même
+  actif, déjà protégés par `@@unique([assetId,date])`). Combiné au fait
+  que le bilan qualifie ce risque de "probabilité très faible" (saisie
+  généralement séquentielle par un seul responsable), ce chantier
+  dépasse le périmètre d'un durcissement ciblé — à reprendre dans une
+  phase dédiée si le besoin réel se confirme.
+- **Point transversal découvert pendant cette phase, hors périmètre du
+  bilan V6, depuis corrigé — voir "✅ Corrigé" ci-dessous pour la cause
+  réelle et le correctif.** Diagnostic initial erroné, corrigé
+  explicitement plutôt que laissé en l'état : la suite e2e `apps/api`
+  ne démarrait plus (projet entier, pas spécifique à cette phase),
+  d'abord attribuée à un problème de chargement du compilateur WASM de
+  Prisma 7.x (`WasmQueryCompilerLoader`/`getQueryCompilerWasmModule`).
+  **Cette attribution était fausse** — le symptôme observé alors
+  (`pool timeout... active=0 idle=0`) était réel, mais sa cause ne
+  l'était pas. La vraie cause, révélée par un rapport de bug utilisateur
+  distinct ("Internal server error" au login, `docker logs` exploités
+  jusqu'au champ `cause` imbriqué de l'erreur Prisma) : authentification
+  MySQL `caching_sha2_password` sans `allowPublicKeyRetrieval`, voir
+  l'entrée dédiée ci-dessous. Le compilateur WASM n'a jamais été en
+  cause ; le pool ne se remplissait simplement jamais faute
+  d'authentification réussie, sur toute requête Prisma du projet, pas
+  seulement en test. Leçon retenue : un symptôme "pool timeout"
+  générique doit toujours être creusé jusqu'au champ `cause` imbriqué
+  avant toute attribution, jamais arrêté au premier message d'erreur de
+  surface.
 
 ## ✅ Corrigé
 
@@ -1856,6 +1908,192 @@ Phase 19 (hors périmètre initial de la mission) ; ajouté comme 7ᵉ cas
 au sélecteur local `EntityRefSelect` déjà existant dans ce même fichier
 (pas de nouveau composant partagé), actifs `REFORME` exclus de la liste
 proposée.
+
+### Concurrence `MaintenanceTask` — 7e occurrence du défaut "vérification sans verrou" déjà corrigé 6 fois en Phase 8 (bilan V6, corrigé en Phase 20)
+
+`MaintenanceTasksService.markRealizedInTransaction` et `cancel()`
+lisaient le statut de la tâche sans verrou avant d'écrire —
+contrairement à `MaintenanceTaskGenerationService.
+ensureNextTaskGenerated` (même module, déjà protégé depuis la Phase 17).
+Scénario concret : deux interventions concurrentes sur la même tâche
+pouvaient toutes deux passer la garde de statut terminal, dupliquant
+coût imputé et sortie de stock pour un seul événement métier.
+
+**Correction retenue** — même patron déjà validé 6 fois sur ce projet
+(`StockMovementsService.recordMovementInTransaction`,
+`MaintenanceTaskGenerationService.ensureNextTaskGenerated`, etc.) :
+nouvelle méthode privée `lockAndAssertTaskOpenInTransaction(tx,
+taskId)` (`SELECT ... FOR UPDATE` en raw SQL sur `maintenance_tasks`,
+sans filtre `farmId` — la validation farm est déjà faite par
+l'appelant avant l'ouverture de la transaction, contrat identique à
+l'ancien `markRealizedInTransaction`), appelée en tout début de
+transaction par `markRealizedInTransaction` et `cancel()`. Retry P2034
+gardé par cohérence de style avec le reste du projet — **pas une
+nécessité technique stricte ici** : un verrou sur une seule ligne (clé
+primaire) ne peut pas produire de deadlock à lui seul, une transaction
+concurrente attend simplement la libération du verrou plutôt que
+d'être avortée (confirmé par le comportement déjà en production de
+`ensureNextTaskGenerated`, qui n'a jamais eu de retry).
+
+**Gap préexistant corrigé dans le même mouvement** :
+`MaintenanceInterventionsService.create()` verrouille déjà `Item` par
+pièce (`recordMovementInTransaction`, boucle sur `dto.parts`) **sans
+aucun retry P2034**, contrairement à `StockMovementsService.create()`
+qui a ce filet depuis la Phase 7 pour le même type de verrouillage —
+gap indépendant de la concurrence `MaintenanceTask` elle-même,
+découvert en ajoutant le nouveau verrou dans cette même transaction.
+Corrigé en même temps (boucle retry standard ajoutée autour de
+l'ensemble de la transaction de création).
+
+**2 tests de concurrence dédiés** (`Promise.all` sur deux requêtes HTTP
+identiques, `[201,409]` attendu, état final vérifié cohérent — même
+gabarit que Phase 8) : deux interventions concurrentes sur la même
+tâche (une seule aboutit, stock/coût jamais dupliqués) ; une annulation
+concurrente à une intervention sur la même tâche (état final soit
+`REALISEE`+1 intervention, soit `ANNULEE`+0 intervention, jamais les
+deux). **Exécutés avec succès après correction du blocage e2e transversal
+(voir entrée dédiée ci-dessous)** — 5 exécutions consécutives, aucun
+flake.
+
+**Second correctif découvert en les exécutant pour de vrai** : le
+premier des deux tests échouait `[201,500]` au lieu de `[201,409]` — un
+vrai deadlock MySQL (code 1213 "Deadlock found") survenant dans
+`StockMovementsService.recordMovementInTransaction` (verrouillage
+`Item` via `$queryRaw`), remonté par Prisma sous le code générique
+**P2010** ("Raw query failed"), jamais **P2034** — `isSerializationFailure`
+ne le rattrapait donc pas, le retry ne se déclenchait jamais. Le vrai
+code MySQL (1213 deadlock / 1205 lock wait timeout) est niché dans
+`error.meta.driverAdapterError.cause.originalCode`, jamais exposé
+directement. Corrigé dans les 3 nouvelles fonctions
+`isSerializationFailure` de cette phase (`maintenance-interventions.
+service.ts`, `maintenance-tasks.service.ts`, `assets.service.ts`) —
+reconnaissent désormais P2034 ET (P2010 avec code MySQL 1213/1205).
+**Risque transversal non corrigé ailleurs** : les 5 occurrences
+préexistantes du couple `MAX_TRANSACTION_RETRIES`/`isSerializationFailure`
+(`egg-stock`, `orientation`, `incubation-batches`, `sales`,
+`stock-movements`) ne reconnaissent que P2034 — aucune n'a été prouvée
+défaillante par un test réel à ce jour, mais le même angle mort
+structurel s'y trouve probablement dès que leur transaction contient un
+`$queryRaw` verrouillé. Non corrigé cette phase (hors périmètre —
+aucune de ces 5 méthodes n'est touchée par le durcissement V6), à
+vérifier si un incident similaire y survient.
+
+Voir `maintenance-tasks.service.ts`, `maintenance-interventions.service.ts`,
+`maintenance.e2e-spec.ts`.
+
+### Prorata temporis rendu paramétrable via `Setting` — verrou technique de configuration levé, validation comptable toujours en attente (bilan V6, Phase 20)
+
+Le modèle de calendrier fiscal (Phase 16, voir puce correspondante sous
+`## Phase 16` ci-dessus) était figé dans le code — tout ajustement
+aurait exigé un redéploiement. Désormais paramétrable par ferme via
+`Setting{key:'assets.depreciation_convention'}`, sans migration Prisma
+(`Setting.value: Json` déjà générique) : `computeDepreciationSchedule`
+accepte un 5e paramètre optionnel `convention: 'CALENDAIRE' |
+'TRENTE_360'` (défaut `'CALENDAIRE'`, comportement historique strictement
+inchangé — les 13 tests existants passent sans modification).
+`'TRENTE_360'` = convention 30E/360 (chaque mois compté 30 jours, année
+360 jours, indépendante des années bissextiles), appliquée uniquement à
+la proratisation de la première période (les années pleines restent une
+dotation annuelle fixe, aucun day-count). Cas limite explicitement
+tranché et testé : une mise en service au 31 décembre produit la
+dotation minimale non nulle possible (1/360e), jamais 0 — comportement
+assumé, pas un sous-produit accidentel de la formule. `AssetsService.
+create()` lit le `Setting` de la ferme avant de générer le plan
+(fallback `'CALENDAIRE'` si absent ou si la valeur ne correspond pas
+exactement à l'énumération connue). **Aucun contrôleur Settings
+n'existe nulle part dans le projet** — configurable uniquement en base
+(seed/support) pour l'instant, même précédent exact que tous les autres
+`Setting` du projet (ex. `assets.warranty_expiring_days`).
+
+**Ce qui reste ouvert, sans ambiguïté** : la validation par un
+comptable local du modèle retenu (ni `CALENDAIRE` ni `TRENTE_360` n'a
+été confirmé contre une pratique comptable réelle) — ce correctif lève
+le blocage technique de configuration, pas la question de fond. Reste
+"meilleure hypothèse documentée" jusqu'à cette validation.
+
+**~8 nouveaux tests unitaires** (`depreciation.calculations.spec.ts`) :
+alignement début/milieu/fin de mois, cas limite 31 décembre,
+indépendance aux années bissextiles, cohérence de la somme des
+dotations sur un cas peu divisible.
+
+Voir `depreciation.calculations.ts`, `depreciation.calculations.spec.ts`,
+`assets.service.ts`.
+
+### 3 correctifs mineurs Patrimoine (bilan V6, corrigés en Phase 20)
+
+- **`AssetsService.remove()` omettait `MaintenancePlan`** dans son
+  garde-fou de suppression (vérifiait `Expense`/`MaintenanceTask`/
+  `MaintenanceIntervention`/3 relevés infra, jamais `MaintenancePlan`
+  directement) — un plan pouvait exister avec 0 tâche active (tâches
+  supprimables individuellement sans garde sur le plan parent), la
+  contrainte `ON DELETE RESTRICT` sur `MaintenancePlan.assetId` levait
+  alors une erreur SQL brute (P2003) non interceptée au lieu du 409
+  propre attendu. Corrigé : `maintenancePlan.count()` ajouté au bloc de
+  garde déjà existant.
+- **`AssetsService.reform()` non protégé contre le double-appel
+  concurrent** — même famille que la concurrence `MaintenanceTask`
+  ci-dessus. Corrigé : verrou `SELECT ... FOR UPDATE` sur `assets` (même
+  patron), retry P2034 par cohérence de style (même nuance : pas une
+  nécessité technique stricte pour un verrou mono-ligne). **1 test de
+  concurrence dédié** (`assets.e2e-spec.ts`, exécuté avec succès — voir
+  entrée dédiée au blocage e2e ci-dessous) : deux réformes simultanées
+  sur le même actif → `[201,409]`, un seul enregistrement d'audit
+  `ASSET_REFORMED`.
+- **Aucune validation croisée de dates sur Asset** — `reformDate`/
+  `warrantyExpiresAt` pouvaient être antérieures à `purchaseDate`/
+  `serviceDate` sans erreur, ni backend ni frontend. Corrigé côté
+  backend (le seul touché cette phase) : `reformDate >= serviceDate`
+  dans `reform()`, `warrantyExpiresAt >= purchaseDate` dans `create()`
+  et `update()` (au niveau service, pas DTO — `UpdateAssetDto` n'a pas
+  de champ `purchaseDate`, immuable après création, la comparaison se
+  fait contre `existing.purchaseDate`).
+
+Voir `assets.service.ts`, `assets.e2e-spec.ts`.
+
+### Blocage transversal — connexion MySQL, `caching_sha2_password` sans `allowPublicKeyRetrieval` (corrigé en Phase 20, mal diagnostiqué une première fois)
+
+**Cause réelle du blocage e2e documenté plus haut sous "Phase 20" — et,
+plus grave, de l'erreur "Internal server error" au login en usage réel
+(`POST /api/v1/auth/connexion`)**, tous deux le même symptôme de
+surface : `PrismaClientKnownRequestError` code `45028`, "pool timeout...
+pool connections: active=0 idle=0", sur la toute première requête
+Prisma de chaque nouvelle instance d'app (tests, mais aussi le
+conteneur `dondy-elevage-api` en usage normal). Le diagnostic initial
+(section "Phase 20" ci-dessus, avant correction) attribuait ce
+symptôme au compilateur WASM de Prisma — **faux**, découvert en
+creusant le champ `cause` imbriqué de l'erreur réelle, remonté dans les
+logs du conteneur API (`docker logs dondy-elevage-api`) lors du rapport
+de bug utilisateur sur le login :
+
+```
+cause: '(conn:25, no: 45044, SQLState: 08S01) RSA public key is not
+available client side. Either set option `cachingRsaPublicKey` to
+indicate public key path, or allow public key retrieval with option
+`allowPublicKeyRetrieval`'
+```
+
+`dondy_user` utilise le plugin d'authentification `caching_sha2_password`
+(défaut de l'image `mysql:8.4` depuis MySQL 8.0), qui exige soit TLS,
+soit `allowPublicKeyRetrieval=true` côté client pour l'échange de clé
+RSA lors de la première connexion d'une session. Aucune des `DATABASE_URL`
+du projet ne portait ce paramètre — chaque tentative de connexion
+échouait silencieusement à l'authentification, jamais restituée au
+pool, jusqu'au timeout (d'où "pool timeout" en symptôme de surface,
+sans rapport apparent avec l'authentification).
+
+**Corrigé** : `?allowPublicKeyRetrieval=true` ajouté aux 4
+`DATABASE_URL` du projet (`docker-compose.dev.yml` — la valeur
+réellement utilisée par le conteneur `api` — ainsi que `.env`/`.env.example`
+à la racine et dans `apps/api/`, pour rester cohérents même si non
+directement consommés par le conteneur). **Dev uniquement, documenté
+explicitement comme tel dans chaque commentaire** — en production, une
+vraie configuration TLS remplace ce paramètre, jamais l'inverse.
+Vérifié en conditions réelles après correction : `POST /api/v1/auth/
+connexion` répond `200` avec un JWT valide (login réel via le navigateur,
+session authentifiée jusqu'au tableau de bord), et la suite e2e complète
+(189/189 tests, 14 fichiers) s'exécute désormais sans aucun blocage.
+
+Voir `docker/docker-compose.dev.yml`, `.env.example`, `apps/api/.env.example`.
 
 ## Comment utiliser ce document
 
