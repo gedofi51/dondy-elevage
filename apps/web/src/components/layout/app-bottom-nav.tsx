@@ -1,12 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { navItems } from './nav-items';
+import { flatNavItems } from './nav-items';
 import { useAuth } from '@/components/providers/auth-provider';
 
 export function AppBottomNav() {
   const { user } = useAuth();
-  const visibleItems = navItems.filter((item) => !item.permission || user?.permissions.includes(item.permission));
+  // Phase 21 — la sidebar desktop regroupe désormais 6 des 14 routes en
+  // catégories dépliables, mais le bottom-nav mobile garde volontairement
+  // son patron à plat existant (voir DETTE_TECHNIQUE.md Phase 13 :
+  // sous-navigation à 2 niveaux hors périmètre, nouveau patron
+  // d'interaction plutôt qu'une réorganisation) — flatNavItems ramène les
+  // catégories à la liste plate de leurs enfants, ordre inchangé.
+  const visibleItems = flatNavItems.filter(
+    (item) => !item.permission || user?.permissions.includes(item.permission),
+  );
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-10 flex h-16 items-center gap-1 overflow-x-auto border-t border-sidebar-border bg-sidebar text-sidebar-foreground md:hidden">

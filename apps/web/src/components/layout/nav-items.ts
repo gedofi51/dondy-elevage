@@ -6,10 +6,13 @@ import {
   Egg,
   EggFried,
   Feather,
+  Landmark,
   LayoutDashboard,
   Package,
   Receipt,
+  Settings2,
   ShoppingCart,
+  Sprout,
   Thermometer,
   Wallet,
   Wrench,
@@ -17,7 +20,8 @@ import {
 import type { PermissionCode } from '@dondy-elevage/shared-types';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
 
-export interface NavItem {
+export interface NavLink {
+  type: 'link';
   label: string;
   href: string;
   icon: LucideIcon;
@@ -25,81 +29,186 @@ export interface NavItem {
   permission?: PermissionCode;
 }
 
-// Modules métier ajoutés progressivement à partir de la Phase 9 (Eau —
-// premier module complet), un par un dans les phases suivantes.
-export const navItems: NavItem[] = [
-  { label: 'Tableau de bord', href: '/', icon: LayoutDashboard },
-  { label: "Points d'eau", href: '/points-eau', icon: Droplets, permission: PERMISSIONS.WATER_POINTS_READ },
+export interface NavCategory {
+  type: 'category';
+  label: string;
+  icon: LucideIcon;
+  items: NavLink[];
+}
+
+export type NavEntry = NavLink | NavCategory;
+
+// Phase 21 — regroupement en catégories dépliables (mockup "1a — Agritech
+// Premium", docs/design/). Règle appliquée uniformément : une entrée
+// devient NavCategory seulement si elle agrège ≥2 routes de premier niveau
+// réelles, sinon elle reste un NavLink direct (voir DETTE_TECHNIQUE.md
+// Phase 21 pour les écarts au mockup : "Santé"/"Ventes" n'ont pas de route
+// dédiée, "Personnel"/"Rapports" n'existent pas).
+export const navItems: NavEntry[] = [
+  { type: 'link', label: 'Tableau de bord', href: '/', icon: LayoutDashboard },
   {
-    label: 'Poulets de chair',
-    href: '/poulets-chair',
-    icon: Bird,
-    permission: PERMISSIONS.BROILER_BATCHES_READ,
+    type: 'link',
+    label: "Points d'eau",
+    href: '/points-eau',
+    icon: Droplets,
+    permission: PERMISSIONS.WATER_POINTS_READ,
   },
   {
-    label: 'Pondeuses',
-    href: '/pondeuses',
-    icon: Egg,
-    permission: PERMISSIONS.LAYER_BATCHES_READ,
+    type: 'category',
+    label: 'Élevage',
+    icon: Sprout,
+    items: [
+      {
+        type: 'link',
+        label: 'Poulets de chair',
+        href: '/poulets-chair',
+        icon: Bird,
+        permission: PERMISSIONS.BROILER_BATCHES_READ,
+      },
+      {
+        type: 'link',
+        label: 'Pondeuses',
+        href: '/pondeuses',
+        icon: Egg,
+        permission: PERMISSIONS.LAYER_BATCHES_READ,
+      },
+      {
+        type: 'link',
+        label: 'Reproducteurs',
+        href: '/reproducteurs',
+        icon: Feather,
+        permission: PERMISSIONS.BREEDER_BATCHES_READ,
+      },
+      {
+        type: 'link',
+        label: 'Couveuses',
+        href: '/couveuses',
+        icon: Thermometer,
+        permission: PERMISSIONS.INCUBATORS_READ,
+      },
+      {
+        type: 'link',
+        label: 'Couvoir',
+        href: '/couvoir',
+        icon: EggFried,
+        permission: PERMISSIONS.INCUBATION_BATCHES_READ,
+      },
+      {
+        type: 'link',
+        label: 'Poussins',
+        href: '/poussins',
+        icon: Bird,
+        permission: PERMISSIONS.CHICK_BATCHES_READ,
+      },
+    ],
   },
   {
-    label: 'Reproducteurs',
-    href: '/reproducteurs',
-    icon: Feather,
-    permission: PERMISSIONS.BREEDER_BATCHES_READ,
-  },
-  {
-    label: 'Couveuses',
-    href: '/couveuses',
-    icon: Thermometer,
-    permission: PERMISSIONS.INCUBATORS_READ,
-  },
-  {
-    label: 'Couvoir',
-    href: '/couvoir',
-    icon: EggFried,
-    permission: PERMISSIONS.INCUBATION_BATCHES_READ,
-  },
-  {
-    label: 'Poussins',
-    href: '/poussins',
-    icon: Bird,
-    permission: PERMISSIONS.CHICK_BATCHES_READ,
-  },
-  {
+    type: 'link',
     label: 'Stocks',
     href: '/stocks',
     icon: Package,
     permission: PERMISSIONS.ITEMS_READ,
   },
   {
+    type: 'link',
     label: 'Achats',
     href: '/achats',
     icon: ShoppingCart,
     permission: PERMISSIONS.PURCHASE_ORDERS_READ,
   },
   {
-    label: 'Dépenses',
-    href: '/depenses',
-    icon: Receipt,
-    permission: PERMISSIONS.EXPENSES_READ,
+    type: 'category',
+    label: 'Finances',
+    icon: Landmark,
+    items: [
+      {
+        type: 'link',
+        label: 'Dépenses',
+        href: '/depenses',
+        icon: Receipt,
+        permission: PERMISSIONS.EXPENSES_READ,
+      },
+      {
+        type: 'link',
+        label: 'Trésorerie',
+        href: '/tresorerie',
+        icon: Wallet,
+        permission: PERMISSIONS.TREASURY_READ,
+      },
+    ],
   },
   {
-    label: 'Trésorerie',
-    href: '/tresorerie',
-    icon: Wallet,
-    permission: PERMISSIONS.TREASURY_READ,
-  },
-  {
-    label: 'Patrimoine',
-    href: '/patrimoine',
-    icon: Boxes,
-    permission: PERMISSIONS.ASSETS_READ,
-  },
-  {
-    label: 'Maintenance',
-    href: '/maintenance',
-    icon: Wrench,
-    permission: PERMISSIONS.MAINTENANCE_TASKS_READ,
+    type: 'category',
+    label: 'Équipements',
+    icon: Settings2,
+    items: [
+      {
+        type: 'link',
+        label: 'Patrimoine',
+        href: '/patrimoine',
+        icon: Boxes,
+        permission: PERMISSIONS.ASSETS_READ,
+      },
+      {
+        type: 'link',
+        label: 'Maintenance',
+        href: '/maintenance',
+        icon: Wrench,
+        permission: PERMISSIONS.MAINTENANCE_TASKS_READ,
+      },
+    ],
   },
 ];
+
+// Le payload JWT (AccessTokenPayload.permissions, packages/shared-types)
+// type ce champ en `string[]` large, pas `PermissionCode[]` — la vérif
+// d'appartenance reste sûre (PermissionCode est un sous-ensemble de
+// string), mais la signature doit accepter le type réel envoyé par
+// useAuth() sous peine d'erreur TypeScript côté appelant.
+function isLinkVisible(item: NavLink, permissions: string[] | undefined): boolean {
+  return !item.permission || (permissions?.includes(item.permission) ?? false);
+}
+
+/**
+ * Filtre navItems par permissions : un NavLink disparaît si sa permission
+ * manque, une NavCategory disparaît entièrement si aucun de ses enfants ne
+ * reste visible (jamais affichée vide) — même filtre pour la sidebar
+ * desktop et la barre mobile, mutualisé ici pour éviter la duplication
+ * qui existait entre app-sidebar.tsx et app-bottom-nav.tsx avant la
+ * Phase 21.
+ */
+export function getVisibleNavEntries(permissions: string[] | undefined): NavEntry[] {
+  const result: NavEntry[] = [];
+  for (const entry of navItems) {
+    if (entry.type === 'link') {
+      if (isLinkVisible(entry, permissions)) {
+        result.push(entry);
+      }
+      continue;
+    }
+    const visibleItems = entry.items.filter((item) => isLinkVisible(item, permissions));
+    if (visibleItems.length > 0) {
+      result.push({ ...entry, items: visibleItems });
+    }
+  }
+  return result;
+}
+
+/** Aplatissement de navItems (catégories dépliées en leurs enfants,
+ * ordre préservé) — consommé par AppBottomNav, qui garde un patron à plat
+ * (voir DETTE_TECHNIQUE.md Phase 13/Phase 21 : pas de sous-navigation à 2
+ * niveaux sur mobile cette phase). */
+export const flatNavItems: NavLink[] = navItems.flatMap((entry) =>
+  entry.type === 'link' ? [entry] : entry.items,
+);
+
+/** Une route est "active" si elle correspond exactement à href, ou si
+ * c'est un préfixe de segment (ex. /pondeuses/abc/suivi/2026-08-30 est
+ * actif pour href="/pondeuses"). Cas spécial "/" obligatoire : sans lui,
+ * startsWith('/') matcherait Tableau de bord sur toute route. */
+export function isNavLinkActive(pathname: string, href: string): boolean {
+  if (href === '/') {
+    return pathname === '/';
+  }
+  return pathname === href || pathname.startsWith(`${href}/`);
+}

@@ -864,6 +864,18 @@ défiler la barre du bas pour atteindre les derniers modules ; une
 vraie sous-navigation par domaine (Élevage/Couvoir/Ventes...) serait la
 correction propre, hors périmètre d'une simple correction défensive.
 
+**Toujours vrai en Phase 21** : la sidebar desktop a depuis été
+restructurée en catégories dépliables (`NavCategory`/
+`getVisibleNavEntries`, `nav-items.ts`) — exactement le regroupement par
+domaine envisagé ci-dessus. Mais cette infrastructure n'a volontairement
+pas été branchée sur `app-bottom-nav.tsx`, qui garde son patron à plat
+(`flatNavItems`, mêmes 14 routes, même défilement horizontal) : une vraie
+sous-navigation mobile (tiroir/bottom-sheet à 2 niveaux) est un nouveau
+patron d'interaction, pas une simple réutilisation des données déjà
+groupées — hors périmètre d'une phase de réorganisation de menu. Cette
+dette reste donc entière côté mobile, seulement mieux outillée pour être
+résolue plus tard.
+
 ### Suivi journalier reproducteurs, bilan mirage-éclosion, formulaire ChickBatch et couveuses sans test de composant
 
 Comme pour Chair/Pondeuses (Phases 11/12) : validation manuelle en
@@ -1461,6 +1473,35 @@ et 3 des 4 points 🟠 secondaires — même logique que les Phases 8 et 15
   générique doit toujours être creusé jusqu'au champ `cause` imbriqué
   avant toute attribution, jamais arrêté au premier message d'erreur de
   surface.
+
+## Phase 21 — Réorganisation du menu (navigation groupée)
+
+Regroupement des 14 entrées à plat de `nav-items.ts` en 7 entrées de
+premier niveau (3 dépliables), sur le modèle de la direction mockup
+"1a — Agritech Premium" (`docs/design/`, référence design system Phase
+10). Frontend uniquement, aucune route/permission ajoutée ou retirée —
+détail du nouveau modèle de données et de la sidebar dans "✅ Corrigé"
+ci-dessous ; voir aussi la mise à jour de l'entrée Phase 13 ci-dessus
+pour la dette mobile associée, restée entière.
+
+- **"Santé" et "Ventes" du mockup n'ont pas de route dédiée — restent
+  dans leur module d'origine, pas d'entrée de menu séparée.** Le mockup
+  liste "Santé" et "Ventes" comme des catégories de premier niveau au
+  même titre qu'"Élevage"/"Stocks"/"Achats", mais aucune des deux n'a de
+  page autonome dans le code réel : "Ventes" est un sous-écran
+  `.../[id]/vendre` dans chaque module (`poulets-chair`, `pondeuses`,
+  `poussins`, `points-eau`) ; "Santé" est un onglet CRUD complet
+  (`value="sante"`, `HealthEventTable`/`-form`/`-create-dialog`) dans la
+  page de détail de bande, confirmé sur `poulets-chair/[id]/
+  broiler-batch-detail-view.tsx` et `pondeuses/[id]/
+  layer-batch-detail-view.tsx`, absent des 4 autres modules d'élevage
+  (Reproducteurs/Couveuses/Couvoir/Poussins). Dans les deux cas, créer
+  une entrée de menu de haut niveau aurait nécessité soit une page
+  qui n'existe pas, soit un lien contextuel sans `[id]` cible fixe —
+  hors périmètre d'une phase de réorganisation pure ("aucune nouvelle
+  route"). "Personnel" et "Rapports", également présents dans le
+  mockup, sont dans le même cas mais explicitement exclus dès le
+  cadrage de cette phase (aucun module réel derrière).
 
 ## ✅ Corrigé
 
