@@ -175,6 +175,10 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.EMPLOYEES_READ,
       PERMISSIONS.EMPLOYEES_UPDATE,
       PERMISSIONS.EMPLOYEES_DELETE,
+      // Personnel — Lot 3 : accès complet, même profil qu'Employee.
+      PERMISSIONS.ATTENDANCE_CREATE,
+      PERMISSIONS.ATTENDANCE_READ,
+      PERMISSIONS.ATTENDANCE_UPDATE,
     ],
   },
   {
@@ -316,6 +320,11 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.EMPLOYEES_READ,
       PERMISSIONS.EMPLOYEES_UPDATE,
       PERMISSIONS.EMPLOYEES_DELETE,
+      // Personnel — Lot 3 : accès complet, voir la note sur le rôle
+      // Propriétaire / Administrateur ci-dessus.
+      PERMISSIONS.ATTENDANCE_CREATE,
+      PERMISSIONS.ATTENDANCE_READ,
+      PERMISSIONS.ATTENDANCE_UPDATE,
     ],
   },
   {
@@ -368,6 +377,17 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       // de bord orchestré par le service, jamais créé directement (même
       // précédent que Vendeur/Caisse pour EGG_STOCK_MOVEMENTS_CREATE).
       PERMISSIONS.ITEMS_READ,
+      // Personnel — Lot 3 (MODULE_PERSONNEL.md §8) : "écriture" sur le
+      // pointage, nouvelle permission pour ce rôle (rien sur Employee).
+      // READ inclus avec CREATE/UPDATE (pas juste "écriture" au sens
+      // strict) : même patron que chaque rôle "propriétaire de domaine"
+      // du catalogue (ex. Responsable couvoir sur Incubators ci-dessous
+      // — READ/CREATE/UPDATE/DELETE groupés), jamais un rôle qui écrit
+      // sans pouvoir relire ce qu'il vient de saisir. Pas
+      // ATTENDANCE_DELETE : append-only, aucun rôle ne l'a.
+      PERMISSIONS.ATTENDANCE_CREATE,
+      PERMISSIONS.ATTENDANCE_READ,
+      PERMISSIONS.ATTENDANCE_UPDATE,
     ],
   },
   {
@@ -587,6 +607,10 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       // financiers" de ce rôle justifie la visibilité (masse salariale),
       // pas encore la gestion des fiches.
       PERMISSIONS.EMPLOYEES_READ,
+      // Personnel — Lot 3 (MODULE_PERSONNEL.md §8) : lecture seule,
+      // même logique que ci-dessus — le coût de personnel (présence)
+      // relève du même mandat "rapports financiers".
+      PERMISSIONS.ATTENDANCE_READ,
     ],
   },
   {
@@ -663,6 +687,9 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       // séparé dans Payroll), donc visible ici aussi malgré "paie
       // masquée" — aucune restriction champ par champ dans le projet.
       PERMISSIONS.EMPLOYEES_READ,
+      // Personnel — Lot 3 (MODULE_PERSONNEL.md §8) : "lecture des fiches
+      // et plannings" — le pointage relève des "plannings" mentionnés.
+      PERMISSIONS.ATTENDANCE_READ,
     ],
   },
 ];

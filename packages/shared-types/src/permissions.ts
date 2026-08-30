@@ -196,6 +196,12 @@ export const PERMISSIONS = {
   EMPLOYEES_READ: 'employees.read',
   EMPLOYEES_UPDATE: 'employees.update',
   EMPLOYEES_DELETE: 'employees.delete',
+
+  // Personnel — Lot 3 (module Attendance, pointage). Pas de DELETE :
+  // append-only, comme StockMovement (voir DETTE_TECHNIQUE.md).
+  ATTENDANCE_CREATE: 'attendance.create',
+  ATTENDANCE_READ: 'attendance.read',
+  ATTENDANCE_UPDATE: 'attendance.update',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -392,4 +398,8 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
   [PERMISSIONS.EMPLOYEES_READ]: 'Consulter les fiches employé',
   [PERMISSIONS.EMPLOYEES_UPDATE]: 'Modifier une fiche employé',
   [PERMISSIONS.EMPLOYEES_DELETE]: 'Supprimer (soft delete) une fiche employé',
+
+  [PERMISSIONS.ATTENDANCE_CREATE]: 'Enregistrer un pointage (présence/absence/congé/maladie)',
+  [PERMISSIONS.ATTENDANCE_READ]: 'Consulter les pointages',
+  [PERMISSIONS.ATTENDANCE_UPDATE]: 'Corriger un pointage déjà enregistré',
 };
