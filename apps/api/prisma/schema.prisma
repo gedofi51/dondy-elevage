@@ -83,6 +83,11 @@ model Farm {
   waterInfrastructureReadings WaterInfrastructureReading[]
   solarInfrastructureReadings SolarInfrastructureReading[]
   networkStatusReadings       NetworkStatusReading[]
+  employees                   Employee[]
+  attendances                 Attendance[]
+  employeeTasks               EmployeeTask[]
+  payrolls                    Payroll[]
+  salaryAdvances              SalaryAdvance[]
 
   @@map("farms")
 }
@@ -251,6 +256,7 @@ model Building {
   layerBatches   LayerBatch[]
   breederBatches BreederBatch[]
   chickBatches   ChickBatch[]
+  employees      Employee[]
 
   @@index([farmId])
   @@map("buildings")
@@ -2157,4 +2163,240 @@ model NetworkStatusReading {
   @@unique([assetId, date])
   @@index([farmId])
   @@map("network_status_readings")
+}
+
+// ---------------------------------------------------------------------
+// Personnel — Lot 1 : fondation de données uniquement (aucun code
+// applicatif). Hors périmètre des cahiers V1/V5/V6 — V5 §17 ("Hors
+// périmètre et feuille de route V6") liste explicitement "Paie complète
+// et comptabilité générale réglementaire" aux côtés de la maintenance
+// préventive (depuis construite en V6) et des prévisions IA (pas encore
+// construites) ; le cahier V6 ne mentionne le Personnel nulle part.
+// Extension de périmètre assumée par le porteur de projet le 2026-08-30,
+// au-delà de ce que prévoyaient les cahiers — voir DETTE_TECHNIQUE.md.
+// ---------------------------------------------------------------------
+
+enum EmployeeStatus {
+  ACTIF
+  CONGE
+  SUSPENDU
+  DEPART
+}
+
+/// Employé de la ferme — identité indépendante de User (pas de compte de
+/// connexion associé : la main-d'œuvre agricole n'a généralement pas
+/// d'accès applicatif, contrairement au personnel administratif/
+/// technique déjà couvert par User/Role). buildingId optionnel : un
+/// employé peut être rattaché à aucun bâtiment précis (ex. personnel
+/// transverse/direction). managerId : hiérarchie interne au personnel,
+/// auto-relation, jamais vers User (même raisonnement que buildingId —
+/// le rôle applicatif RBAC de l'éventuel compte User d'un responsable
+/// est une notion distincte de sa hiérarchie RH). code : même convention
+/// que Asset.code/BroilerBatch.code (matricule auto-généré par un lot
+/// applicatif ultérieur, format à définir, ex. EMP-AAAA-NNN).
+model Employee {
+  id     String @id @default(uuid())
+  farmId String
+  code   String
+
+  buildingId String?
+  managerId  String?
+
+  name         String
+  position     String
+  contractType String?
+  phone        String?
+
+  hireDate DateTime
+  /// Renseigné au départ (démission/licenciement/fin de contrat) — statut
+  /// DEPART attendu en parallèle, aucune suppression (deletedAt ci-dessous
+  /// reste le seul mécanisme de retrait, jamais un DELETE définitif — voir
+  /// règle transversale du lot).
+  endDate  DateTime?
+
+  status         EmployeeStatus @default(ACTIF)
+  baseSalaryFcfa Int
+
+  observations String? @db.Text
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  deletedAt DateTime?
+
+  farm           Farm            @relation(fields: [farmId], references: [id])
+  building       Building?       @relation(fields: [buildingId], references: [id])
+  manager        Employee?       @relation("EmployeeManager", fields: [managerId], references: [id])
+  directReports  Employee[]      @relation("EmployeeManager")
+  attendances    Attendance[]
+  tasks          EmployeeTask[]
+  payrolls       Payroll[]
+  salaryAdvances SalaryAdvance[]
+
+  @@unique([farmId, code])
+  @@index([farmId])
+  @@index([farmId, status])
+  @@map("employees")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  CONGE
+  MALADIE
+}
+
+/// Pointage journalier — une ligne par employé et par jour, même
+/// discipline d'unicité que WaterInfrastructureReading/
+/// NetworkStatusReading (@@unique([employeeId, date])). Append-only par
+/// convention applicative (pas de deletedAt — voir règle transversale du
+/// lot, "jamais de suppression définitive des données de paie" : un
+/// pointage erroné se corrige par une nouvelle saisie/un ajustement
+/// documenté côté application, jamais par une suppression physique, même
+/// si le mécanisme technique de retrait n'est pas encore décidé).
+model Attendance {
+  id     String @id @default(uuid())
+  farmId String
+
+  employeeId String
+  date       DateTime
+
+  status       AttendanceStatus
+  checkInTime  String?
+  checkOutTime String?
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm     Farm     @relation(fields: [farmId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([farmId])
+  @@index([employeeId])
+  @@map("attendances")
+}
+
+enum EmployeeTaskStatus {
+  A_FAIRE
+  EN_COURS
+  REALISEE
+  ANNULEE
+}
+
+/// Tâche assignée à un employé — même gabarit que MaintenanceTask
+/// (statut, cancelReason, observations). Pas de deletedAt, même
+/// raisonnement qu'Attendance ci-dessus.
+model EmployeeTask {
+  id     String @id @default(uuid())
+  farmId String
+
+  employeeId String
+
+  designation String
+  dueDate     DateTime
+
+  status       EmployeeTaskStatus @default(A_FAIRE)
+  cancelReason String?
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm     Farm     @relation(fields: [farmId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([farmId])
+  @@index([farmId, status])
+  @@index([employeeId])
+  @@map("employee_tasks")
+}
+
+enum PayrollStatus {
+  BROUILLON
+  VALIDE
+}
+
+/// Bulletin de paie mensuel (ou toute autre période retenue par un lot
+/// applicatif ultérieur) — baseSalaryFcfa capturé en instantané depuis
+/// Employee.baseSalaryFcfa au moment de la génération (même principe que
+/// StockMovement.unitCostFcfaSnapshot) : un changement de salaire futur
+/// ne doit jamais réécrire un bulletin déjà émis. netFcfa stocké (pas
+/// dérivé à la lecture) : un bulletin de paie est un document légal figé,
+/// même philosophie que DepreciationEntry, à l'inverse de
+/// MaintenanceIntervention.totalCostFcfa (dérivé, car librement
+/// recomposable). status volontairement minimal (BROUILLON/VALIDE) —
+/// le suivi du paiement effectif (lien vers Payment/Expense catégorie
+/// "Personnel", déjà la catégorie de dépense existante du cahier V1 §8.5)
+/// est un choix d'architecture applicative différé à un lot ultérieur,
+/// pas encore tranché ici. Pas de deletedAt (voir règle transversale du
+/// lot) : un bulletin erroné se corrige par un nouveau bulletin
+/// (avoir/régularisation), jamais par suppression.
+model Payroll {
+  id     String @id @default(uuid())
+  farmId String
+
+  employeeId String
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  baseSalaryFcfa Int
+  bonusFcfa      Int @default(0)
+  deductionsFcfa Int @default(0)
+  netFcfa        Int
+
+  status PayrollStatus @default(BROUILLON)
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm                   Farm            @relation(fields: [farmId], references: [id])
+  employee               Employee        @relation(fields: [employeeId], references: [id])
+  salaryAdvancesDeducted SalaryAdvance[]
+
+  @@unique([employeeId, periodStart])
+  @@index([farmId])
+  @@index([employeeId])
+  @@map("payrolls")
+}
+
+/// Avance sur salaire — deductedInPayrollId optionnel : null tant que
+/// l'avance n'a pas encore été imputée sur un bulletin (état "en attente
+/// de déduction" dérivé de cette seule FK, jamais dupliqué dans un enum
+/// de statut séparé — même discipline que MaintenanceTask "en retard",
+/// toujours calculé, jamais stocké). Pas de deletedAt, même raisonnement
+/// que Payroll ci-dessus.
+model SalaryAdvance {
+  id     String @id @default(uuid())
+  farmId String
+
+  employeeId          String
+  deductedInPayrollId String?
+
+  date       DateTime
+  amountFcfa Int
+
+  observations String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm              Farm     @relation(fields: [farmId], references: [id])
+  employee          Employee @relation(fields: [employeeId], references: [id])
+  deductedInPayroll Payroll? @relation(fields: [deductedInPayrollId], references: [id])
+
+  @@index([farmId])
+  @@index([employeeId])
+  @@index([deductedInPayrollId])
+  @@map("salary_advances")
 }
