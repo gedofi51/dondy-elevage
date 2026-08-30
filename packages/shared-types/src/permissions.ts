@@ -190,6 +190,12 @@ export const PERMISSIONS = {
   NETWORK_STATUS_READINGS_CREATE: 'network_status_readings.create',
   NETWORK_STATUS_READINGS_READ: 'network_status_readings.read',
   NETWORK_STATUS_READINGS_UPDATE: 'network_status_readings.update',
+
+  // Personnel — Lot 2 (module Employees, fiche employé uniquement).
+  EMPLOYEES_CREATE: 'employees.create',
+  EMPLOYEES_READ: 'employees.read',
+  EMPLOYEES_UPDATE: 'employees.update',
+  EMPLOYEES_DELETE: 'employees.delete',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -381,4 +387,9 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
     'Saisir un relevé de statut réseau (opérationnel/dégradé/hors ligne)',
   [PERMISSIONS.NETWORK_STATUS_READINGS_READ]: 'Consulter les relevés de statut réseau',
   [PERMISSIONS.NETWORK_STATUS_READINGS_UPDATE]: 'Corriger un relevé de statut réseau',
+
+  [PERMISSIONS.EMPLOYEES_CREATE]: 'Créer une fiche employé',
+  [PERMISSIONS.EMPLOYEES_READ]: 'Consulter les fiches employé',
+  [PERMISSIONS.EMPLOYEES_UPDATE]: 'Modifier une fiche employé',
+  [PERMISSIONS.EMPLOYEES_DELETE]: 'Supprimer (soft delete) une fiche employé',
 };

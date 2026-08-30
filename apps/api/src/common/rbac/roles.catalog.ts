@@ -164,6 +164,17 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.NETWORK_STATUS_READINGS_CREATE,
       PERMISSIONS.NETWORK_STATUS_READINGS_READ,
       PERMISSIONS.NETWORK_STATUS_READINGS_UPDATE,
+      // Personnel — Lot 2 : accès complet, même profil que Patrimoine/
+      // Maintenance ci-dessus. `docs/reference/MODULE_PERSONNEL.md` §8
+      // référencé par le cadrage du lot n'existe pas dans le dépôt — cette
+      // répartition (Propriétaire/Gérant = complet, Comptable = lecture
+      // seule, tous les autres rôles = aucun accès par défaut, principe de
+      // moindre privilège sur une donnée salariale sensible) a été
+      // proposée puis confirmée explicitement, voir DETTE_TECHNIQUE.md.
+      PERMISSIONS.EMPLOYEES_CREATE,
+      PERMISSIONS.EMPLOYEES_READ,
+      PERMISSIONS.EMPLOYEES_UPDATE,
+      PERMISSIONS.EMPLOYEES_DELETE,
     ],
   },
   {
@@ -299,6 +310,12 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.NETWORK_STATUS_READINGS_CREATE,
       PERMISSIONS.NETWORK_STATUS_READINGS_READ,
       PERMISSIONS.NETWORK_STATUS_READINGS_UPDATE,
+      // Personnel — Lot 2 : accès complet, voir la note sur le rôle
+      // Propriétaire / Administrateur ci-dessus.
+      PERMISSIONS.EMPLOYEES_CREATE,
+      PERMISSIONS.EMPLOYEES_READ,
+      PERMISSIONS.EMPLOYEES_UPDATE,
+      PERMISSIONS.EMPLOYEES_DELETE,
     ],
   },
   {
@@ -565,6 +582,11 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.WATER_INFRASTRUCTURE_READINGS_READ,
       PERMISSIONS.SOLAR_INFRASTRUCTURE_READINGS_READ,
       PERMISSIONS.NETWORK_STATUS_READINGS_READ,
+      // Personnel — Lot 2 : lecture seule à ce stade (voir note sur le
+      // rôle Propriétaire / Administrateur) — le mandat "rapports
+      // financiers" de ce rôle justifie la visibilité (masse salariale),
+      // pas encore la gestion des fiches.
+      PERMISSIONS.EMPLOYEES_READ,
     ],
   },
   {
