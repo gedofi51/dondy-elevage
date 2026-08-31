@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { Attendance, Employee } from '@dondy-elevage/shared-types';
+import type { Attendance, EmployeeRosterEntry } from '@dondy-elevage/shared-types';
 import { AttendanceRegister } from './attendance-register';
 
-const useEmployeesMock = vi.fn();
+const useEmployeeRosterMock = vi.fn();
 
 vi.mock('../hooks', () => ({
-  useEmployees: () => useEmployeesMock(),
+  useEmployeeRoster: () => useEmployeeRosterMock(),
   useCreateAttendance: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateAttendance: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
@@ -35,51 +35,53 @@ vi.mock('@/components/shared/permission-gate', () => ({
     canEnabled ? <>{children}</> : <>{fallback ?? null}</>,
 }));
 
-const activeEmployee: Employee = {
+const activeRosterEntry: EmployeeRosterEntry = {
   id: 'employee-1',
-  farmId: 'farm-1',
   code: 'EMP-0001',
-  buildingId: null,
-  managerId: null,
   name: 'Jean Koyamba',
-  position: 'Chef d’élevage',
-  contractType: null,
-  phone: null,
-  hireDate: '2026-01-01',
-  endDate: null,
   status: 'ACTIF',
-  baseSalaryFcfa: 150_000,
-  observations: null,
-  createdAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z',
-  createdBy: null,
-  deletedAt: null,
 };
-
-const suspendedEmployee: Employee = { ...activeEmployee, id: 'employee-2', code: 'EMP-0002', status: 'SUSPENDU' };
 
 beforeEach(() => {
   canEnabled = true;
 });
 
 describe('AttendanceRegister', () => {
-  it('exclut les employés suspendus/sortis du registre (même règle que la création API)', () => {
-    useEmployeesMock.mockReturnValue({ data: [activeEmployee, suspendedEmployee], isLoading: false });
+  // Le registre affiche désormais tel quel ce que renvoie
+  // useEmployeeRoster() (Lot 7-correctif) — le filtrage des statuts
+  // SUSPENDU/DEPART est devenu la responsabilité du serveur
+  // (RESTRICTED_EMPLOYEE_STATUSES, GET /employees/roster), pas du
+  // composant. Ce test documente ce report de responsabilité plutôt que
+  // de re-tester un filtrage qui n'existe plus ici.
+  it('affiche tel quel les employés renvoyés par useEmployeeRoster (filtrage désormais côté serveur)', () => {
+    useEmployeeRosterMock.mockReturnValue({ data: [activeRosterEntry], isLoading: false });
     queriesResult = [{ data: null, isLoading: false }];
     render(<AttendanceRegister date="2026-08-31" />);
     expect(screen.getByText('EMP-0001 — Jean Koyamba')).toBeInTheDocument();
-    expect(screen.queryByText(/EMP-0002/)).not.toBeInTheDocument();
+  });
+
+  // « Toujours vide pour un rôle sans permission » : si useEmployeeRoster
+  // échoue (403 — un rôle sans EMPLOYEES_READ/ATTENDANCE_READ/
+  // EMPLOYEE_TASKS_READ), la query se résout avec data=undefined ; le
+  // registre reste vide plutôt que de planter — même comportement que
+  // n'importe quelle liste vide, aucune UI d'erreur dédiée nécessaire
+  // (rôle sans accès à /pointage de toute façon, voir nav-items.ts).
+  it('reste vide (pas de crash) quand useEmployeeRoster échoue (rôle sans permission)', () => {
+    useEmployeeRosterMock.mockReturnValue({ data: undefined, isLoading: false, isError: true });
+    queriesResult = [];
+    render(<AttendanceRegister date="2026-08-31" />);
+    expect(screen.getByText('Aucun employé actif.')).toBeInTheDocument();
   });
 
   it('affiche « Non pointé » et un bouton « Pointer » quand aucun enregistrement n’existe pour la date', () => {
-    useEmployeesMock.mockReturnValue({ data: [activeEmployee], isLoading: false });
+    useEmployeeRosterMock.mockReturnValue({ data: [activeRosterEntry], isLoading: false });
     queriesResult = [{ data: null, isLoading: false }];
     render(<AttendanceRegister date="2026-08-31" />);
     expect(screen.getByText('Non pointé')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Pointer' })).toBeInTheDocument();
   });
 
-  it('affiche le statut existant et un bouton « Modifier » quand un pointage existe déjà', () => {
+  it('affiche le statut existant et un bouton « Modifier » quand un pointage existe déjà (registre fonctionnel, ex. Responsable élevage)', () => {
     const record: Attendance = {
       id: 'attendance-1',
       farmId: 'farm-1',
@@ -93,7 +95,7 @@ describe('AttendanceRegister', () => {
       updatedAt: '2026-08-31T00:00:00.000Z',
       createdBy: 'user-1',
     };
-    useEmployeesMock.mockReturnValue({ data: [activeEmployee], isLoading: false });
+    useEmployeeRosterMock.mockReturnValue({ data: [activeRosterEntry], isLoading: false });
     queriesResult = [{ data: record, isLoading: false }];
     render(<AttendanceRegister date="2026-08-31" />);
     expect(screen.getByText('Présent')).toBeInTheDocument();
@@ -103,7 +105,7 @@ describe('AttendanceRegister', () => {
 
   it('masque les boutons Pointer/Modifier pour un rôle en lecture seule (Comptable/Lecteur)', () => {
     canEnabled = false;
-    useEmployeesMock.mockReturnValue({ data: [activeEmployee], isLoading: false });
+    useEmployeeRosterMock.mockReturnValue({ data: [activeRosterEntry], isLoading: false });
     queriesResult = [{ data: null, isLoading: false }];
     render(<AttendanceRegister date="2026-08-31" />);
     expect(screen.queryByRole('button', { name: 'Pointer' })).not.toBeInTheDocument();
@@ -111,7 +113,7 @@ describe('AttendanceRegister', () => {
   });
 
   it('ouvre le dialogue de pointage au clic sur « Pointer »', () => {
-    useEmployeesMock.mockReturnValue({ data: [activeEmployee], isLoading: false });
+    useEmployeeRosterMock.mockReturnValue({ data: [activeRosterEntry], isLoading: false });
     queriesResult = [{ data: null, isLoading: false }];
     render(<AttendanceRegister date="2026-08-31" />);
     fireEvent.click(screen.getByRole('button', { name: 'Pointer' }));

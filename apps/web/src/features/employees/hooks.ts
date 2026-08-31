@@ -8,6 +8,7 @@ import type {
   CreatePayrollInput,
   CreateSalaryAdvanceInput,
   Employee,
+  EmployeeRosterEntry,
   EmployeeTaskWithComputed,
   Payroll,
   SalaryAdvance,
@@ -33,6 +34,23 @@ export function useEmployee(id: string) {
     queryKey: ['employees', id],
     queryFn: () => apiFetch<Employee>(`/employees/${id}`),
     enabled: !!id,
+  });
+}
+
+/** Registre minimal (Lot 7-correctif) — id/code/name/status uniquement,
+ * accessible à EMPLOYEES_READ OU ATTENDANCE_READ OU EMPLOYEE_TASKS_READ
+ * (contrairement à useEmployees(), gardé par EMPLOYEES_READ seul côté
+ * API) : à utiliser pour tout consommateur qui doit rester atteignable
+ * par un rôle sans accès à la fiche employé complète (ex.
+ * AttendanceRegister/Responsable élevage) — voir DETTE_TECHNIQUE.md
+ * Lot 7-correctif. `useEmployees()` reste le bon choix partout ailleurs
+ * (EmployeeTable, EmployeeSelect, HrReport...), déjà vérifié
+ * inatteignables par un rôle sans EMPLOYEES_READ. */
+export function useEmployeeRoster() {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['employees', 'roster'],
+    queryFn: () => apiFetch<EmployeeRosterEntry[]>('/employees/roster'),
   });
 }
 

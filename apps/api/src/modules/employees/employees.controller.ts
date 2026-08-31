@@ -14,11 +14,14 @@ import {
 import type { Request } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
-import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import {
+  RequireAnyPermission,
+  RequirePermissions,
+} from '../../common/decorators/require-permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PERMISSIONS } from '../../common/rbac/permissions.constants';
 import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
-import { EmployeesService } from './employees.service';
+import { EmployeesService, type EmployeeRosterEntry } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { maskSalaryForResponse, type EmployeeMaybeWithSalary } from './employees.validation';
@@ -44,6 +47,18 @@ export class EmployeesController {
   async findAll(@CurrentUser() user: AccessTokenPayload): Promise<EmployeeMaybeWithSalary[]> {
     const employees = await this.employeesService.findAll(user);
     return employees.map((employee) => maskSalaryForResponse(employee, user.permissions));
+  }
+
+  /** Doit rester déclarée avant @Get(':id') — sinon Nest matcherait
+   * "roster" comme :id (routes évaluées dans l'ordre de déclaration). */
+  @Get('roster')
+  @RequireAnyPermission(
+    PERMISSIONS.EMPLOYEES_READ,
+    PERMISSIONS.ATTENDANCE_READ,
+    PERMISSIONS.EMPLOYEE_TASKS_READ,
+  )
+  async roster(@CurrentUser() user: AccessTokenPayload): Promise<EmployeeRosterEntry[]> {
+    return this.employeesService.findRoster(user);
   }
 
   @Get(':id')

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
-import type { Attendance, Employee, EmployeeStatus } from '@dondy-elevage/shared-types';
+import type { Attendance, EmployeeRosterEntry } from '@dondy-elevage/shared-types';
 import { DataTable, type DataTableColumn } from '@/components/shared/data-table';
 import { Can } from '@/components/shared/permission-gate';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api/client';
 import { useApiFetch } from '@/lib/api/use-api-fetch';
-import { useEmployees } from '../hooks';
+import { useEmployeeRoster } from '../hooks';
 import { attendanceStatusLabels } from '../schemas';
 import { AttendanceDialog } from './attendance-dialog';
 
@@ -24,18 +24,8 @@ const statusTone: Record<Attendance['status'], Tone> = {
   MALADIE: 'warning',
 };
 
-// Même définition d'« employé actif » que le backend pour la création
-// d'un pointage (assertEmployeeActiveForNewAttendance /
-// RESTRICTED_EMPLOYEE_STATUSES, apps/api/.../attendance.validation.ts) —
-// un employé SUSPENDU/DEPART n'apparaît pas dans le registre du jour
-// (409 garanti côté serveur sinon). Différent du filtre « Actifs » de la
-// liste employés (Lot 6a, qui n'exclut que DEPART) : ici c'est
-// précisément l'éligibilité au pointage qui compte, pas la visibilité RH
-// générale.
-const REGISTER_ELIGIBLE_STATUSES: ReadonlySet<EmployeeStatus> = new Set(['ACTIF', 'CONGE']);
-
 interface RegisterRow {
-  employee: Employee;
+  employee: EmployeeRosterEntry;
   // undefined = requête encore en cours, null = confirmé « pas de
   // pointage ce jour » (404 API), sinon l'enregistrement.
   record: Attendance | null | undefined;
@@ -49,15 +39,24 @@ interface RegisterRow {
  * sans modification backend hors périmètre de ce lot. Borné par
  * l'effectif de la ferme — voir DETTE_TECHNIQUE.md Lot 6b pour le
  * compromis assumé (nombre de requêtes vs connectivité Samba).
+ *
+ * Source de la liste : useEmployeeRoster() (Lot 7-correctif), pas
+ * useEmployees() — GET /employees est gardé par EMPLOYEES_READ seul,
+ * que Responsable élevage n'a pas (a ATTENDANCE_CREATE/UPDATE, donc
+ * accès nav à /pointage, mais recevait un 403 silencieux sur la liste
+ * employés → registre toujours vide, malgré une navigation correcte).
+ * /employees/roster est gardé par EMPLOYEES_READ OU ATTENDANCE_READ OU
+ * EMPLOYEE_TASKS_READ et filtre déjà les statuts éligibles côté serveur
+ * (RESTRICTED_EMPLOYEE_STATUSES) — plus besoin de filtrer ici.
  */
 export function AttendanceRegister({ date }: { date: string }) {
   const apiFetch = useApiFetch();
-  const { data: employees, isLoading: employeesLoading } = useEmployees();
+  const { data: roster, isLoading: rosterLoading } = useEmployeeRoster();
   const [dialogEmployee, setDialogEmployee] = useState<{ id: string; existing: Attendance | null } | null>(
     null,
   );
 
-  const eligible = (employees ?? []).filter((e) => REGISTER_ELIGIBLE_STATUSES.has(e.status));
+  const eligible = roster ?? [];
 
   const attendanceQueries = useQueries({
     queries: eligible.map((employee) => ({
@@ -106,7 +105,7 @@ export function AttendanceRegister({ date }: { date: string }) {
       <DataTable
         columns={columns}
         data={rows}
-        isLoading={employeesLoading}
+        isLoading={rosterLoading}
         getRowKey={(row) => row.employee.id}
         emptyLabel="Aucun employé actif."
         rowActions={(row) => (

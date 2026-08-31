@@ -6,10 +6,23 @@ import { assertSameFarm } from '../../common/rbac/farm-scope.util';
 import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
 import type { CreateEmployeeDto } from './dto/create-employee.dto';
 import type { UpdateEmployeeDto } from './dto/update-employee.dto';
-import { assertDatesConsistent, assertUpdateAllowed } from './employees.validation';
+import {
+  assertDatesConsistent,
+  assertUpdateAllowed,
+  RESTRICTED_EMPLOYEE_STATUSES,
+} from './employees.validation';
 
 const CODE_PREFIX_BASE = 'EMP';
 const CODE_DIGITS = 3;
+
+/** Champs strictement minimaux pour /employees/roster (Lot 7-correctif) —
+ * jamais de salaire, contact ou contrat, voir employees.controller.ts. */
+export interface EmployeeRosterEntry {
+  id: string;
+  code: string;
+  name: string;
+  status: Employee['status'];
+}
 
 @Injectable()
 export class EmployeesService {
@@ -119,6 +132,29 @@ export class EmployeesService {
 
   async findOne(actingUser: AccessTokenPayload, id: string): Promise<Employee> {
     return this.getRaw(actingUser, id);
+  }
+
+  /**
+   * Registre minimal (Lot 7-correctif) — id/code/name/status uniquement,
+   * `select` Prisma explicite (jamais baseSalaryFcfa/phone/contractType,
+   * même à l'insu d'un futur champ ajouté à Employee : select whitelist
+   * plutôt que exclusion). Exclut SUSPENDU/DEPART par défaut, même
+   * définition que RESTRICTED_EMPLOYEE_STATUSES (assertUpdateAllowed /
+   * assertEmployeeActiveForNewAttendance côté Attendance) — pas de
+   * paramètre pour lister "tous les statuts" : seul consommateur actuel
+   * (AttendanceRegister) n'en a jamais eu besoin, hors périmètre de ce
+   * correctif.
+   */
+  async findRoster(actingUser: AccessTokenPayload): Promise<EmployeeRosterEntry[]> {
+    return this.prisma.employee.findMany({
+      where: {
+        farmId: actingUser.farmId,
+        deletedAt: null,
+        status: { notIn: RESTRICTED_EMPLOYEE_STATUSES },
+      },
+      select: { id: true, code: true, name: true, status: true },
+      orderBy: { createdAt: 'asc' },
+    });
   }
 
   async update(

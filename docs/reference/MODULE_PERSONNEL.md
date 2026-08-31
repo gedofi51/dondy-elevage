@@ -370,8 +370,18 @@ aucune renumérotation des phases déjà livrées).
   rapport RH confirmée avec l'utilisateur (aucun endpoint farm-wide
   d'agrégation côté API, N×2 requêtes/employé acceptées explicitement).
   Voir `DETTE_TECHNIQUE.md` pour le détail complet.
+* **Lot 7-correctif — Endpoint minimal `/employees/roster`** : correctif
+  d'une anomalie bloquante découverte par le test E2E navigateur du
+  Lot 7 (Responsable élevage ne pouvait pas réellement pointer via
+  `/pointage`, malgré une navigation correcte). Option B retenue :
+  nouvel endpoint minimal (id/code/name/status) gardé par
+  `EMPLOYEES_READ` OU `ATTENDANCE_READ` OU `EMPLOYEE_TASKS_READ`
+  (`PermissionsGuard` étendu d'une sémantique OU, `RequireAnyPermission`)
+  plutôt que d'élargir `GET /employees`. `AttendanceRegister` basculé
+  dessus ; `EmployeeSelect` vérifié non concerné (documenté). Voir
+  `DETTE_TECHNIQUE.md` pour le détail.
 
-Module Personnel (Lots 1 à 6d) considéré complet au regard du périmètre
+Module Personnel (Lots 1 à 6d + 7-correctif) considéré complet au regard du périmètre
 défini par ce document, sous réserve des écarts et exclusions
 explicitement documentés ci-dessus et dans `DETTE_TECHNIQUE.md` (vue
 « toutes les tâches », documents de la fiche employé, historique de

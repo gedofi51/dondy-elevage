@@ -361,6 +361,87 @@ describe('Employees — CRUD, RBAC et isolation farmId (e2e)', () => {
     );
   });
 
+  describe('GET /employees/roster (Lot 7-correctif) — registre minimal pour /pointage', () => {
+    interface RosterEntry {
+      id: string;
+      code: string;
+      name: string;
+      status: string;
+    }
+
+    let rosterEmployeeAId: string;
+    let rosterEmployeeBId: string;
+    let rosterOwnerBToken: string;
+
+    beforeAll(async () => {
+      const resA = await request(app.getHttpServer())
+        .post('/api/v1/employees')
+        .set('Authorization', `Bearer ${ownerAToken}`)
+        .send({
+          name: 'Employé Roster A',
+          position: 'Test roster',
+          hireDate: '2026-04-01',
+          baseSalaryFcfa: 55_000,
+          phone: '+236 70 44 44 44',
+          contractType: 'CDI',
+        })
+        .expect(201);
+      rosterEmployeeAId = body<EmployeeResponseBody>(resA).id;
+      createdEmployeeIds.push(rosterEmployeeAId);
+
+      rosterOwnerBToken = await mintToken(farmB.id, 'Propriétaire / Administrateur');
+      const resB = await request(app.getHttpServer())
+        .post('/api/v1/employees')
+        .set('Authorization', `Bearer ${rosterOwnerBToken}`)
+        .send({
+          name: 'Employé Roster B',
+          position: 'Test roster',
+          hireDate: '2026-04-01',
+          baseSalaryFcfa: 55_000,
+        })
+        .expect(201);
+      rosterEmployeeBId = body<EmployeeResponseBody>(resB).id;
+      createdEmployeeIds.push(rosterEmployeeBId);
+    });
+
+    it('Responsable élevage (ATTENDANCE_READ/EMPLOYEE_TASKS_READ, pas EMPLOYEES_READ) obtient 200 avec des champs strictement minimaux', async () => {
+      const token = await mintToken(farmA.id, 'Responsable élevage');
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/employees/roster')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      const roster = body<RosterEntry[]>(res);
+      const entry = roster.find((e) => e.id === rosterEmployeeAId);
+      expect(entry).toBeDefined();
+      expect(entry?.name).toBe('Employé Roster A');
+      expect(entry?.status).toBe('ACTIF');
+      expect(entry?.code).toMatch(/^EMP-2026-\d{3}$/);
+      // Exactement ces 4 clés — jamais salaire/téléphone/contrat, même
+      // whitelistés côté select Prisma (employees.service.ts) : vérifié
+      // explicitement sur la réponse JSON, pas seulement dans le type TS.
+      expect(Object.keys(entry as object).sort()).toEqual(['code', 'id', 'name', 'status']);
+    });
+
+    it('un rôle sans aucune des 3 permissions (Responsable couvoir) reçoit 403', async () => {
+      const token = await mintToken(farmA.id, 'Responsable couvoir');
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/employees/roster')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(403);
+      expect(body<ErrorResponseBody>(res).message).toContain('Permissions insuffisantes');
+    });
+
+    it('isolation farmId : le registre de la ferme A ne contient jamais un employé de la ferme B', async () => {
+      const token = await mintToken(farmA.id, 'Responsable élevage');
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/employees/roster')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      const ids = body<RosterEntry[]>(res).map((e) => e.id);
+      expect(ids).not.toContain(rosterEmployeeBId);
+    });
+  });
+
   describe('Isolation farmId croisée — testée avec des rôles ayant EMPLOYEES_READ des deux côtés, pas juste RBAC', () => {
     let employeeBId: string;
     let employeeAAliveId: string;

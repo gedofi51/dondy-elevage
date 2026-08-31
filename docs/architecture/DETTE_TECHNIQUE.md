@@ -2235,6 +2235,78 @@ Paie) — mapping direct et non ambigu avec la liste « a priori » du
 prompt (Propriétaire/Administrateur, Gérant, Comptable), aucune
 clarification supplémentaire nécessaire.
 
+## Personnel — Lot 7-correctif (endpoint minimal pour /pointage)
+
+Correctif ciblé, découvert par le test E2E navigateur du Lot 7 (jamais
+détectable par les tests composants du Lot 6b, qui mockaient
+`useEmployees()` sans jamais exercer le cas d'échec 403 réel) : le
+registre `/pointage` appelait `useEmployees()` (`GET /employees`, gardé
+par `EMPLOYEES_READ`) pour lister les employés à pointer — Responsable
+élevage n'a pas cette permission (a `ATTENDANCE_CREATE`/`UPDATE`, d'où
+un accès nav correct à `/pointage` depuis le Lot 6b), donc 403 silencieux
+→ registre toujours vide malgré une navigation atteignable.
+
+**Investigation préalable — `EmployeeSelect` n'a pas le même problème**
+: son seul consommateur (`employee-form.tsx`, Lot 6a, champ «
+Responsable hiérarchique ») n'est atteignable qu'avec `EMPLOYEES_CREATE`
+ou `EMPLOYEES_UPDATE`, permissions toujours accordées avec
+`EMPLOYEES_READ` dans `roles.catalog.ts` (Propriétaire/Administrateur et
+Gérant/Responsable ferme uniquement, jamais l'un sans l'autre) — aucun
+rôle ne peut donc atteindre ce formulaire sans déjà avoir
+`EMPLOYEES_READ`. La caractérisation du prompt correctif (« sélecteur
+d'employé de l'onglet Tâches, Lot 6c ») était inexacte : `EmployeeSelect`
+n'est utilisé nulle part dans l'onglet Tâches — vérifié par recherche
+exhaustive des usages avant tout code, pas supposé.
+
+**`PermissionsGuard` étendu pour une sémantique OU** (`RequireAnyPermission`,
+`require-permissions.decorator.ts`) : le guard existant n'avait qu'un ET
+strict (`every`). Mirroir exact du `anyPermission` déjà en place côté
+front (`nav-items.ts`, Lot 6b) — nouveau groupe de métadonnées
+indépendant (`ANY_PERMISSIONS_METADATA_KEY`), `RequirePermissions`
+inchangé (rétrocompatible à 100 % avec les ~40 routes existantes qui
+l'utilisent déjà). Les deux décorateurs restent cumulables sur une même
+route en théorie (groupe ET + groupe OU évalués indépendamment) mais
+aucune route n'utilise cette combinaison à ce jour.
+
+**`GET /employees/roster`** — id/code/name/status uniquement, via un
+`select` Prisma explicite (whitelist au niveau requête, jamais une
+exclusion post-hoc — même discipline structurelle que le masquage
+salaire du Lot 5/6d, mais ici aucun champ sensible n'est même
+sélectionné en base). Gardé par
+`RequireAnyPermission(EMPLOYEES_READ, ATTENDANCE_READ,
+EMPLOYEE_TASKS_READ)`. Déclaré **avant** `@Get(':id')` dans le
+contrôleur (vérifié explicitement — sinon Nest matcherait `/employees/
+roster` comme `:id`, bug d'ordre de route classique). Filtre les statuts
+`SUSPENDU`/`DEPART` par défaut, en réutilisant tel quel
+`RESTRICTED_EMPLOYEE_STATUSES` déjà défini dans `employees.validation.ts`
+(même définition que `assertEmployeeActiveForNewAttendance`/
+`assertUpdateAllowed`) — aucun paramètre pour lister « tous les
+statuts » : le seul consommateur (`AttendanceRegister`) n'en a jamais eu
+besoin, ajouter ce paramètre aurait été une fonctionnalité au-delà du
+correctif demandé.
+
+**Aucune convention de nommage de route similaire trouvée** avant de
+choisir `roster` (vérifié : seules des sous-routes d'agrégation type
+`treasury/summary`/`egg-stock/lots` existent, aucun précédent de route
+« à champs réduits » d'une collection existante) — nom retenu tel que
+proposé par le prompt, suffisamment clair.
+
+**Front** : `useEmployeeRoster()` (nouveau hook,
+`features/employees/hooks.ts`) remplace `useEmployees()` dans
+`AttendanceRegister` — le filtre client `REGISTER_ELIGIBLE_STATUSES`
+(Lot 6b) est supprimé, devenu une duplication pure de la même règle
+métier désormais appliquée côté serveur par `/employees/roster` (pas une
+défense en profondeur méritant d'être conservée, contrairement au
+masquage salaire : même règle, même source, aucun gain à la dupliquer).
+`useEmployees()` reste inchangé et continue d'alimenter
+`EmployeeTable`/`EmployeeSelect`/`HrReport`/`employee-detail-view.tsx` —
+tous vérifiés inatteignables par un rôle sans `EMPLOYEES_READ`, donc hors
+périmètre de ce correctif.
+
+**Re-test E2E dédié (navigateur réel)** : voir le rapport de clôture du
+Lot 7-correctif pour la confirmation que Responsable élevage peut
+désormais pointer un employé de bout en bout sur `/pointage`.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

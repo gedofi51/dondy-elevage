@@ -61,3 +61,21 @@ export interface UpdateEmployeeInput {
   baseSalaryFcfa?: number;
   observations?: string;
 }
+
+/**
+ * `/employees/roster` (Lot 7-correctif) — champs strictement minimaux,
+ * jamais de salaire/contact/contrat (contrairement à `Employee`, qui
+ * masque seulement `baseSalaryFcfa` conditionnellement, ce type-ci
+ * n'expose ces champs à aucun rôle, y compris ceux qui pourraient voir
+ * le salaire ailleurs). Gardé par EMPLOYEES_READ OU ATTENDANCE_READ OU
+ * EMPLOYEE_TASKS_READ — pour un rôle comme Responsable élevage qui a
+ * accès au pointage/aux tâches mais pas à la fiche employé complète.
+ * N'inclut que les employés éligibles (ACTIF/CONGE, jamais SUSPENDU/
+ * DEPART) — voir RESTRICTED_EMPLOYEE_STATUSES côté API.
+ */
+export interface EmployeeRosterEntry {
+  id: string;
+  code: string;
+  name: string;
+  status: EmployeeStatus;
+}
