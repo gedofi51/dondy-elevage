@@ -41,11 +41,32 @@ describe('getVisibleNavEntries', () => {
     }
     expect(equipements.items.map((item) => item.href)).toEqual(['/patrimoine', '/maintenance']);
   });
+
+  // Pointage (Lot 6b) — anyPermission (ATTENDANCE_READ OU EMPLOYEE_TASKS_READ),
+  // cas explicitement visé : le rôle Responsable élevage a l'un et l'autre
+  // mais pas EMPLOYEES_READ.
+  it('shows a link gated by anyPermission when only the first permission is present (cas Responsable élevage)', () => {
+    const visible = getVisibleNavEntries([PERMISSIONS.ATTENDANCE_READ]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/pointage')).toBe(true);
+    // Et « Personnel » (gated par EMPLOYEES_READ) reste bien absent — c'est
+    // précisément le trou de navigation que « Pointage » corrige.
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/personnel')).toBe(false);
+  });
+
+  it('shows a link gated by anyPermission when only the second permission is present', () => {
+    const visible = getVisibleNavEntries([PERMISSIONS.EMPLOYEE_TASKS_READ]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/pointage')).toBe(true);
+  });
+
+  it('hides a link gated by anyPermission when neither permission is present', () => {
+    const visible = getVisibleNavEntries([]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/pointage')).toBe(false);
+  });
 });
 
 describe('flatNavItems', () => {
-  it('contains exactly the 14 real routes (7 top-level links/categories flattened)', () => {
-    expect(flatNavItems).toHaveLength(14);
+  it('contains exactly the 16 real routes (9 top-level links/categories flattened)', () => {
+    expect(flatNavItems).toHaveLength(16);
   });
 
   it('preserves the order of navItems, expanding categories in place', () => {

@@ -9,6 +9,7 @@ import { useIncubators } from '@/features/incubators/hooks';
 import { useBreederBatches } from '@/features/breeder-batches/hooks';
 import { useSuppliers } from '@/features/suppliers/hooks';
 import { useItems } from '@/features/items/hooks';
+import { useEmployees } from '@/features/employees/hooks';
 
 /** Mutualisation Phase 13 — BuildingSelect/UserSelect étaient dupliqués mot
  * pour mot dans layer-batch-form.tsx et broiler-batch-form.tsx (voir
@@ -215,6 +216,45 @@ export function ItemSelect<T extends FieldValues>({
             </>
           );
         }}
+      />
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
+/** Personnel (Lot 6a) — liste des employés (non filtrée sur l'employé
+ * courant en édition : le backend refuse déjà managerId === id en 400,
+ * pas de préfiltrage frontend supplémentaire pour ce cas rare). */
+export function EmployeeSelect<T extends FieldValues>({
+  name,
+  control,
+  error,
+  label = 'Responsable hiérarchique',
+}: Omit<EntitySelectProps<T>, 'label'> & { label?: string }) {
+  const { data: employees } = useEmployees();
+  const employeesById = new Map((employees ?? []).map((e) => [e.id, `${e.code} — ${e.name}`]));
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={name}>{label}</Label>
+      <Controller
+        name={name}
+        control={control}
+        render={({ field }) => (
+          <Select value={field.value ?? ''} onValueChange={field.onChange}>
+            <SelectTrigger id={name}>
+              <SelectValue placeholder="Sélectionner…">
+                {(value: string) => (value ? (employeesById.get(value) ?? value) : 'Sélectionner…')}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {employees?.map((e) => (
+                <SelectItem key={e.id} value={e.id}>
+                  {e.code} — {e.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       />
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>

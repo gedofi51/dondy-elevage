@@ -190,6 +190,48 @@ export const PERMISSIONS = {
   NETWORK_STATUS_READINGS_CREATE: 'network_status_readings.create',
   NETWORK_STATUS_READINGS_READ: 'network_status_readings.read',
   NETWORK_STATUS_READINGS_UPDATE: 'network_status_readings.update',
+
+  // Personnel — Lot 2 (module Employees, fiche employé uniquement).
+  EMPLOYEES_CREATE: 'employees.create',
+  EMPLOYEES_READ: 'employees.read',
+  EMPLOYEES_UPDATE: 'employees.update',
+  EMPLOYEES_DELETE: 'employees.delete',
+
+  // Personnel — Lot 3 (module Attendance, pointage). Pas de DELETE :
+  // append-only, comme StockMovement (voir DETTE_TECHNIQUE.md).
+  ATTENDANCE_CREATE: 'attendance.create',
+  ATTENDANCE_READ: 'attendance.read',
+  ATTENDANCE_UPDATE: 'attendance.update',
+
+  // Personnel — Lot 4 (module EmployeeTask, tâches assignées). Aucun
+  // moteur de tâches transverse trouvé dans le dépôt (Alert/Notification
+  // sont un pipeline d'alertes, pas d'assignation — voir
+  // DETTE_TECHNIQUE.md) : EmployeeTask autonome, même patron que
+  // MaintenanceTask. Pas de DELETE : ANNULEE (statut terminal, via
+  // EMPLOYEE_TASKS_UPDATE) joue ce rôle, comme pour Attendance.
+  EMPLOYEE_TASKS_CREATE: 'employee_tasks.create',
+  EMPLOYEE_TASKS_READ: 'employee_tasks.read',
+  EMPLOYEE_TASKS_UPDATE: 'employee_tasks.update',
+
+  // Personnel — Lot 5 (Payroll/SalaryAdvance, suivi indicatif de la paie
+  // — pas de calcul légal de charges/fiscalité, pas de bulletin à valeur
+  // légale, voir MODULE_PERSONNEL.md). Pas de DELETE sur les deux : une
+  // fois VALIDE, un Payroll est terminal (jamais supprimé/modifié,
+  // décision confirmée — voir DETTE_TECHNIQUE.md) ; une SalaryAdvance
+  // déjà déduite dans un relevé est immuable, mais reste visible tant
+  // qu'elle existe.
+  PAYROLL_CREATE: 'payroll.create',
+  PAYROLL_READ: 'payroll.read',
+  PAYROLL_UPDATE: 'payroll.update',
+  SALARY_ADVANCES_CREATE: 'salary_advances.create',
+  SALARY_ADVANCES_READ: 'salary_advances.read',
+  SALARY_ADVANCES_UPDATE: 'salary_advances.update',
+
+  // Personnel — Lot 5 : permission distincte d'EMPLOYEES_READ, contrôle
+  // uniquement la visibilité du champ Employee.baseSalaryFcfa dans les
+  // réponses — voir EmployeesService (masquage champ par champ,
+  // précédent documenté dans DETTE_TECHNIQUE.md).
+  EMPLOYEES_VIEW_SALARY: 'employees.view_salary',
 } as const;
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -381,4 +423,26 @@ export const PERMISSION_DESCRIPTIONS: Record<PermissionCode, string> = {
     'Saisir un relevé de statut réseau (opérationnel/dégradé/hors ligne)',
   [PERMISSIONS.NETWORK_STATUS_READINGS_READ]: 'Consulter les relevés de statut réseau',
   [PERMISSIONS.NETWORK_STATUS_READINGS_UPDATE]: 'Corriger un relevé de statut réseau',
+
+  [PERMISSIONS.EMPLOYEES_CREATE]: 'Créer une fiche employé',
+  [PERMISSIONS.EMPLOYEES_READ]: 'Consulter les fiches employé',
+  [PERMISSIONS.EMPLOYEES_UPDATE]: 'Modifier une fiche employé',
+  [PERMISSIONS.EMPLOYEES_DELETE]: 'Supprimer (soft delete) une fiche employé',
+
+  [PERMISSIONS.ATTENDANCE_CREATE]: 'Enregistrer un pointage (présence/absence/congé/maladie)',
+  [PERMISSIONS.ATTENDANCE_READ]: 'Consulter les pointages',
+  [PERMISSIONS.ATTENDANCE_UPDATE]: 'Corriger un pointage déjà enregistré',
+
+  [PERMISSIONS.EMPLOYEE_TASKS_CREATE]: 'Assigner une tâche à un employé',
+  [PERMISSIONS.EMPLOYEE_TASKS_READ]: 'Consulter les tâches assignées',
+  [PERMISSIONS.EMPLOYEE_TASKS_UPDATE]:
+    'Modifier/faire progresser/annuler une tâche assignée',
+
+  [PERMISSIONS.PAYROLL_CREATE]: 'Créer un relevé de paie (suivi indicatif)',
+  [PERMISSIONS.PAYROLL_READ]: 'Consulter les relevés de paie',
+  [PERMISSIONS.PAYROLL_UPDATE]: 'Corriger un relevé en brouillon, ou le valider',
+  [PERMISSIONS.SALARY_ADVANCES_CREATE]: 'Enregistrer une avance sur salaire',
+  [PERMISSIONS.SALARY_ADVANCES_READ]: 'Consulter les avances sur salaire',
+  [PERMISSIONS.SALARY_ADVANCES_UPDATE]: 'Corriger une avance non encore déduite',
+  [PERMISSIONS.EMPLOYEES_VIEW_SALARY]: 'Voir le salaire de base sur une fiche employé',
 };

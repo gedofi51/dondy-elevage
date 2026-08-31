@@ -1503,6 +1503,810 @@ pour la dette mobile associée, restée entière.
   mockup, sont dans le même cas mais explicitement exclus dès le
   cadrage de cette phase (aucun module réel derrière).
 
+## Personnel — Lot 1 (fondation de données)
+
+Modèles Prisma `Employee`/`Attendance`/`EmployeeTask`/`Payroll`/
+`SalaryAdvance` (migration `20260830171702_add_personnel_module`) —
+**extension de périmètre assumée par le porteur de projet le
+2026-08-30**, au-delà des cahiers V1/V5/V6 : la V5 (§17 "Hors périmètre
+et feuille de route V6") liste explicitement "Paie complète et
+comptabilité générale réglementaire" comme non prévue, aux côtés de la
+maintenance préventive (depuis construite en V6) et des prévisions IA
+(pas encore construites) ; le cahier V6 ne mentionne le Personnel nulle
+part. Fondation de données uniquement, aucun code applicatif (DTO,
+service, contrôleur, permission RBAC) — voir le commentaire en tête de
+section dans `schema.prisma`.
+
+- **Aucune couche de contrôle sur ces 5 tables pour l'instant** —
+  normal et attendu à ce stade (rien n'est exposé, aucun endpoint
+  n'existe), mais à ne pas oublier : le principe non négociable "RBAC
+  vérifié en back-end" (CLAUDE.md) s'appliquera dès le premier lot qui
+  expose un contrôleur, pas seulement au moment de câbler le frontend.
+  **Fait pour `Employee` en Lot 2** (voir section dédiée ci-dessous) —
+  `Attendance`/`EmployeeTask`/`Payroll`/`SalaryAdvance` restent sans
+  couche de contrôle, hors périmètre explicite du Lot 2.
+- **`Employee.code` (matricule) sans générateur** — même situation que
+  `BroilerBatch.code`/`Asset.code` à leur création : le champ existe,
+  la logique de génération (format, ex. `EMP-AAAA-NNN`) revient à un
+  lot applicatif ultérieur. **Fait en Lot 2** (`EmployeesService.
+  generateCode()`, format `EMP-AAAA-NNN` confirmé, année = année
+  d'embauche).
+- **`Payroll.status` volontairement minimal (BROUILLON/VALIDE)** —
+  aucun lien vers `Payment`/`Expense` pour le suivi du paiement effectif
+  du bulletin. Le cahier V1 §8.5 liste déjà "Personnel" comme catégorie
+  de dépense existante (texte libre sur `Expense.category`) — réutiliser
+  ce mécanisme plutôt qu'en inventer un nouveau est l'option la plus
+  probable, mais non tranchée : décision différée à un lot applicatif
+  dédié plutôt que présumée dans ce lot schéma-only.
+
+## Personnel — Lot 2 (module Employees : CRUD, RBAC, isolation farmId)
+
+Module NestJS complet sur `Employee` uniquement (`apps/api/src/modules/
+employees/`) — même patron que Buildings (CRUD simple) et Expenses
+(soft delete), RBAC réutilisé tel quel (`PermissionsGuard`/
+`RequirePermissions`/`assertSameFarm`, aucun second mécanisme créé).
+
+- **`docs/reference/MODULE_PERSONNEL.md` référencé par le cadrage du
+  Lot 2 (§8, répartition des permissions par rôle) n'existait pas dans
+  le dépôt** — vérifié explicitement (recherche à vide) avant d'écrire
+  le RBAC. Répartition proposée puis confirmée avec le porteur de
+  projet à partir des deux ancrages donnés dans le cadrage lui-même
+  (Propriétaire/Gérant = complet, Comptable = lecture seule) complétée
+  par le principe de moindre privilège pour les 8 autres rôles (aucun
+  accès Personnel par défaut — donnée salariale sensible, aucun mandat
+  métier existant ne le justifie dans `roles.catalog.ts` §11).
+  **Résolu** : le cadrage complet (Phase 22) a depuis été livré et
+  formalisé dans `docs/reference/MODULE_PERSONNEL.md` — §8 y confirme
+  la répartition Propriétaire/Gérant/Comptable proposée ci-dessus, et
+  corrige un point que le principe de moindre privilège, appliqué sans
+  confirmation faute de document, avait tranché trop restrictivement :
+  **`Lecteur / Lecture seule` doit recevoir `EMPLOYEES_READ`** ("lecture
+  des fiches et plannings, paie masquée") — ajouté a posteriori à
+  `roles.catalog.ts` avant le merge du Lot 2. Nuance non résolue,
+  documentée explicitement dans `MODULE_PERSONNEL.md` §8 :
+  `baseSalaryFcfa` est un champ d'`Employee` (pas séparé dans
+  `Payroll`), donc visible par ce rôle aussi malgré "paie masquée" —
+  aucune restriction champ par champ nulle part dans le projet.
+  Également documenté comme point ouvert (pas implémenté, pas dans le
+  périmètre du Lot 2) : le rôle système `Employé` devrait pouvoir lire
+  sa propre fiche uniquement, ce qui suppose un lien `Employee`↔`User`
+  n'existant pas — `Employee` a été délibérément conçu sans compte de
+  connexion associé (Lot 1). Décision d'architecture à prendre
+  explicitement avant qu'un lot futur implémente ce point.
+- **Réponses API = modèle Prisma `Employee` exposé directement**
+  (`Promise<Employee>`), pas de DTO de sortie dédié — reproduit fidèlement
+  le patron déjà en place sur Buildings/Expenses/Assets/... (aucune
+  exception dans le projet à ce jour), conformément à la consigne du
+  Lot 2 "réutiliser le patron... ne pas en recréer un second". Tension
+  non résolue avec la règle littérale de CLAUDE.md ("Ne jamais exposer
+  directement un modèle Prisma") — déjà vraie pour tous les modules
+  existants, pas introduite par ce lot ; signalée ici plutôt que
+  silencieusement suivie, à trancher un jour au niveau du projet entier
+  si elle doit vraiment changer.
+- **`assertUpdateAllowed`/cross-field `endDate >= hireDate` validés en
+  service, pas en DTO** — malgré la formulation "validation DTO" du
+  cadrage : aucun `ValidatorConstraint` class-validator custom n'existe
+  nulle part dans le projet, tous les cas comparables (ex.
+  `Asset.serviceDate >= purchaseDate`, Phase 20) sont validés côté
+  service. Suivi cette convention plutôt que d'introduire un premier
+  précédent pour ce seul cas.
+- **`managerId` : garde anti-auto-référence directe uniquement**
+  (`managerId === id` refusé), pas de détection de cycle complète
+  (A manage B manage A) — non demandé, complexité jugée disproportionnée
+  pour ce lot.
+- **Pas d'endpoint de restauration après soft delete** — une fois
+  `deletedAt` posé, la fiche est 404 pour tous les endpoints standards,
+  aucun mécanisme de retour en arrière (même limite qu'Expense/
+  SupplierPayment, qui n'en ont pas non plus). "Réactivation" au sens du
+  Lot 2 concerne uniquement les statuts SUSPENDU/DEPART (fiche encore
+  vivante), pas la restauration d'une fiche supprimée — distinction à
+  garder en tête si un besoin réel de restauration émerge plus tard.
+
+## Personnel — Lot 3 (module Attendance : pointage, CRUD, RBAC)
+
+Module NestJS nesté sous Employee (`apps/api/src/modules/employees/
+attendance/`, routes `/employees/:employeeId/attendance`) — même
+patron structurel que `WaterReadingsModule` sous `WaterPointsModule`
+(1 relevé/jour, `@@unique([employeeId, date])`, `PATCH` de correction),
+`EmployeesModule` étendu (`exports: [EmployeesService]`) pour que
+`AttendanceService` réutilise `EmployeesService.findOne()` (isolation
+farmId + existence/non-suppression de l'employé en un seul appel).
+
+- **Deux écarts entre le cadrage (`MODULE_PERSONNEL.md`) et le schéma/
+  §7 réels, signalés avant implémentation plutôt que tranchés seul**
+  (leçon explicite du Lecteur oublié au Lot 2) :
+  1. Les règles du Lot 3 mentionnent un statut "repos", absent de
+     l'enum `AttendanceStatus` (Lot 1 : PRESENT/ABSENT/CONGE/MALADIE).
+     **Confirmé** : enum gardé tel quel, "repos" traité comme un terme
+     informel recouvrant CONGE — aucune migration.
+  2. Le §7 initial ne liste que `GET/POST` pour l'endpoint attendance,
+     mais "checkOut postérieur à checkIn si les deux sont renseignés"
+     implique un pointage en 2 temps, et le seul précédent structurel
+     comparable du projet (`WaterReadingsController`) a un `PATCH`
+     dédié. **Confirmé** : `PATCH /employees/:employeeId/attendance/
+     :date` ajouté, aligné sur ce patron. Toujours pas de `DELETE`
+     (append-only, comme `StockMovement` — aucun rôle du catalogue n'a
+     `ATTENDANCE_DELETE`, cette permission n'existe même pas).
+- **"Responsable élevage : écriture" interprété comme
+  CREATE+READ+UPDATE, pas CREATE+UPDATE seuls** — le mot "écriture" du
+  cadrage ne précisait pas si la lecture était incluse. Décision prise
+  par cohérence avec la convention déjà présente partout ailleurs dans
+  `roles.catalog.ts` : chaque rôle "propriétaire d'un domaine" reçoit
+  systématiquement READ groupé avec CREATE/UPDATE/DELETE sur ce domaine
+  (ex. Responsable couvoir sur Incubators) — jamais un rôle qui écrit
+  sans pouvoir relire ce qu'il vient de saisir. Signalé ici plutôt que
+  simplement appliqué, au cas où l'intention réelle était plus stricte.
+- **Format `HH:mm` strict sur `checkInTime`/`checkOutTime`** (regex
+  `^([01]\d|2[0-3]):[0-5]\d$`, `@Matches` côté DTO) — premier champ
+  "heure" du projet à exiger un format précis. Tous les autres champs
+  comparables (`BroilerDailyRecord.entryTime`, `BroilerBatch.
+  arrivalTime`...) restent du texte libre, jamais comparés
+  programmatiquement. Nécessaire ici uniquement parce que la règle
+  "checkOut postérieur à checkIn" exige une comparaison fiable — une
+  comparaison lexicographique de deux `HH:mm` zéro-préfixés est valide,
+  ce que du texte libre ne garantirait pas.
+- **Piège rencontré en vérifiant ce lot** : après avoir ajouté les
+  permissions `ATTENDANCE_*` à `roles.catalog.ts`, les tests e2e
+  échouaient en 403 partout (sauf le tout premier, avant que le motif
+  ne devienne clair) — cause réelle : `npm run db:seed` non relancé
+  après modification du catalogue de rôles. `AuthService.
+  resolveRolesAndPermissions()` lit les permissions depuis la table
+  `RolePermission` (base réelle), jamais directement depuis
+  `ROLES_CATALOG` (code) — toute modification de ce fichier reste sans
+  effet sur les connexions réelles tant que le seed n'a pas resynchronisé
+  la base. Prévu comme un rappel pour tout lot futur qui touche au RBAC
+  suivi de tests e2e.
+
+## Personnel — Lot 4 (module EmployeeTask : tâches assignées, CRUD, RBAC)
+
+**Investigation préalable menée avant tout code, comme exigé par le
+cadrage du lot** : recherche exhaustive d'un moteur de tâches/alertes
+transverse dans le dépôt. **Aucun trouvé** :
+- `Alert`/`Notification` (modèles réellement transverses,
+  `entityType`/`entityId` polymorphe) sont un pipeline d'alertes/
+  notifications (cycle CREATED→TRIGGERED→ACKNOWLEDGED, sévérité) — pas
+  d'assigné, pas de `dueDate` de travail, pas de statut de progression.
+  Structurellement inadapté à "assigner une tâche et suivre sa
+  réalisation".
+- `MaintenanceTask` (Phase 17), bien que nommé comme un "moteur", est
+  câblé en dur sur `Asset` (`assetId` non polymorphe) — c'est déjà le
+  précédent réel du projet : une table de tâches par domaine, jamais un
+  moteur partagé. Créer un moteur générique maintenant impliquerait de
+  retrofiter `MaintenanceTask` dessus pour ne pas dupliquer un second
+  système — chantier transversal hors périmètre d'un lot.
+- La référence "Phase 11" du cadrage (`MODULE_PERSONNEL.md` §5) pointe
+  en réalité vers le frontend Poulets de chair (`## Phase 11 — Frontend
+  Poulets de chair`) — sans lien avec un quelconque moteur de tâches ;
+  référence erronée dans le cadrage initial, à corriger si le document
+  est retouché.
+
+**Décision confirmée avant implémentation** (question remontée,
+tranchée par le porteur de projet, pas décidée seule) : `EmployeeTask`
+autonome, même patron que `MaintenanceTask` (déjà le précédent établi).
+
+Adaptations délibérées au patron `MaintenanceTasksService`, chacune
+signalée avant d'être appliquée :
+- **`REALISEE` reste directement accessible en `PATCH`** (contrairement
+  à `MaintenanceTask`, où REALISEE n'est atteignable que comme effet de
+  bord de la création d'une `MaintenanceIntervention`) — `EmployeeTask`
+  n'a pas d'entité équivalente pour produire ce statut en side-effect ;
+  sans ce PATCH direct, "suivre sa réalisation" (objectif explicite du
+  lot) serait impossible. `ANNULEE`, en revanche, reste isolé dans son
+  propre endpoint (`POST .../annuler`), même discipline que Maintenance
+  (une annulation mérite un motif et une action distincte).
+- **Pas de permission `EMPLOYEE_TASKS_CANCEL` séparée** — contrairement
+  à `MaintenanceTask` (`MAINTENANCE_TASKS_CANCEL` distinct
+  d'`_UPDATE`), la matrice donnée par le cadrage (complet/CREATE+READ+
+  UPDATE/lecture seule, 3 paliers) n'en prévoit pas une 4ᵉ ; dans les 3
+  occurrences existantes de `MAINTENANCE_TASKS_CANCEL`, elle est de
+  toute façon toujours accordée avec `_UPDATE`, jamais séparément —
+  `/annuler` gardé sous `EMPLOYEE_TASKS_UPDATE` directement.
+- **Pas de verrou `FOR UPDATE`** sur les transitions de statut —
+  contrairement à `MaintenanceTasksService` (7ᵉ occurrence du défaut de
+  concurrence corrigée en Phase 20), `EmployeeTask` ne déclenche la
+  création d'aucune entité liée en effet de bord (pas d'équivalent à
+  `MaintenanceIntervention`) : aucun risque de concurrence réel identifié
+  qui justifierait le coût. Décision proportionnée, pas un oubli — à
+  revoir si un besoin réel émerge.
+- **`isLate` calculé à la lecture**, jamais stocké — même patron exact
+  que `MaintenanceTasksService.attachComputed()` (dueDate dépassée ET
+  statut encore ouvert).
+
+Aucun nouveau format/validation transversal introduit ce lot
+(`designation`/`dueDate`/`observations` suivent les conventions déjà en
+place ailleurs).
+
+## Personnel — Lot 5 (Payroll/SalaryAdvance : suivi indicatif de la paie,
+masquage champ par champ)
+
+Modules NestJS `Payroll`/`SalaryAdvance`, nestés sous Employee, même
+patron que Attendance/EmployeeTask. **Suivi indicatif uniquement** — pas
+de calcul légal de charges sociales/fiscales, pas de bulletin à valeur
+légale (voir `MODULE_PERSONNEL.md`, précision de périmètre).
+
+**Deux décisions confirmées avant implémentation** (questions remontées,
+pas tranchées seul, même discipline que les Lots 3/4) :
+
+1. **Pas de statut `ANNULE` ajouté à `PayrollStatus`** (Lot 1, déjà en
+   base : `BROUILLON`/`VALIDE` seulement, pas de `deletedAt` sur
+   `Payroll` contrairement à `Employee`) — malgré la règle "relevé
+   validé jamais supprimé, seulement annulé/corrigé". Confirmé :
+   `BROUILLON` reste librement corrigeable (`PATCH`) ; une fois
+   `VALIDE`, statut terminal, plus aucune modification/suppression
+   possible (`assertPayrollEditable`) — "jamais supprimé" au sens
+   littéral, rien n'est jamais retiré. Une correction post-validation
+   (si un besoin réel émerge) passerait par un nouveau relevé
+   compensatoire dans un lot futur, pas un retour en arrière.
+2. **Aucun lien automatique `Payroll` ↔ `Expense` ce lot** — ouvert
+   depuis le Lot 1. Un précédent MÉCANIQUE clair existe
+   (`MaintenanceInterventionsService` crée un `Expense` en side-effect
+   transactionnel ; "Personnel" est déjà une catégorie de dépense listée
+   au cahier V1 §8.5) mais la règle "sans doublon avec des dépenses
+   saisies manuellement" (§5) est un choix PRODUIT — quand déclencher la
+   création sans compter le coût en double avec la saisie manuelle
+   actuelle du Comptable — pas seulement un câblage technique. Confirmé :
+   différé à un lot dédié, au moment où la consolidation KPI (Phase 8,
+   mentionnée par le cadrage) sera elle-même construite — c'est à ce
+   moment que "sans doublon" devient vérifiable. `Payroll` reste un
+   registre autonome ce lot.
+
+**Verrou `FOR UPDATE` réintroduit** (8ᵉ occurrence de la discipline
+Phase 8/20, absente d'Attendance/EmployeeTask à raison) — justifié cette
+fois : la création d'un relevé balaie les avances non déduites de
+l'employé (`SalaryAdvance.deductedInPayrollId IS NULL`) et les lie au
+nouveau relevé ; deux créations concurrentes pour le même employé
+pourraient toutes deux lire la même avance comme "non déduite" avant
+qu'aucune ne commette — double comptage possible sans verrou. Verrou
+posé sur la ligne `Employee` (pas sur les lignes `SalaryAdvance`
+elles-mêmes, plus simple, évite les nuances de verrou d'intervalle
+InnoDB sur un prédicat `IS NULL`) — suffisant : sérialise les créations
+concurrentes pour le même employé, sans bloquer celles d'employés
+différents. `isSerializationFailure` (P2034 + P2010/1213/1205, voir
+Phase 20) dupliqué localement, même convention que les 7 fichiers
+précédents.
+
+**"Relevé suivant" interprété littéralement** — une avance enregistrée
+après la création d'un relevé encore en `BROUILLON` n'est PAS rattrapée
+rétroactivement à sa validation ; elle reste en attente pour le
+prochain relevé créé. Le balayage n'a lieu qu'une fois, à la création.
+Vérifié explicitement par un test e2e dédié (avance créée après coup →
+non balayée dans le relevé existant → balayée dans le suivant).
+
+**Masquage champ par champ (`baseSalaryFcfa`) — premier précédent de ce
+type dans le projet, documenté ici comme réutilisable** :
+- Nouvelle permission `EMPLOYEES_VIEW_SALARY`, distincte
+  d'`EMPLOYEES_READ` — un rôle peut lire une fiche employé sans voir son
+  salaire de base.
+- Mécanisme : `EmployeesService` (lecture/écriture réelles, utilisée en
+  interne par `PayrollService` etc.) retourne TOUJOURS la valeur vraie —
+  masquer à ce niveau aurait cassé le besoin d'`Payroll` de capturer un
+  instantané fiable de `baseSalaryFcfa`, dès qu'un rôle avec
+  `PAYROLL_CREATE` sans `EMPLOYEES_VIEW_SALARY` existerait (aucun cas
+  aujourd'hui, mais un couplage fragile à éviter dès l'origine). Le
+  masquage (`maskSalaryForResponse`, `employees.validation.ts`) est
+  appliqué exclusivement à la frontière `EmployeesController` — chaque
+  méthode retourne `Omit<Employee,'baseSalaryFcfa'> &
+  {baseSalaryFcfa?}`, la clé est réellement absente du JSON (pas
+  `null`), vérifié par un test e2e dédié qui inspecte les clés brutes de
+  la réponse, pas seulement le typage TypeScript.
+- **Réutilisable tel quel** pour tout futur champ sensible sur une
+  entité déjà exposée : nouvelle permission `_VIEW_X`, fonction de
+  masquage appliquée au niveau contrôleur uniquement (jamais dans le
+  service, pour ne pas casser les consommateurs internes), test e2e
+  d'absence de clé (pas de valeur `null`/`undefined` en assertion
+  superficielle, une vraie vérification `'x' in body`).
+- Résout la nuance restée ouverte depuis les Lots 2/3/4
+  (`baseSalaryFcfa` visible par Lecteur malgré "paie masquée", faute de
+  ce mécanisme) — commentaire périmé dans `roles.catalog.ts` corrigé en
+  conséquence.
+
+Aucun autre nouveau format/validation transversal (dates, montants
+suivent les conventions déjà établies).
+
+## Personnel — Lot 6a (écrans Employee : liste, fiche, création/édition)
+
+Premier lot **frontend** du module Personnel. Patron mirroré sur
+Patrimoine/Assets (`apps/web/src/app/(app)/patrimoine/...`,
+`apps/web/src/features/assets/...`) — module de domaine comparable déjà
+construit côté front (liste + fiche à onglets + formulaire combiné
+RHF/Zod), conformément à la consigne du prompt de rechercher un
+précédent avant tout code.
+
+**Navigation — décision prise et signalée plutôt que tranchée
+silencieusement** (consigne explicite du prompt, répétée deux fois) :
+« Personnel » ajouté comme `NavLink` direct (`/personnel`, icône
+`Users`, gardé par `EMPLOYEES_READ`), pas une `NavCategory` — une seule
+route de premier niveau réelle, même règle que Points d'eau/Stocks/
+Achats (voir Phase 21, "≥2 routes réelles ⇒ catégorie, sinon lien
+direct"). Placé en dernière position (après « Équipements »), même
+logique de moindre perturbation que les autres entrées.
+**Effet de bord identifié, à revoir explicitement** : le rôle
+Responsable élevage a `ATTENDANCE_*`/`EMPLOYEE_TASKS_*` mais pas
+`EMPLOYEES_READ` (voir `roles.catalog.ts`, Lots 3/4) — avec ce gardage,
+il ne verra JAMAIS l'entrée « Personnel », alors qu'il a un accès réel
+au pointage/tâches assignées une fois sur la fiche employé. Aucune route
+alternative n'existe aujourd'hui pour y accéder autrement (pas de
+`/pointage` ou `/taches` transverse). Non corrigé ce lot — la solution
+correcte dépend de ce que les Lots 6b/6c/6d construisent réellement
+(un écran dédié Présence/Tâches accessible sans passer par la fiche
+employé changerait la réponse) ; à trancher explicitement quand ces
+lots seront lancés, pas anticipé ici.
+
+**Masquage du salaire — appliqué au niveau composant, pas seulement
+type** : `Employee.baseSalaryFcfa` est optionnel côté `shared-types`
+(miroir direct d'`EmployeeMaybeWithSalary` côté API, Lot 5). Règle
+appliquée systématiquement partout où le champ apparaît :
+- Liste (`EmployeeTable`) : aucune colonne salaire — le cadrage §3 ne le
+  prévoit que sur la fiche détaillée, cohérent avec une donnée
+  sensible.
+- Fiche (`EmployeeDetailView`) : ligne "Salaire de base" rendue
+  uniquement si `baseSalaryFcfa !== undefined` — jamais de ligne vide/
+  tiret à la place en son absence (aurait été un signal suspect, la
+  consigne UI l'interdit explicitement).
+- Formulaire (`EmployeeForm`, édition) : champ affiché uniquement si
+  présent dans la réponse ; **et surtout jamais soumis** dans ce cas
+  (`baseSalaryFcfa` omis du payload PATCH plutôt qu'envoyé à `0` ou
+  requis) — évite qu'un rôle sans `EMPLOYEES_VIEW_SALARY` puisse, même
+  par accident de formulaire, écraser le salaire d'un employé. En
+  pratique aucun rôle actuel n'a `EMPLOYEES_UPDATE` sans
+  `EMPLOYEES_VIEW_SALARY` (vérifié dans `roles.catalog.ts`) — le
+  composant applique la règle quand même en défense en profondeur,
+  cohérent avec le type optionnel plutôt que de présumer la matrice RBAC
+  actuelle immuable.
+- Formulaire (création) : champ toujours requis — seuls des rôles ayant
+  déjà `EMPLOYEES_VIEW_SALARY` peuvent atteindre cet écran (nav +
+  `EMPLOYEES_CREATE` combinés), donc pas de cas de masquage à la
+  création dans la matrice actuelle.
+
+**Onglets Présence/Tâches/Paie — coquille visible, contenu différé** :
+`EmployeeDetailView` construit les 3 onglets dès ce lot (fiche
+« extensible » demandée) mais chacun ne rend qu'un texte indicatif
+« à venir » — interdiction explicite du prompt de les remplir ici.
+L'onglet Paie est gardé par `PAYROLL_READ` (Lecteur ne l'a pas, voir
+Lot 5) ; Présence/Tâches restent ungated à ce niveau — vérifié dans
+`roles.catalog.ts` que tout rôle disposant d'`EMPLOYEES_READ` dispose
+aussi d'`ATTENDANCE_READ`/`EMPLOYEE_TASKS_READ` dans la matrice
+actuelle, donc pas de fuite. Le vrai contrôle d'accès aux données
+réelles sera posé composant par composant aux Lots 6b/6c/6d (même
+patron que les onglets Eau/Solaire/Réseau de `AssetDetailView`), pas
+anticipé ici.
+
+**Liste — filtre "Actifs" mirroré sur Patrimoine** : exclut uniquement
+le statut terminal `DEPART` (un employé `CONGE`/`SUSPENDU` reste dans
+l'effectif affiché par défaut), même lecture que `REFORME` sur
+Patrimoine. Décision de faible enjeu, non remontée en question — filtre
+strictement en mémoire (`GET /employees` n'a pas de filtre serveur,
+même palliatif que les autres listes du projet).
+
+**Suppression** : `EmployeeForm`/`EmployeeDetailView` utilisent le
+`useDeleteEmployee` existant (Lot 2, soft delete sans endpoint de
+restauration) — confirmation via `ConfirmDialog` avant l'appel, même
+patron que Patrimoine.
+
+## Personnel — Lot 6b (écrans Attendance : planning, pointage)
+
+Deuxième lot frontend du module Personnel, stacké sur le Lot 6a
+(`feature/personnel-lot6a-employee-screens`). Reprend le patron
+`features/employees/` établi au Lot 6a (hooks.ts/schemas.ts étendus,
+composants dans `features/employees/components/`), et pour la
+sous-ressource datée elle-même le patron le plus proche déjà en place :
+WaterReadings sous WaterPoint (`features/water-points/...`) — cité
+explicitement en commentaire côté API
+(`attendance.service.ts` : « même patron structurel que WaterReadings »).
+
+**Décision de navigation — tranchée et documentée, conformément à la
+consigne explicite du prompt** : entrée « Pointage » ajoutée en `NavLink`
+séparé (`/pointage`, icône `ClipboardCheck`), indépendante de
+« Personnel ». Corrige exactement l'effet de bord identifié — mais pas
+corrigé — au Lot 6a : le rôle Responsable élevage a
+`ATTENDANCE_READ`/`EMPLOYEE_TASKS_READ` mais pas `EMPLOYEES_READ`, et ne
+voyait donc jamais « Personnel ». `NavLink` étendu d'un nouveau champ
+`anyPermission?: PermissionCode[]` (visible si au moins une des
+permissions listées est présente — alternatif à `permission`, jamais les
+deux ensemble) plutôt que de réutiliser `permission` (qui n'exprime
+qu'une AND/permission unique) — extension minimale de `nav-items.ts`
+(`isLinkVisible`), pas une réécriture du modèle de données existant.
+« Pointage » gardé par `ATTENDANCE_READ` OU `EMPLOYEE_TASKS_READ` :
+vérifié dans `roles.catalog.ts` que dans la matrice RBAC actuelle, ces
+deux permissions sont **toujours accordées ensemble** à chaque rôle qui
+en a une (Propriétaire/Administrateur, Gérant, Responsable élevage,
+Comptable, Lecteur) — gater sur `ATTENDANCE_READ` seul donnerait donc
+exactement la même visibilité aujourd'hui. Le OU est conservé
+volontairement pour deux raisons : (1) rester correct si un futur rôle
+découple un jour les deux permissions ; (2) `EMPLOYEE_TASKS_READ` est
+très probablement amené à pointer vers cette même entrée une fois le Lot
+6c (Tâches) construit, évitant d'ajouter une 3ᵉ entrée de nav pour un
+contenu très proche. Défense en profondeur ajoutée côté page
+(`/pointage`) malgré l'absence de cas réel aujourd'hui : le contenu
+(`AttendanceRegister`) reste gardé par `Can permission={ATTENDANCE_READ}`
+avec un message explicite en repli, au cas où un futur rôle atteindrait
+la page via `EMPLOYEE_TASKS_READ` seul sans jamais avoir
+`ATTENDANCE_READ`.
+
+**Aucun composant de calendrier réutilisable trouvé** (recherche menée
+avant tout code, conformément à la consigne) : ni ailleurs dans le repo
+(seule occurrence du mot « Calendar » dans `apps/web/src` avant ce lot :
+un test sans rapport, `day-number.test.ts`), ni comme dépendance déjà
+installée (`react-day-picker`, `date-fns` absents de
+`apps/web/package.json`). Grille de mois construite à la main
+(`features/employees/attendance-calendar-grid.ts`, fonction pure
+`buildMonthGrid`, testée isolément — même discipline que `day-number.ts`
+côté Broiler) plutôt que d'introduire une nouvelle dépendance pour un
+simple calcul de grille 6 semaines × 7 jours.
+
+**Deux écrans distincts pour les deux notions nommées par le prompt**
+(« planning » et « pointage quotidien ») :
+- Onglet **Présence** (`personnel/[id]`, rempli ce lot) :
+  `AttendanceCalendar` — calendrier mensuel **par employé**, un seul
+  appel réseau (`GET /employees/:id/attendance`, historique complet,
+  filtré côté client par mois affiché — même ordre de grandeur que le
+  reste de la fiche, aucune pagination ailleurs dans l'app non plus).
+  C'est la « vue calendrier des présences/absences » au sens strict du
+  prompt.
+- Nouvel écran **`/pointage`** (registre du jour, tous employés) :
+  `AttendanceRegister` — c'est le « pointage quotidien (arrivée/
+  départ) » : une ligne par employé éligible (voir plus bas), statut du
+  jour sélectionné + action Pointer/Modifier.
+
+**Registre du jour — N requêtes par employé, compromis assumé** : l'API
+Lot 3 n'expose que `/employees/:id/attendance` (nesté par employé),
+aucun endpoint farm-wide « tous les employés à une date donnée ». Ajouter
+un tel endpoint aurait été une modification backend hors périmètre
+strict de ce lot (fichiers concernés listés dans le prompt : uniquement
+front). `AttendanceRegister` interroge donc `GET /employees/:id/
+attendance/:date` une fois par employé éligible, en parallèle
+(`useQueries`) — borné par l'effectif de la ferme, pas paginé. Accepté
+comme compromis pour ce lot compte tenu de la contrainte de connectivité
+Samba (CLAUDE.md) : à revisiter si l'effectif dépasse quelques dizaines
+d'employés, ou si un Lot ultérieur ajoute un endpoint farm-wide (ce
+service/cet écran serait alors le premier bénéficiaire évident).
+
+**Éligibilité au registre — définition reprise du backend, pas de la
+liste employés** : `AttendanceRegister` exclut les employés
+`SUSPENDU`/`DEPART` (même ensemble que
+`RESTRICTED_EMPLOYEE_STATUSES`/`assertEmployeeActiveForNewAttendance`
+côté API, `attendance.validation.ts`) — différent du filtre "Actifs" de
+la liste employés (Lot 6a, qui n'exclut que `DEPART`) : ici c'est
+précisément l'éligibilité à un nouveau pointage qui compte, pas la
+visibilité RH générale. Évite de proposer un bouton "Pointer" qui
+échouerait systématiquement en 409 pour un employé suspendu.
+
+**Validation du formulaire de pointage — miroir exact du backend** :
+`attendanceFormSchema` (Zod) reproduit `assertAttendanceTimesConsistent`
+(`attendance.validation.ts`) — statut PRESENT exige `checkInTime`,
+tout autre statut interdit les deux champs heure, `checkOutTime` doit
+être strictement postérieur à `checkInTime` quand les deux sont
+renseignés. Jamais la seule barrière : le serveur revalide intégralement
+à chaque écriture, comme partout ailleurs dans le projet. Les champs
+heure sont masqués dans le formulaire hors statut PRESENT et vidés via
+un `useEffect` au changement de statut (évite qu'une valeur saisie puis
+masquée reste dans l'état du formulaire et fasse échouer la validation
+sans qu'aucun message ne soit visible, le champ portant l'erreur étant
+alors caché).
+
+**Un seul formulaire pour créer et corriger** (`AttendanceForm`) :
+branchement POST/PATCH sur la présence d'un enregistrement existant
+(`existing: Attendance | null`), pas sur une prop statique comme
+`EmployeeForm` (Lot 6a) — ici la présence dépend de la réponse d'un GET
+par date, pas de la navigation (fiche création vs édition).
+
+**Écriture — permission vérifiée au cas par cas, pas par proxy** :
+créer un jour vierge exige `ATTENDANCE_CREATE`, corriger un jour déjà
+saisi exige `ATTENDANCE_UPDATE` — les deux composants d'écriture
+(`AttendanceCalendar`, `AttendanceRegister`) sélectionnent la permission
+exacte selon qu'un enregistrement existe déjà pour la date concernée.
+Les 3 rôles avec accès en écriture (Propriétaire/Administrateur, Gérant/
+Responsable ferme, Responsable élevage) ont aujourd'hui toujours les
+deux permissions ensemble (vérifié dans `roles.catalog.ts`), donc aucune
+différence de comportement visible actuellement — codé correctement
+quand même plutôt que par un raccourci qui casserait silencieusement si
+la matrice RBAC se découplait un jour.
+
+**Tests `useQueries` — pas de précédent dans ce dépôt** :
+`attendance-register.test.tsx` mock `@tanstack/react-query` lui-même
+(en ne remplaçant que `useQueries`, via `importOriginal`) plutôt que de
+monter un vrai `QueryClientProvider` avec un fetch réseau simulé — aucun
+autre composant consommant `useQueries` (`broiler-batches`/
+`layer-batches`, précédent Phase antérieure) n'a de test dans ce dépôt,
+pas de patron `QueryClientProvider` de test à reprendre. Solution
+pragmatique, cohérente avec le mock systématique de `../hooks` déjà
+utilisé partout ailleurs dans les tests de ce module.
+
+**Interaction avec le composant `Select` (base-ui) — non testée par
+clic** : sélectionner une option puis vérifier l'effet résultant
+(`fireEvent.click` sur un `role="option"`) s'est avéré peu fiable en
+test (état non mis à jour de façon synchrone observable) et n'a aucun
+précédent ailleurs dans le dépôt (seul précédent existant,
+`asset-form.test.tsx`, vérifie uniquement la présence des options, jamais
+une sélection). Contourné en testant le comportement « statut ≠ PRESENT
+⇒ champs heure absents » de façon déclarative (via la prop `existing`)
+plutôt que par interaction — couverture équivalente, sans dépendre d'un
+mécanisme d'interaction non éprouvé dans ce projet. À investiguer si un
+lot futur a réellement besoin de tester une sélection d'option en direct.
+
+## Personnel — Lot 6c (écrans EmployeeTask : onglet Tâches)
+
+Troisième lot frontend du module Personnel, stacké sur le Lot 6b
+(`feature/personnel-lot6b-attendance-screens`). Reprend le patron
+`features/employees/` (hooks.ts/schemas.ts étendus, composants dans
+`features/employees/components/`) et, pour la structure liste/formulaire/
+annulation elle-même, le précédent le plus proche cité par
+`MODULE_PERSONNEL.md` §5 : `MaintenanceTask` (`features/maintenance/...`),
+investigué avant tout code conformément à la consigne.
+
+**Vue « toutes les tâches de la ferme » — investiguée, explicitement
+exclue de ce lot** (décision documentée, pas silencieuse, conformément à
+la consigne). Contrairement à `MaintenanceTask`, dont `GET
+/maintenance-tasks` est un endpoint farm-wide sans filtre (toute la
+ferme en un seul appel, réutilisé tel quel par la page globale
+`/maintenance` ET par l'onglet Maintenance de la fiche Asset), l'API
+`EmployeeTask` du Lot 4 n'expose que `/employees/:employeeId/tasks`
+(nesté, aucun équivalent farm-wide). Une vue « toutes les tâches »
+reproduirait donc exactement le compromis N-requêtes-par-employé déjà
+assumé pour `/pointage` (Lot 6b, `AttendanceRegister`), sans qu'aucun
+besoin explicite ne soit exprimé au cadrage au-delà de « Rapport RH »
+(§3, fonctionnalité distincte, non construite). Le prompt du Lot 6c
+demandait explicitement de signaler plutôt que trancher seul si une
+vue dédiée s'avérait nécessaire : conclusion retenue ici — **pas
+nécessaire ce lot**, l'onglet Tâches de la fiche employé couvre déjà
+l'objectif énoncé (« liste des tâches assignées et création »), aucune
+nouvelle entrée de navigation n'est donc ajoutée (« Pointage », Lot 6b,
+reste suffisante). **Proposition, pas un rejet définitif** : à
+reconsidérer explicitement si un besoin réel de vue transverse émerge
+(ex. un Gérant voulant suivre toutes les tâches ouvertes de l'équipe en
+un coup d'œil) — candidate naturelle pour un lot dédié plutôt qu'un
+ajout silencieux ici.
+
+**Statuts — REALISEE directement en PATCH, à la différence de
+MaintenanceTask** : `EMPLOYEE_TASK_EDITABLE_STATUSES` inclut
+A_FAIRE/EN_COURS/**REALISEE** (contre seulement A_FAIRE/EN_COURS côté
+`MAINTENANCE_TASK_EDITABLE_STATUSES`) — EmployeeTask n'a pas d'entité
+« intervention » pour produire REALISEE en effet de bord, donc ce
+statut reste directement accessible via le formulaire d'édition
+(`EmployeeTaskForm`, Select limité à ces 3 valeurs). ANNULEE n'apparaît
+jamais dans ce Select — atteignable uniquement via
+`CancelEmployeeTaskDialog` → `POST .../annuler` (interdiction explicite
+du Lot 6c, respectée).
+
+**Motif d'annulation — obligatoire côté formulaire, optionnel côté API**
+: `CancelEmployeeTaskDto.cancelReason` est `@IsOptional()` côté backend
+(« même forme que CancelMaintenanceTaskDto », commentaire du DTO) —
+contrairement à l'énoncé du prompt Lot 6c (« motif obligatoire »).
+Résolu sans modification backend (interdiction explicite du lot) : la
+règle est imposée uniquement côté formulaire
+(`cancelEmployeeTaskSchema`, `cancelReason` requis, non vide) — une
+chaîne non vide reste toujours une entrée valide pour un champ optionnel
+côté serveur, donc aucune incohérence entre les deux couches. Écart
+volontaire au précédent Maintenance (`CancelTaskDialog`, dont le motif
+reste optionnel des deux côtés) : le prompt Lot 6c demande explicitement
+ce durcissement pour EmployeeTask, pas pour Maintenance — pas une
+généralisation à appliquer ailleurs sans demande équivalente.
+
+**Dialog d'annulation — patron Maintenance repris, pas
+`attendance-dialog.tsx`** : le prompt suggérait de réutiliser
+`attendance-dialog.tsx` (Lot 6b) « si pertinent ». Après lecture, ce
+composant est spécifiquement structuré pour le branchement POST/PATCH
+d'AttendanceForm (création/correction d'un pointage) et n'a aucune
+notion de motif ni de confirmation destructive — `cancel-task-dialog.tsx`
+(Maintenance) est un précédent structurellement bien plus proche
+(Dialog + un seul champ motif + confirmation destructive), repris tel
+quel pour `CancelEmployeeTaskDialog`. Écart mineur au libellé du prompt,
+signalé ici plutôt que suivi à la lettre contre l'évidence du code.
+
+**Bouton « Nouvelle tâche » masqué pour un employé inactif** : même
+principe que `AttendanceRegister` (Lot 6b) — `SUSPENDU`/`DEPART` exclus
+(même définition que `RESTRICTED_EMPLOYEE_STATUSES`/
+`assertEmployeeActiveForNewTask` côté API), message explicatif affiché à
+la place plutôt qu'un bouton menant systématiquement à un 409. Erreur
+API reflétée normalement (via `extractMessage`) si ce garde-fou est
+contourné (accès direct à l'URL, changement de statut concurrent).
+
+**Onglet Tâches — non gated au niveau de l'onglet, actions gated
+individuellement** : même vérification que Lot 6a/6b (`roles.catalog.ts`)
+— tout rôle avec `EMPLOYEES_READ` a aussi `EMPLOYEE_TASKS_READ`, pas de
+fuite à ce niveau. Écriture (Nouvelle tâche/Modifier/Annuler) gardée par
+`EMPLOYEE_TASKS_CREATE`/`EMPLOYEE_TASKS_UPDATE` individuellement, testé
+explicitement pour le cas Responsable élevage (a les permissions Tâches
+mais pas `EMPLOYEES_UPDATE`/`EMPLOYEES_DELETE` — voit les actions Tâches
+sans voir les actions Employee de la fiche).
+
+## Personnel — Lot 6d (écrans Payroll/SalaryAdvance + rapport RH)
+
+Quatrième et dernier lot frontend du module Personnel prévu (avant
+Rapport RH et périmètre V6+), stacké sur le Lot 6c
+(`feature/personnel-lot6c-employee-tasks-screens`). Manipule les données
+les plus sensibles du module — voir « Rappel critique » du prompt, traité
+comme la contrainte structurante du lot plutôt qu'une case à cocher a
+posteriori.
+
+**Aucun rôle « lecture seule » intermédiaire pour Payroll/SalaryAdvance**
+(vérifié dans `roles.catalog.ts` avant tout code, conformément à la
+consigne) : contrairement à Attendance/EmployeeTask (Lecteur en lecture
+seule), l'accès à `PAYROLL_*`/`SALARY_ADVANCES_*`/`EMPLOYEES_VIEW_SALARY`
+est strictement binaire — exactement 3 rôles (Propriétaire/
+Administrateur, Gérant/Responsable ferme, Comptable/Responsable
+financier) ont les trois permissions CREATE/READ/UPDATE de chaque
+ressource ensemble ; aucun autre rôle n'en a une seule. Responsable
+élevage confirmé sans aucun accès. Conséquence directe : **aucun
+masquage champ par champ n'est nécessaire dans `Payroll`/`SalaryAdvance`**
+(pas de `baseSalaryFcfa?: number` optionnel comme sur `Employee`) — la
+protection est entièrement structurelle, au niveau du montage du
+composant, pas du contenu d'un type.
+
+**Protection structurelle du salaire — composant dédié, jamais inliné**
+: contrairement à Présence/Tâches (contenu inliné dans
+`EmployeeDetailView`, hooks appelés inconditionnellement puisque tout
+rôle avec `EMPLOYEES_READ` a aussi `ATTENDANCE_READ`/
+`EMPLOYEE_TASKS_READ`), le contenu de l'onglet Paie vit dans un
+composant à part (`PayrollTab`) monté **uniquement** comme enfant de
+`<Can permission={PAYROLL_READ}>` (déjà en place depuis le Lot 6a). Une
+vraie fonction React non rendue n'exécute jamais son corps — donc pour
+un rôle sans `PAYROLL_READ` (Lecteur, Responsable élevage, tous les
+autres) : `useEmployeePayroll`/`useSalaryAdvances` ne sont **jamais
+appelés**, aucune requête réseau, **aucune entrée de cache React Query**,
+aucun DOM. Même discipline pour le rapport RH (`HrReport`, sous
+`/personnel`) — monté derrière le même `Can permission={PAYROLL_READ}`.
+Aucune vérification de permission redondante à l'intérieur de
+`PayrollTab`/`HrReport` : la protection est unique et non dupliquée
+(contrairement à `/pointage`, Lot 6b, où un OR de deux permissions
+justifiait une défense en profondeur supplémentaire côté page — ici une
+seule permission gate à la fois l'entrée et le contenu, un second
+contrôle interne serait une redondance sans gain réel).
+
+**Test dédié de non-fuite — confirmé passant** (voir livrable) :
+`employee-detail-view.test.tsx`, describe « non-fuite du salaire »,
+2 tests : un contrôle positif (rôle avec `PAYROLL_READ` : onglet
+atteignable, hooks appelés avec le bon `employeeId`) et le test négatif
+(permissions vides façon Lecteur : `queryByRole('tab', {name:'Paie'})`
+→ absent du DOM, `useEmployeePayrollMock`/`useSalaryAdvancesMock` →
+`not.toHaveBeenCalled()`, aucun texte contenant « FCFA » nulle part sur
+la fiche). Le contrôle positif est indispensable : sans lui, le test
+négatif pourrait passer trivialement à cause d'un sélecteur cassé
+plutôt que d'un masquage réel.
+
+**Aucun endpoint `.../payroll/:id/pay` — le prompt le supposait à
+tort** : vérifié dans `payroll.controller.ts` (Lot 5) avant d'écrire le
+hook correspondant — seuls `POST`/`GET`/`GET :id`/`PATCH :id` existent.
+La validation BROUILLON→VALIDE passe par ce même `PATCH` générique avec
+`{ status: 'VALIDE' }` (`UpdatePayrollDto.status` n'accepte que cette
+valeur). Écart signalé plutôt que suivi à la lettre contre l'évidence du
+code — même discipline que la substitution `attendance-dialog.tsx` →
+`cancel-task-dialog.tsx` au Lot 6c.
+
+**Pas de champ « solde » d'avance — aucun endpoint ne l'expose** :
+vérifié avant tout code (`salary-advances.service.ts`,
+`payroll.calculations.ts`) — `sumOutstandingAdvancesFcfa` est un
+utilitaire strictement serveur, interne à la transaction de création
+d'un relevé de paie, jamais retourné par un `GET`. « Solde reflété tel
+que calculé par l'API » est donc appliqué au sens strict disponible :
+le statut PAR avance (`deductedInPayrollId` null = en attente, renseigné
+= déduite, avec la période du relevé lié) est affiché tel quel — aucune
+somme agrégée n'est jamais calculée côté front, ni affichée nulle part
+(testé explicitement, voir payroll-tab.test.tsx). Interdiction du prompt
+respectée à la lettre plutôt que contournée avec une mention "indicatif".
+
+**BROUILLON éditable/VALIDE terminal — action de validation séparée du
+formulaire de correction** : `PayrollForm` (édition) ne propose que
+prime/retenues/observations, jamais un champ statut — « Valider » est
+une action distincte (`ConfirmDialog` existant, réutilisé tel quel,
+`destructive={false}` car il ne s'agit pas d'une perte de données mais
+d'une progression normale et irréversible). Aucune action proposée pour
+un relevé déjà VALIDE (rowActions gated sur `OPEN_PAYROLL_STATUSES =
+{BROUILLON}`), cohérent avec le rejet en 409 du PATCH générique côté API
+pour ce cas.
+
+**Avances — création uniquement dans cette UI, correction hors
+périmètre** : l'API supporte `PATCH` tant qu'une avance n'est pas
+déduite, mais seule la création est demandée dans les tests attendus du
+Lot 6d — aucune UI d'édition construite (`useUpdateSalaryAdvance` non
+créé). Écart de portée mineur, assumé, pas un oubli.
+
+**Rapport RH — portée confirmée avec l'utilisateur avant construction**
+(prompt : « si ambigu, signaler plutôt que trancher seul », étendu ici
+à la question de coût/architecture, pas seulement RBAC) : aucun endpoint
+farm-wide d'agrégation n'existe (Attendance et Payroll restent nestés
+par employé, contrairement à `/treasury/summary`, précédent Phase 8
+identifié et suivi pour la structure période + KPI + tableaux, mais pas
+pour la source de données). Absentéisme et coût de personnel exigent
+donc N×2 requêtes parallèles par employé (Attendance + Payroll), un cran
+plus coûteux que `/pointage` (Lot 6b, N×1). Option « rapport complet »
+choisie explicitement par l'utilisateur (compromis bande passante
+documenté, cohérent avec le mode de calcul déjà accepté au Lot 6b) plutôt
+que la version réduite (effectif seul) ou l'exclusion totale, les deux
+autres options proposées.
+
+Agrégats calculés — comptages/sommes sur des lignes déjà correctes,
+jamais une réinterprétation d'une règle métier que l'API aurait déjà
+tranchée (contrairement à `isLate` ou au statut d'une avance, qui
+restent interdits de recalcul) :
+- Effectif : répartition par statut sur `GET /employees`, reflète
+  l'instant présent — l'API ne conserve aucun historique de statut, donc
+  un effectif à une date passée reste hors de portée sans évolution
+  backend (signalé, pas construit).
+- Absentéisme : jours ABSENT/CONGE/MALADIE ÷ jours pointés dans
+  `[from, to]`, tous employés confondus (y compris DEPART, pour ne pas
+  fausser silencieusement une période passée).
+- Coût de personnel : somme des `netFcfa` des relevés **VALIDE**
+  uniquement dont la période chevauche `[from, to]` — un BROUILLON n'est
+  pas encore un engagement confirmé, exclu volontairement du total.
+
+Accès au rapport RH : gardé par `PAYROLL_READ` (même gate que l'onglet
+Paie) — mapping direct et non ambigu avec la liste « a priori » du
+prompt (Propriétaire/Administrateur, Gérant, Comptable), aucune
+clarification supplémentaire nécessaire.
+
+## Personnel — Lot 7-correctif (endpoint minimal pour /pointage)
+
+Correctif ciblé, découvert par le test E2E navigateur du Lot 7 (jamais
+détectable par les tests composants du Lot 6b, qui mockaient
+`useEmployees()` sans jamais exercer le cas d'échec 403 réel) : le
+registre `/pointage` appelait `useEmployees()` (`GET /employees`, gardé
+par `EMPLOYEES_READ`) pour lister les employés à pointer — Responsable
+élevage n'a pas cette permission (a `ATTENDANCE_CREATE`/`UPDATE`, d'où
+un accès nav correct à `/pointage` depuis le Lot 6b), donc 403 silencieux
+→ registre toujours vide malgré une navigation atteignable.
+
+**Investigation préalable — `EmployeeSelect` n'a pas le même problème**
+: son seul consommateur (`employee-form.tsx`, Lot 6a, champ «
+Responsable hiérarchique ») n'est atteignable qu'avec `EMPLOYEES_CREATE`
+ou `EMPLOYEES_UPDATE`, permissions toujours accordées avec
+`EMPLOYEES_READ` dans `roles.catalog.ts` (Propriétaire/Administrateur et
+Gérant/Responsable ferme uniquement, jamais l'un sans l'autre) — aucun
+rôle ne peut donc atteindre ce formulaire sans déjà avoir
+`EMPLOYEES_READ`. La caractérisation du prompt correctif (« sélecteur
+d'employé de l'onglet Tâches, Lot 6c ») était inexacte : `EmployeeSelect`
+n'est utilisé nulle part dans l'onglet Tâches — vérifié par recherche
+exhaustive des usages avant tout code, pas supposé.
+
+**`PermissionsGuard` étendu pour une sémantique OU** (`RequireAnyPermission`,
+`require-permissions.decorator.ts`) : le guard existant n'avait qu'un ET
+strict (`every`). Mirroir exact du `anyPermission` déjà en place côté
+front (`nav-items.ts`, Lot 6b) — nouveau groupe de métadonnées
+indépendant (`ANY_PERMISSIONS_METADATA_KEY`), `RequirePermissions`
+inchangé (rétrocompatible à 100 % avec les ~40 routes existantes qui
+l'utilisent déjà). Les deux décorateurs restent cumulables sur une même
+route en théorie (groupe ET + groupe OU évalués indépendamment) mais
+aucune route n'utilise cette combinaison à ce jour.
+
+**`GET /employees/roster`** — id/code/name/status uniquement, via un
+`select` Prisma explicite (whitelist au niveau requête, jamais une
+exclusion post-hoc — même discipline structurelle que le masquage
+salaire du Lot 5/6d, mais ici aucun champ sensible n'est même
+sélectionné en base). Gardé par
+`RequireAnyPermission(EMPLOYEES_READ, ATTENDANCE_READ,
+EMPLOYEE_TASKS_READ)`. Déclaré **avant** `@Get(':id')` dans le
+contrôleur (vérifié explicitement — sinon Nest matcherait `/employees/
+roster` comme `:id`, bug d'ordre de route classique). Filtre les statuts
+`SUSPENDU`/`DEPART` par défaut, en réutilisant tel quel
+`RESTRICTED_EMPLOYEE_STATUSES` déjà défini dans `employees.validation.ts`
+(même définition que `assertEmployeeActiveForNewAttendance`/
+`assertUpdateAllowed`) — aucun paramètre pour lister « tous les
+statuts » : le seul consommateur (`AttendanceRegister`) n'en a jamais eu
+besoin, ajouter ce paramètre aurait été une fonctionnalité au-delà du
+correctif demandé.
+
+**Aucune convention de nommage de route similaire trouvée** avant de
+choisir `roster` (vérifié : seules des sous-routes d'agrégation type
+`treasury/summary`/`egg-stock/lots` existent, aucun précédent de route
+« à champs réduits » d'une collection existante) — nom retenu tel que
+proposé par le prompt, suffisamment clair.
+
+**Front** : `useEmployeeRoster()` (nouveau hook,
+`features/employees/hooks.ts`) remplace `useEmployees()` dans
+`AttendanceRegister` — le filtre client `REGISTER_ELIGIBLE_STATUSES`
+(Lot 6b) est supprimé, devenu une duplication pure de la même règle
+métier désormais appliquée côté serveur par `/employees/roster` (pas une
+défense en profondeur méritant d'être conservée, contrairement au
+masquage salaire : même règle, même source, aucun gain à la dupliquer).
+`useEmployees()` reste inchangé et continue d'alimenter
+`EmployeeTable`/`EmployeeSelect`/`HrReport`/`employee-detail-view.tsx` —
+tous vérifiés inatteignables par un rôle sans `EMPLOYEES_READ`, donc hors
+périmètre de ce correctif.
+
+**Re-test E2E dédié (navigateur réel)** : voir le rapport de clôture du
+Lot 7-correctif pour la confirmation que Responsable élevage peut
+désormais pointer un employé de bout en bout sur `/pointage`.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

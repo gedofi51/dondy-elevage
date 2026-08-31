@@ -164,6 +164,35 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.NETWORK_STATUS_READINGS_CREATE,
       PERMISSIONS.NETWORK_STATUS_READINGS_READ,
       PERMISSIONS.NETWORK_STATUS_READINGS_UPDATE,
+      // Personnel — Lot 2 : accès complet, même profil que Patrimoine/
+      // Maintenance ci-dessus. `docs/reference/MODULE_PERSONNEL.md` §8
+      // référencé par le cadrage du lot n'existe pas dans le dépôt — cette
+      // répartition (Propriétaire/Gérant = complet, Comptable = lecture
+      // seule, tous les autres rôles = aucun accès par défaut, principe de
+      // moindre privilège sur une donnée salariale sensible) a été
+      // proposée puis confirmée explicitement, voir DETTE_TECHNIQUE.md.
+      PERMISSIONS.EMPLOYEES_CREATE,
+      PERMISSIONS.EMPLOYEES_READ,
+      PERMISSIONS.EMPLOYEES_UPDATE,
+      PERMISSIONS.EMPLOYEES_DELETE,
+      // Personnel — Lot 3 : accès complet, même profil qu'Employee.
+      PERMISSIONS.ATTENDANCE_CREATE,
+      PERMISSIONS.ATTENDANCE_READ,
+      PERMISSIONS.ATTENDANCE_UPDATE,
+      // Personnel — Lot 4 : accès complet, même profil qu'Employee/
+      // Attendance ci-dessus.
+      PERMISSIONS.EMPLOYEE_TASKS_CREATE,
+      PERMISSIONS.EMPLOYEE_TASKS_READ,
+      PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
+      // Personnel — Lot 5 : accès complet à la paie (suivi indicatif),
+      // voir la fiche employé en clair (EMPLOYEES_VIEW_SALARY).
+      PERMISSIONS.PAYROLL_CREATE,
+      PERMISSIONS.PAYROLL_READ,
+      PERMISSIONS.PAYROLL_UPDATE,
+      PERMISSIONS.SALARY_ADVANCES_CREATE,
+      PERMISSIONS.SALARY_ADVANCES_READ,
+      PERMISSIONS.SALARY_ADVANCES_UPDATE,
+      PERMISSIONS.EMPLOYEES_VIEW_SALARY,
     ],
   },
   {
@@ -299,6 +328,30 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.NETWORK_STATUS_READINGS_CREATE,
       PERMISSIONS.NETWORK_STATUS_READINGS_READ,
       PERMISSIONS.NETWORK_STATUS_READINGS_UPDATE,
+      // Personnel — Lot 2 : accès complet, voir la note sur le rôle
+      // Propriétaire / Administrateur ci-dessus.
+      PERMISSIONS.EMPLOYEES_CREATE,
+      PERMISSIONS.EMPLOYEES_READ,
+      PERMISSIONS.EMPLOYEES_UPDATE,
+      PERMISSIONS.EMPLOYEES_DELETE,
+      // Personnel — Lot 3 : accès complet, voir la note sur le rôle
+      // Propriétaire / Administrateur ci-dessus.
+      PERMISSIONS.ATTENDANCE_CREATE,
+      PERMISSIONS.ATTENDANCE_READ,
+      PERMISSIONS.ATTENDANCE_UPDATE,
+      // Personnel — Lot 4 : accès complet, voir la note ci-dessus.
+      PERMISSIONS.EMPLOYEE_TASKS_CREATE,
+      PERMISSIONS.EMPLOYEE_TASKS_READ,
+      PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
+      // Personnel — Lot 5 : accès complet, voir la note sur le rôle
+      // Propriétaire / Administrateur ci-dessus.
+      PERMISSIONS.PAYROLL_CREATE,
+      PERMISSIONS.PAYROLL_READ,
+      PERMISSIONS.PAYROLL_UPDATE,
+      PERMISSIONS.SALARY_ADVANCES_CREATE,
+      PERMISSIONS.SALARY_ADVANCES_READ,
+      PERMISSIONS.SALARY_ADVANCES_UPDATE,
+      PERMISSIONS.EMPLOYEES_VIEW_SALARY,
     ],
   },
   {
@@ -351,6 +404,24 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       // de bord orchestré par le service, jamais créé directement (même
       // précédent que Vendeur/Caisse pour EGG_STOCK_MOVEMENTS_CREATE).
       PERMISSIONS.ITEMS_READ,
+      // Personnel — Lot 3 (MODULE_PERSONNEL.md §8) : "écriture" sur le
+      // pointage, nouvelle permission pour ce rôle (rien sur Employee).
+      // READ inclus avec CREATE/UPDATE (pas juste "écriture" au sens
+      // strict) : même patron que chaque rôle "propriétaire de domaine"
+      // du catalogue (ex. Responsable couvoir sur Incubators ci-dessous
+      // — READ/CREATE/UPDATE/DELETE groupés), jamais un rôle qui écrit
+      // sans pouvoir relire ce qu'il vient de saisir. Pas
+      // ATTENDANCE_DELETE : append-only, aucun rôle ne l'a.
+      PERMISSIONS.ATTENDANCE_CREATE,
+      PERMISSIONS.ATTENDANCE_READ,
+      PERMISSIONS.ATTENDANCE_UPDATE,
+      // Personnel — Lot 4 (MODULE_PERSONNEL.md, matrice confirmée avant
+      // implémentation) : CREATE+READ+UPDATE sur les tâches assignées,
+      // même profil qu'Attendance ci-dessus, explicitement donné comme
+      // "cohérent avec Attendance" par le cadrage.
+      PERMISSIONS.EMPLOYEE_TASKS_CREATE,
+      PERMISSIONS.EMPLOYEE_TASKS_READ,
+      PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
     ],
   },
   {
@@ -565,6 +636,29 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.WATER_INFRASTRUCTURE_READINGS_READ,
       PERMISSIONS.SOLAR_INFRASTRUCTURE_READINGS_READ,
       PERMISSIONS.NETWORK_STATUS_READINGS_READ,
+      // Personnel — Lot 2 : lecture seule à ce stade (voir note sur le
+      // rôle Propriétaire / Administrateur) — le mandat "rapports
+      // financiers" de ce rôle justifie la visibilité (masse salariale),
+      // pas encore la gestion des fiches.
+      PERMISSIONS.EMPLOYEES_READ,
+      // Personnel — Lot 3 (MODULE_PERSONNEL.md §8) : lecture seule,
+      // même logique que ci-dessus — le coût de personnel (présence)
+      // relève du même mandat "rapports financiers".
+      PERMISSIONS.ATTENDANCE_READ,
+      // Personnel — Lot 4 : lecture seule, même logique.
+      PERMISSIONS.EMPLOYEE_TASKS_READ,
+      // Personnel — Lot 5 (MODULE_PERSONNEL.md §8) : accès complet à la
+      // paie — "Comptable — Achats, dépenses, paiements, rapports
+      // financiers" (§11) couvre directement ce mandat, contrairement à
+      // Employee (resté lecture seule). EMPLOYEES_VIEW_SALARY inclus :
+      // ce rôle a précisément pour mandat de voir les montants.
+      PERMISSIONS.PAYROLL_CREATE,
+      PERMISSIONS.PAYROLL_READ,
+      PERMISSIONS.PAYROLL_UPDATE,
+      PERMISSIONS.SALARY_ADVANCES_CREATE,
+      PERMISSIONS.SALARY_ADVANCES_READ,
+      PERMISSIONS.SALARY_ADVANCES_UPDATE,
+      PERMISSIONS.EMPLOYEES_VIEW_SALARY,
     ],
   },
   {
@@ -632,6 +726,24 @@ export const ROLES_CATALOG: RoleCatalogEntry[] = [
       PERMISSIONS.WATER_INFRASTRUCTURE_READINGS_READ,
       PERMISSIONS.SOLAR_INFRASTRUCTURE_READINGS_READ,
       PERMISSIONS.NETWORK_STATUS_READINGS_READ,
+      // Personnel — corrigé suite à MODULE_PERSONNEL.md §8 (cadrage
+      // Phase 22, confirmé après coup) : "Lecteur — lecture des fiches
+      // et plannings, paie masquée". N'avait reçu aucun accès en Lot 2
+      // faute de ce document (moindre privilège appliqué par défaut,
+      // pas une décision confirmée).
+      PERMISSIONS.EMPLOYEES_READ,
+      // Personnel — Lot 3 (MODULE_PERSONNEL.md §8) : "lecture des fiches
+      // et plannings" — le pointage relève des "plannings" mentionnés.
+      PERMISSIONS.ATTENDANCE_READ,
+      // Personnel — Lot 4 : lecture seule, même logique (tâches
+      // assignées = "plannings").
+      PERMISSIONS.EMPLOYEE_TASKS_READ,
+      // Personnel — Lot 5 : "paie masquée" désormais appliquée
+      // littéralement — PAS de PAYROLL_*/SALARY_ADVANCES_* (aucun accès)
+      // ET PAS d'EMPLOYEES_VIEW_SALARY (baseSalaryFcfa masqué champ par
+      // champ dans la réponse Employee malgré EMPLOYEES_READ — voir
+      // EmployeesService, mécanisme documenté dans DETTE_TECHNIQUE.md
+      // comme précédent réutilisable). Absence volontaire, pas un oubli.
     ],
   },
 ];

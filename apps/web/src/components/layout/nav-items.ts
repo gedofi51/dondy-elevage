@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Bird,
   Boxes,
+  ClipboardCheck,
   Droplets,
   Egg,
   EggFried,
@@ -14,6 +15,7 @@ import {
   ShoppingCart,
   Sprout,
   Thermometer,
+  Users,
   Wallet,
   Wrench,
 } from 'lucide-react';
@@ -27,6 +29,11 @@ export interface NavLink {
   icon: LucideIcon;
   /** Omis = toujours visible (ex. tableau de bord). */
   permission?: PermissionCode;
+  /** Visible si l'utilisateur a AU MOINS UNE de ces permissions — alternative
+   * à `permission` (exclusif entre les deux) pour une entrée qui doit rester
+   * atteignable par plusieurs profils sans permission commune unique (voir
+   * « Pointage », Lot 6b, et DETTE_TECHNIQUE.md). */
+  anyPermission?: PermissionCode[];
 }
 
 export interface NavCategory {
@@ -158,6 +165,35 @@ export const navItems: NavEntry[] = [
       },
     ],
   },
+  // Personnel (Lot 6a) — une seule route de premier niveau (/personnel) :
+  // reste un NavLink direct, même règle que Points d'eau/Stocks/Achats
+  // (voir DETTE_TECHNIQUE.md Lot 6a pour le détail de ce choix et son
+  // effet de bord connu sur le rôle Responsable élevage).
+  {
+    type: 'link',
+    label: 'Personnel',
+    href: '/personnel',
+    icon: Users,
+    permission: PERMISSIONS.EMPLOYEES_READ,
+  },
+  // Pointage (Lot 6b) — entrée séparée de « Personnel », gated par
+  // anyPermission (ATTENDANCE_READ OU EMPLOYEE_TASKS_READ) plutôt que par
+  // EMPLOYEES_READ : corrige un trou de navigation identifié avant ce lot
+  // — le rôle Responsable élevage a ATTENDANCE_READ/EMPLOYEE_TASKS_READ
+  // mais pas EMPLOYEES_READ, et ne voyait donc jamais « Personnel » malgré
+  // un accès API réel au pointage. Dans la matrice RBAC actuelle
+  // (roles.catalog.ts), ces deux permissions sont toujours accordées
+  // ensemble à chaque rôle qui en a une — gater sur ATTENDANCE_READ seul
+  // donnerait donc exactement la même visibilité aujourd'hui ; le OU est
+  // conservé pour rester correct si un futur rôle (ou le Lot 6c, Tâches)
+  // découple un jour les deux permissions. Voir DETTE_TECHNIQUE.md Lot 6b.
+  {
+    type: 'link',
+    label: 'Pointage',
+    href: '/pointage',
+    icon: ClipboardCheck,
+    anyPermission: [PERMISSIONS.ATTENDANCE_READ, PERMISSIONS.EMPLOYEE_TASKS_READ],
+  },
 ];
 
 // Le payload JWT (AccessTokenPayload.permissions, packages/shared-types)
@@ -166,6 +202,9 @@ export const navItems: NavEntry[] = [
 // string), mais la signature doit accepter le type réel envoyé par
 // useAuth() sous peine d'erreur TypeScript côté appelant.
 function isLinkVisible(item: NavLink, permissions: string[] | undefined): boolean {
+  if (item.anyPermission) {
+    return item.anyPermission.some((p) => permissions?.includes(p) ?? false);
+  }
   return !item.permission || (permissions?.includes(item.permission) ?? false);
 }
 
