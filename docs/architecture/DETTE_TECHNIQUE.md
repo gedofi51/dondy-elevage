@@ -2110,6 +2110,131 @@ explicitement pour le cas Responsable élevage (a les permissions Tâches
 mais pas `EMPLOYEES_UPDATE`/`EMPLOYEES_DELETE` — voit les actions Tâches
 sans voir les actions Employee de la fiche).
 
+## Personnel — Lot 6d (écrans Payroll/SalaryAdvance + rapport RH)
+
+Quatrième et dernier lot frontend du module Personnel prévu (avant
+Rapport RH et périmètre V6+), stacké sur le Lot 6c
+(`feature/personnel-lot6c-employee-tasks-screens`). Manipule les données
+les plus sensibles du module — voir « Rappel critique » du prompt, traité
+comme la contrainte structurante du lot plutôt qu'une case à cocher a
+posteriori.
+
+**Aucun rôle « lecture seule » intermédiaire pour Payroll/SalaryAdvance**
+(vérifié dans `roles.catalog.ts` avant tout code, conformément à la
+consigne) : contrairement à Attendance/EmployeeTask (Lecteur en lecture
+seule), l'accès à `PAYROLL_*`/`SALARY_ADVANCES_*`/`EMPLOYEES_VIEW_SALARY`
+est strictement binaire — exactement 3 rôles (Propriétaire/
+Administrateur, Gérant/Responsable ferme, Comptable/Responsable
+financier) ont les trois permissions CREATE/READ/UPDATE de chaque
+ressource ensemble ; aucun autre rôle n'en a une seule. Responsable
+élevage confirmé sans aucun accès. Conséquence directe : **aucun
+masquage champ par champ n'est nécessaire dans `Payroll`/`SalaryAdvance`**
+(pas de `baseSalaryFcfa?: number` optionnel comme sur `Employee`) — la
+protection est entièrement structurelle, au niveau du montage du
+composant, pas du contenu d'un type.
+
+**Protection structurelle du salaire — composant dédié, jamais inliné**
+: contrairement à Présence/Tâches (contenu inliné dans
+`EmployeeDetailView`, hooks appelés inconditionnellement puisque tout
+rôle avec `EMPLOYEES_READ` a aussi `ATTENDANCE_READ`/
+`EMPLOYEE_TASKS_READ`), le contenu de l'onglet Paie vit dans un
+composant à part (`PayrollTab`) monté **uniquement** comme enfant de
+`<Can permission={PAYROLL_READ}>` (déjà en place depuis le Lot 6a). Une
+vraie fonction React non rendue n'exécute jamais son corps — donc pour
+un rôle sans `PAYROLL_READ` (Lecteur, Responsable élevage, tous les
+autres) : `useEmployeePayroll`/`useSalaryAdvances` ne sont **jamais
+appelés**, aucune requête réseau, **aucune entrée de cache React Query**,
+aucun DOM. Même discipline pour le rapport RH (`HrReport`, sous
+`/personnel`) — monté derrière le même `Can permission={PAYROLL_READ}`.
+Aucune vérification de permission redondante à l'intérieur de
+`PayrollTab`/`HrReport` : la protection est unique et non dupliquée
+(contrairement à `/pointage`, Lot 6b, où un OR de deux permissions
+justifiait une défense en profondeur supplémentaire côté page — ici une
+seule permission gate à la fois l'entrée et le contenu, un second
+contrôle interne serait une redondance sans gain réel).
+
+**Test dédié de non-fuite — confirmé passant** (voir livrable) :
+`employee-detail-view.test.tsx`, describe « non-fuite du salaire »,
+2 tests : un contrôle positif (rôle avec `PAYROLL_READ` : onglet
+atteignable, hooks appelés avec le bon `employeeId`) et le test négatif
+(permissions vides façon Lecteur : `queryByRole('tab', {name:'Paie'})`
+→ absent du DOM, `useEmployeePayrollMock`/`useSalaryAdvancesMock` →
+`not.toHaveBeenCalled()`, aucun texte contenant « FCFA » nulle part sur
+la fiche). Le contrôle positif est indispensable : sans lui, le test
+négatif pourrait passer trivialement à cause d'un sélecteur cassé
+plutôt que d'un masquage réel.
+
+**Aucun endpoint `.../payroll/:id/pay` — le prompt le supposait à
+tort** : vérifié dans `payroll.controller.ts` (Lot 5) avant d'écrire le
+hook correspondant — seuls `POST`/`GET`/`GET :id`/`PATCH :id` existent.
+La validation BROUILLON→VALIDE passe par ce même `PATCH` générique avec
+`{ status: 'VALIDE' }` (`UpdatePayrollDto.status` n'accepte que cette
+valeur). Écart signalé plutôt que suivi à la lettre contre l'évidence du
+code — même discipline que la substitution `attendance-dialog.tsx` →
+`cancel-task-dialog.tsx` au Lot 6c.
+
+**Pas de champ « solde » d'avance — aucun endpoint ne l'expose** :
+vérifié avant tout code (`salary-advances.service.ts`,
+`payroll.calculations.ts`) — `sumOutstandingAdvancesFcfa` est un
+utilitaire strictement serveur, interne à la transaction de création
+d'un relevé de paie, jamais retourné par un `GET`. « Solde reflété tel
+que calculé par l'API » est donc appliqué au sens strict disponible :
+le statut PAR avance (`deductedInPayrollId` null = en attente, renseigné
+= déduite, avec la période du relevé lié) est affiché tel quel — aucune
+somme agrégée n'est jamais calculée côté front, ni affichée nulle part
+(testé explicitement, voir payroll-tab.test.tsx). Interdiction du prompt
+respectée à la lettre plutôt que contournée avec une mention "indicatif".
+
+**BROUILLON éditable/VALIDE terminal — action de validation séparée du
+formulaire de correction** : `PayrollForm` (édition) ne propose que
+prime/retenues/observations, jamais un champ statut — « Valider » est
+une action distincte (`ConfirmDialog` existant, réutilisé tel quel,
+`destructive={false}` car il ne s'agit pas d'une perte de données mais
+d'une progression normale et irréversible). Aucune action proposée pour
+un relevé déjà VALIDE (rowActions gated sur `OPEN_PAYROLL_STATUSES =
+{BROUILLON}`), cohérent avec le rejet en 409 du PATCH générique côté API
+pour ce cas.
+
+**Avances — création uniquement dans cette UI, correction hors
+périmètre** : l'API supporte `PATCH` tant qu'une avance n'est pas
+déduite, mais seule la création est demandée dans les tests attendus du
+Lot 6d — aucune UI d'édition construite (`useUpdateSalaryAdvance` non
+créé). Écart de portée mineur, assumé, pas un oubli.
+
+**Rapport RH — portée confirmée avec l'utilisateur avant construction**
+(prompt : « si ambigu, signaler plutôt que trancher seul », étendu ici
+à la question de coût/architecture, pas seulement RBAC) : aucun endpoint
+farm-wide d'agrégation n'existe (Attendance et Payroll restent nestés
+par employé, contrairement à `/treasury/summary`, précédent Phase 8
+identifié et suivi pour la structure période + KPI + tableaux, mais pas
+pour la source de données). Absentéisme et coût de personnel exigent
+donc N×2 requêtes parallèles par employé (Attendance + Payroll), un cran
+plus coûteux que `/pointage` (Lot 6b, N×1). Option « rapport complet »
+choisie explicitement par l'utilisateur (compromis bande passante
+documenté, cohérent avec le mode de calcul déjà accepté au Lot 6b) plutôt
+que la version réduite (effectif seul) ou l'exclusion totale, les deux
+autres options proposées.
+
+Agrégats calculés — comptages/sommes sur des lignes déjà correctes,
+jamais une réinterprétation d'une règle métier que l'API aurait déjà
+tranchée (contrairement à `isLate` ou au statut d'une avance, qui
+restent interdits de recalcul) :
+- Effectif : répartition par statut sur `GET /employees`, reflète
+  l'instant présent — l'API ne conserve aucun historique de statut, donc
+  un effectif à une date passée reste hors de portée sans évolution
+  backend (signalé, pas construit).
+- Absentéisme : jours ABSENT/CONGE/MALADIE ÷ jours pointés dans
+  `[from, to]`, tous employés confondus (y compris DEPART, pour ne pas
+  fausser silencieusement une période passée).
+- Coût de personnel : somme des `netFcfa` des relevés **VALIDE**
+  uniquement dont la période chevauche `[from, to]` — un BROUILLON n'est
+  pas encore un engagement confirmé, exclu volontairement du total.
+
+Accès au rapport RH : gardé par `PAYROLL_READ` (même gate que l'onglet
+Paie) — mapping direct et non ambigu avec la liste « a priori » du
+prompt (Propriétaire/Administrateur, Gérant, Comptable), aucune
+clarification supplémentaire nécessaire.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

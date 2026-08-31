@@ -21,18 +21,7 @@ import { AttendanceCalendar } from '@/features/employees/components/attendance-c
 import { EmployeeTaskTable } from '@/features/employees/components/employee-task-table';
 import { EmployeeTaskDialog } from '@/features/employees/components/employee-task-dialog';
 import { CancelEmployeeTaskDialog } from '@/features/employees/components/cancel-employee-task-dialog';
-
-// Onglet Paie : coquille visible dès le Lot 6a (fiche « extensible »
-// demandée), contenu réel prévu au Lot 6d — interdiction explicite du
-// Lot 6c de le remplir ici. Présence (Lot 6b) et Tâches (Lot 6c) ont
-// désormais leur contenu réel.
-function PlaceholderTabContent({ label }: { label: string }) {
-  return (
-    <p className="text-sm text-muted-foreground">
-      {label} — à venir dans un prochain lot du module Personnel.
-    </p>
-  );
-}
+import { PayrollTab } from '@/features/employees/components/payroll-tab';
 
 // A_FAIRE/EN_COURS uniquement — REALISEE/ANNULEE sont terminaux (aucune
 // action de correction/annulation proposée, le PATCH échouerait en 409
@@ -205,7 +194,7 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
         </TabsContent>
         <Can permission={PERMISSIONS.PAYROLL_READ}>
           <TabsContent value="paie">
-            <PlaceholderTabContent label="Paie" />
+            <PayrollTab employeeId={employeeId} />
           </TabsContent>
         </Can>
       </Tabs>

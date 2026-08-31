@@ -54,10 +54,8 @@ cf. précision ci-dessus).
   **Réalisé (Lot 6a)**, filtre Actifs/Tous uniquement pour l'instant
   (poste/bâtiment restent à ajouter, voir `DETTE_TECHNIQUE.md`).
 * Fiche employé (détail, historique de paie, historique de présence,
-  documents) — **Réalisé partiellement (Lot 6a + 6b + 6c)** : onglets
-  Présence (Lot 6b) et Tâches (Lot 6c) réalisés ; Paie reste une coquille
-  extensible (placeholder), contenu réel prévu au Lot 6d ; documents non
-  traités (hors périmètre).
+  documents) — **Réalisé (Lot 6a + 6b + 6c + 6d)** pour Présence/Tâches/
+  Paie ; documents non traités (hors périmètre de tout le Lot 6).
 * Création / édition employé — **Réalisé (Lot 6a)**.
 * Planning (vue calendrier, par employé ou par équipe) — **Réalisé
   partiellement (Lot 6b)** : vue calendrier par employé (onglet Présence)
@@ -71,8 +69,19 @@ cf. précision ci-dessus).
   farm-wide côté API — voir `DETTE_TECHNIQUE.md`, proposée comme
   candidate pour un lot futur si le besoin se confirme).
 * Paie — enregistrement du relevé mensuel (suivi indicatif interne,
-  sans valeur de bulletin légal), historique des paiements, avances
-* Rapport RH (effectif, absentéisme, coût de personnel par période)
+  sans valeur de bulletin légal), historique, avances — **Réalisé
+  (Lot 6d)**, onglet Paie de la fiche employé. Masquage structurel
+  (composant `PayrollTab` monté uniquement derrière `PAYROLL_READ`, aucun
+  rôle « lecture seule » intermédiaire n'existe pour cette ressource —
+  voir `DETTE_TECHNIQUE.md`) ; solde d'avance reflété par avance (statut
+  déduite/en attente), aucun total agrégé (aucun endpoint ne l'expose).
+* Rapport RH (effectif, absentéisme, coût de personnel par période) —
+  **Réalisé (Lot 6d)**, nouvel onglet de `/personnel`, gardé par
+  `PAYROLL_READ`. Portée confirmée avec l'utilisateur (aucun endpoint
+  farm-wide d'agrégation côté API, contrairement à `/treasury/summary`) :
+  effectif à l'instant présent, absentéisme et coût de personnel calculés
+  côté client par comptage/somme sur des données brutes déjà correctes
+  (N×2 requêtes par employé — voir `DETTE_TECHNIQUE.md`).
 
 ## 4. Champs / formulaires
 
@@ -342,3 +351,28 @@ aucune renumérotation des phases déjà livrées).
   optionnel, écart volontaire signalé). Aucune nouvelle entrée de
   navigation (« Pointage », Lot 6b, couvre déjà `EMPLOYEE_TASKS_READ`).
   Voir `DETTE_TECHNIQUE.md` pour le détail.
+* **Lot 6d — Écrans Payroll/SalaryAdvance + rapport RH** : LIVRÉ, validé
+  (`feature/personnel-lot6d-payroll-screens`, cible
+  `feature/personnel-lot6c-employee-tasks-screens`) — dernier lot
+  frontend du module Personnel. Vérifié avant tout code : aucun rôle
+  « lecture seule » intermédiaire pour Payroll/SalaryAdvance (accès
+  binaire, 3 rôles exactement — pas de masquage champ par champ
+  nécessaire, contrairement à `Employee.baseSalaryFcfa`) ; aucun endpoint
+  `.../pay` (le prompt le supposait à tort — validation via le `PATCH`
+  générique existant) ; aucun champ « solde » d'avance exposé par l'API.
+  Protection structurelle du salaire : `PayrollTab`/`HrReport` sont des
+  composants à part, montés uniquement derrière `Can permission=
+  {PAYROLL_READ}` — leurs hooks (`useEmployeePayroll`/`useSalaryAdvances`)
+  ne sont **jamais appelés** pour un rôle sans cet accès (pas de requête,
+  pas de cache React Query, pas de DOM). **Test dédié de non-fuite du
+  salaire confirmé passant** (`employee-detail-view.test.tsx`, describe
+  « non-fuite du salaire », contrôle positif + négatif). Portée du
+  rapport RH confirmée avec l'utilisateur (aucun endpoint farm-wide
+  d'agrégation côté API, N×2 requêtes/employé acceptées explicitement).
+  Voir `DETTE_TECHNIQUE.md` pour le détail complet.
+
+Module Personnel (Lots 1 à 6d) considéré complet au regard du périmètre
+défini par ce document, sous réserve des écarts et exclusions
+explicitement documentés ci-dessus et dans `DETTE_TECHNIQUE.md` (vue
+« toutes les tâches », documents de la fiche employé, historique de
+statut employé, filtres poste/bâtiment de la liste).

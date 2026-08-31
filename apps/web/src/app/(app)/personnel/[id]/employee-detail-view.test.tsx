@@ -7,6 +7,12 @@ import { EmployeeDetailView } from './employee-detail-view';
 
 const useEmployeeMock = vi.fn();
 const useEmployeeTasksMock = vi.fn();
+// Espions dédiés (pas de simple factory inline) — le test de non-fuite
+// du salaire (Lot 6d) doit pouvoir affirmer qu'ils ne sont JAMAIS
+// appelés pour un rôle sans PAYROLL_READ, pas seulement que leur
+// contenu n'est pas rendu.
+const useEmployeePayrollMock = vi.fn();
+const useSalaryAdvancesMock = vi.fn();
 
 vi.mock('@/features/employees/hooks', () => ({
   useEmployee: (id: string) => useEmployeeMock(id),
@@ -25,6 +31,13 @@ vi.mock('@/features/employees/hooks', () => ({
   useCreateEmployeeTask: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateEmployeeTask: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useCancelEmployeeTask: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  // Onglet Paie (Lot 6d) : idem, via PayrollTab (même chemin d'import
+  // '../hooks' résolu que ci-dessus).
+  useEmployeePayroll: (id: string) => useEmployeePayrollMock(id),
+  useSalaryAdvances: (id: string) => useSalaryAdvancesMock(id),
+  useUpdatePayroll: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreatePayroll: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateSalaryAdvance: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/features/buildings/hooks', () => ({
   useBuildings: () => ({ data: [] }),
@@ -66,6 +79,10 @@ beforeEach(() => {
     PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
   ]);
   useEmployeeTasksMock.mockReturnValue({ data: [], isLoading: false });
+  useEmployeePayrollMock.mockClear();
+  useSalaryAdvancesMock.mockClear();
+  useEmployeePayrollMock.mockReturnValue({ data: [], isLoading: false });
+  useSalaryAdvancesMock.mockReturnValue({ data: [], isLoading: false });
 });
 
 const baseEmployee: Employee = {
@@ -175,5 +192,55 @@ describe('EmployeeDetailView — onglet Tâches, garde par rôle', () => {
 
     expect(screen.queryByRole('button', { name: /Nouvelle tâche/ })).not.toBeInTheDocument();
     expect(screen.getByText(/aucune nouvelle tâche assignable/)).toBeInTheDocument();
+  });
+});
+
+// Test dédié de non-fuite du salaire (Lot 6d, « Rappel critique ») —
+// Lecteur (aucune permission Paie/Avance) : l'onglet Paie doit être
+// absent du DOM (pas juste vidé de ses données), et PayrollTab (donc
+// useEmployeePayroll/useSalaryAdvances) ne doit JAMAIS être monté —
+// preuve directe qu'aucune requête, donc aucune entrée de cache React
+// Query, n'est jamais déclenchée pour ce rôle. Un test de contrôle
+// positif (rôle avec PAYROLL_READ) confirme que le montage/la donnée
+// fonctionnent normalement par ailleurs — sans lui, ce test pourrait
+// passer trivialement à cause d'un sélecteur cassé plutôt que d'un
+// masquage réel.
+describe('EmployeeDetailView — non-fuite du salaire (onglet Paie)', () => {
+  it('CONTRÔLE POSITIF : un rôle avec PAYROLL_READ atteint l’onglet Paie et déclenche le chargement', () => {
+    mockPermissions = new Set([PERMISSIONS.PAYROLL_READ]);
+    useEmployeeMock.mockReturnValue({ data: baseEmployee, isLoading: false });
+
+    render(<EmployeeDetailView employeeId="employee-1" />);
+
+    expect(screen.getByRole('tab', { name: 'Paie' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Paie' }));
+    expect(useEmployeePayrollMock).toHaveBeenCalledWith('employee-1');
+    expect(useSalaryAdvancesMock).toHaveBeenCalledWith('employee-1');
+  });
+
+  it('Lecteur (aucune permission Paie) : onglet Paie absent du DOM, aucun hook Paie/Avance jamais appelé', () => {
+    mockPermissions = new Set(); // Lecteur : ni PAYROLL_READ, ni EMPLOYEES_VIEW_SALARY, rien.
+    useEmployeeMock.mockReturnValue({
+      data: { ...baseEmployee, baseSalaryFcfa: undefined },
+      isLoading: false,
+    });
+
+    render(<EmployeeDetailView employeeId="employee-1" />);
+
+    // 1. Absence structurelle — pas de trigger, donc aucun moyen
+    //    d'atteindre le contenu (pas un TabsContent vidé de ses données).
+    expect(screen.queryByRole('tab', { name: 'Paie' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Relevés de paie')).not.toBeInTheDocument();
+    expect(screen.queryByText('Avances sur salaire')).not.toBeInTheDocument();
+
+    // 2. Aucune fuite via le cache React Query — PayrollTab n'étant
+    //    jamais monté, ses hooks ne sont jamais invoqués.
+    expect(useEmployeePayrollMock).not.toHaveBeenCalled();
+    expect(useSalaryAdvancesMock).not.toHaveBeenCalled();
+
+    // 3. Aucun champ salaire/paie/avance dans le DOM, nulle part sur la
+    //    fiche (pas seulement dans l'onglet Paie).
+    expect(screen.queryByText('Salaire de base')).not.toBeInTheDocument();
+    expect(screen.queryByText(/FCFA/)).not.toBeInTheDocument();
   });
 });

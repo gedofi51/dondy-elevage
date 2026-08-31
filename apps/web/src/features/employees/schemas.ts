@@ -141,3 +141,50 @@ export const cancelEmployeeTaskSchema = z.object({
 });
 export type CancelEmployeeTaskFormInput = z.input<typeof cancelEmployeeTaskSchema>;
 export type CancelEmployeeTaskFormValues = z.output<typeof cancelEmployeeTaskSchema>;
+
+// Paie (Lot 6d) — statuts réels uniquement (BROUILLON/VALIDE), pas
+// d'ANNULE ajouté (interdiction explicite du lot).
+export const payrollStatusLabels: Record<'BROUILLON' | 'VALIDE', string> = {
+  BROUILLON: 'Brouillon',
+  VALIDE: 'Validé',
+};
+
+// Miroir d'assertPeriodValid (apps/api/.../payroll.validation.ts) —
+// periodStart/periodEnd immuables après création (voir UpdatePayrollDto),
+// donc uniquement dans le schéma de création.
+export const createPayrollSchema = z
+  .object({
+    periodStart: z.string().min(1, 'Date de début requise'),
+    periodEnd: z.string().min(1, 'Date de fin requise'),
+    bonusFcfa: z.coerce.number().int('Nombre entier').min(0, 'Doit être positif ou nul').optional(),
+    deductionsFcfa: z.coerce.number().int('Nombre entier').min(0, 'Doit être positif ou nul').optional(),
+    observations: z.string().max(2000).optional().or(z.literal('')),
+  })
+  .refine((v) => v.periodEnd >= v.periodStart, {
+    message: 'La date de fin de période ne peut pas précéder la date de début.',
+    path: ['periodEnd'],
+  });
+export type CreatePayrollFormInput = z.input<typeof createPayrollSchema>;
+export type CreatePayrollFormValues = z.output<typeof createPayrollSchema>;
+
+// Correction d'un relevé BROUILLON — bonus/retenues/observations
+// uniquement (pas de période, pas de statut : la validation est une
+// action séparée, jamais un champ de ce formulaire, voir payroll-tab.tsx).
+export const editPayrollSchema = z.object({
+  bonusFcfa: z.coerce.number().int('Nombre entier').min(0, 'Doit être positif ou nul').optional(),
+  deductionsFcfa: z.coerce.number().int('Nombre entier').min(0, 'Doit être positif ou nul').optional(),
+  observations: z.string().max(2000).optional().or(z.literal('')),
+});
+export type EditPayrollFormInput = z.input<typeof editPayrollSchema>;
+export type EditPayrollFormValues = z.output<typeof editPayrollSchema>;
+
+// Avances sur salaire (Lot 6d) — création uniquement (l'API supporte la
+// correction tant que non déduite, mais aucune UI de correction n'est
+// demandée ce lot, voir DETTE_TECHNIQUE.md).
+export const createSalaryAdvanceSchema = z.object({
+  date: z.string().min(1, 'Date requise'),
+  amountFcfa: z.coerce.number().int('Nombre entier').min(1, 'Doit être positif'),
+  observations: z.string().max(2000).optional().or(z.literal('')),
+});
+export type CreateSalaryAdvanceFormInput = z.input<typeof createSalaryAdvanceSchema>;
+export type CreateSalaryAdvanceFormValues = z.output<typeof createSalaryAdvanceSchema>;

@@ -6,9 +6,11 @@ import { Plus } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { Can } from '@/components/shared/permission-gate';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
 import { useEmployees } from '@/features/employees/hooks';
 import { EmployeeTable } from '@/features/employees/components/employee-table';
+import { HrReport } from '@/features/employees/components/hr-report';
 
 export default function EmployeesListPage() {
   const { data, isLoading } = useEmployees();
@@ -36,24 +38,45 @@ export default function EmployeesListPage() {
         }
       />
 
-      <div className="flex gap-2">
-        <Button
-          variant={filter === 'actifs' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setFilter('actifs')}
-        >
-          Actifs
-        </Button>
-        <Button
-          variant={filter === 'tous' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setFilter('tous')}
-        >
-          Tous
-        </Button>
-      </div>
+      <Tabs defaultValue="effectif">
+        <TabsList>
+          <TabsTrigger value="effectif">Effectif</TabsTrigger>
+          {/* Même gate que l'onglet Paie de la fiche employé — HrReport
+              n'est monté (et ses hooks appelés) que derrière ce Can, même
+              discipline « pas de fuite » que PayrollTab (Lot 6d). */}
+          <Can permission={PERMISSIONS.PAYROLL_READ}>
+            <TabsTrigger value="rapport">Rapport RH</TabsTrigger>
+          </Can>
+        </TabsList>
 
-      <EmployeeTable data={filtered} isLoading={isLoading} />
+        <TabsContent value="effectif">
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-2">
+              <Button
+                variant={filter === 'actifs' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilter('actifs')}
+              >
+                Actifs
+              </Button>
+              <Button
+                variant={filter === 'tous' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilter('tous')}
+              >
+                Tous
+              </Button>
+            </div>
+            <EmployeeTable data={filtered} isLoading={isLoading} />
+          </div>
+        </TabsContent>
+
+        <Can permission={PERMISSIONS.PAYROLL_READ}>
+          <TabsContent value="rapport">
+            <HrReport />
+          </TabsContent>
+        </Can>
+      </Tabs>
     </div>
   );
 }
