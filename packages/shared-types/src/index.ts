@@ -30,3 +30,4 @@ export * from './depreciation';
 export * from './maintenance';
 export * from './infrastructure';
 export * from './employees';
+export * from './attendance';

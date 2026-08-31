@@ -9,6 +9,10 @@ vi.mock('@/features/employees/hooks', () => ({
   useEmployee: (id: string) => useEmployeeMock(id),
   useEmployees: () => ({ data: [] }),
   useDeleteEmployee: () => ({ mutateAsync: vi.fn() }),
+  // Onglet Présence (Lot 6b) : AttendanceCalendar appelle ce hook dès le
+  // rendu — pas l'objet de ce test (voir attendance-calendar.test.tsx),
+  // juste éviter un crash "not a function" faute d'export mocké.
+  useEmployeeAttendance: () => ({ data: [], isLoading: false }),
 }));
 vi.mock('@/features/buildings/hooks', () => ({
   useBuildings: () => ({ data: [] }),

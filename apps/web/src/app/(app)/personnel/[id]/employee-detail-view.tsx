@@ -17,10 +17,12 @@ import { extractMessage } from '@/lib/api/extract-error-message';
 import { useDeleteEmployee, useEmployee, useEmployees } from '@/features/employees/hooks';
 import { useBuildings } from '@/features/buildings/hooks';
 import { employeeStatusConfig } from '@/features/employees/components/employee-table';
+import { AttendanceCalendar } from '@/features/employees/components/attendance-calendar';
 
-// Onglets Présence/Tâches/Paie : coquille visible dès ce lot (fiche
-// « extensible » demandée), contenu réel construit aux Lots 6b/6c/6d —
-// interdiction explicite du Lot 6a de les remplir ici.
+// Onglets Tâches/Paie : coquille visible dès le Lot 6a (fiche
+// « extensible » demandée), contenu réel construit aux Lots 6c/6d —
+// interdiction explicite du Lot 6b de les remplir ici. Présence a son
+// contenu réel depuis le Lot 6b (AttendanceCalendar, ci-dessous).
 function PlaceholderTabContent({ label }: { label: string }) {
   return (
     <p className="text-sm text-muted-foreground">
@@ -134,7 +136,7 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
         </TabsList>
 
         <TabsContent value="presence">
-          <PlaceholderTabContent label="Présence" />
+          <AttendanceCalendar employeeId={employeeId} />
         </TabsContent>
         <TabsContent value="taches">
           <PlaceholderTabContent label="Tâches" />

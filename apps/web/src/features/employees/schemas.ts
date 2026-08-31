@@ -47,3 +47,61 @@ export const updateEmployeeSchema = z.object({
 });
 export type UpdateEmployeeFormInput = z.input<typeof updateEmployeeSchema>;
 export type UpdateEmployeeFormValues = z.output<typeof updateEmployeeSchema>;
+
+// Pointage (Lot 6b) — statuts réels uniquement, miroir de AttendanceStatus
+// (packages/shared-types/src/attendance.ts) et du enum Prisma.
+export const attendanceStatusOptions = ['PRESENT', 'ABSENT', 'CONGE', 'MALADIE'] as const;
+
+export const attendanceStatusLabels: Record<(typeof attendanceStatusOptions)[number], string> = {
+  PRESENT: 'Présent',
+  ABSENT: 'Absent',
+  CONGE: 'En congé',
+  MALADIE: 'Maladie',
+};
+
+const attendanceTimePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Miroir front d'assertAttendanceTimesConsistent (apps/api/.../
+ * attendance.validation.ts) — retour immédiat côté formulaire, jamais la
+ * seule barrière : le serveur revalide intégralement à chaque écriture. */
+export const attendanceFormSchema = z
+  .object({
+    status: z.enum(attendanceStatusOptions),
+    checkInTime: z
+      .string()
+      .regex(attendanceTimePattern, 'Format HH:mm requis.')
+      .optional()
+      .or(z.literal('')),
+    checkOutTime: z
+      .string()
+      .regex(attendanceTimePattern, 'Format HH:mm requis.')
+      .optional()
+      .or(z.literal('')),
+    observations: z.string().max(2000).optional().or(z.literal('')),
+  })
+  .superRefine((values, ctx) => {
+    if (values.status === 'PRESENT') {
+      if (!values.checkInTime) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['checkInTime'],
+          message: 'Heure d’arrivée requise pour un statut Présent.',
+        });
+      }
+    } else if (values.checkInTime || values.checkOutTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['checkInTime'],
+        message: 'Heure d’arrivée/de départ non applicable pour ce statut.',
+      });
+    }
+    if (values.checkInTime && values.checkOutTime && values.checkOutTime <= values.checkInTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['checkOutTime'],
+        message: 'L’heure de départ doit être postérieure à l’heure d’arrivée.',
+      });
+    }
+  });
+export type AttendanceFormInput = z.input<typeof attendanceFormSchema>;
+export type AttendanceFormValues = z.output<typeof attendanceFormSchema>;

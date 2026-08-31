@@ -54,13 +54,17 @@ cf. précision ci-dessus).
   **Réalisé (Lot 6a)**, filtre Actifs/Tous uniquement pour l'instant
   (poste/bâtiment restent à ajouter, voir `DETTE_TECHNIQUE.md`).
 * Fiche employé (détail, historique de paie, historique de présence,
-  documents) — **Réalisé partiellement (Lot 6a)** : onglets Présence/
-  Tâches/Paie construits comme coquille extensible (placeholder), contenu
-  réel prévu aux Lots 6b/6c/6d ; documents non traités (hors périmètre
-  Lot 6a).
+  documents) — **Réalisé partiellement (Lot 6a + 6b)** : onglet Présence
+  réalisé (Lot 6b, planning calendrier par employé) ; Tâches/Paie restent
+  des coquilles extensibles (placeholder), contenu réel prévu aux Lots
+  6c/6d ; documents non traités (hors périmètre).
 * Création / édition employé — **Réalisé (Lot 6a)**.
-* Planning (vue calendrier, par employé ou par équipe)
-* Pointage quotidien
+* Planning (vue calendrier, par employé ou par équipe) — **Réalisé
+  partiellement (Lot 6b)** : vue calendrier par employé (onglet Présence)
+  + registre du jour tous employés confondus (`/pointage`) ; pas de vue
+  « par équipe » agrégée sur plusieurs mois (aucun endpoint farm-wide
+  côté API, voir `DETTE_TECHNIQUE.md`).
+* Pointage quotidien — **Réalisé (Lot 6b)**, écran `/pointage`.
 * Tâches assignées (liste + création — à mutualiser avec le moteur de
   tâches transverse prévu en Phase 11, pas de duplication)
 * Paie — enregistrement du relevé mensuel (suivi indicatif interne,
@@ -308,3 +312,15 @@ aucune renumérotation des phases déjà livrées).
   Responsable élevage ; règle de masquage du salaire appliquée au niveau
   du composant (champ absent de la réponse ⇒ jamais rendu, jamais
   soumis) aussi bien en lecture (fiche) qu'en écriture (formulaire).
+* **Lot 6b — Écrans Attendance (planning, pointage)** : LIVRÉ, validé
+  (`feature/personnel-lot6b-attendance-screens`, cible
+  `feature/personnel-lot6a-employee-screens`) — onglet Présence rempli
+  (calendrier mensuel par employé, grille construite à la main, aucune
+  dépendance calendrier ajoutée) ; nouvel écran `/pointage` (registre du
+  jour, tous employés actifs/en congé confondus, N requêtes GET/:date en
+  parallèle faute d'endpoint farm-wide côté API). Décision de navigation
+  tranchée et documentée : entrée « Pointage » séparée de « Personnel »,
+  gardée par `ATTENDANCE_READ` OU `EMPLOYEE_TASKS_READ` (`anyPermission`,
+  nouvelle extension de `nav-items.ts`) — corrige le trou de navigation du
+  rôle Responsable élevage identifié au Lot 6a. Voir `DETTE_TECHNIQUE.md`
+  pour le détail des deux décisions et leurs compromis assumés.

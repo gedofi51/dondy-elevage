@@ -1883,6 +1883,147 @@ même palliatif que les autres listes du projet).
 restauration) — confirmation via `ConfirmDialog` avant l'appel, même
 patron que Patrimoine.
 
+## Personnel — Lot 6b (écrans Attendance : planning, pointage)
+
+Deuxième lot frontend du module Personnel, stacké sur le Lot 6a
+(`feature/personnel-lot6a-employee-screens`). Reprend le patron
+`features/employees/` établi au Lot 6a (hooks.ts/schemas.ts étendus,
+composants dans `features/employees/components/`), et pour la
+sous-ressource datée elle-même le patron le plus proche déjà en place :
+WaterReadings sous WaterPoint (`features/water-points/...`) — cité
+explicitement en commentaire côté API
+(`attendance.service.ts` : « même patron structurel que WaterReadings »).
+
+**Décision de navigation — tranchée et documentée, conformément à la
+consigne explicite du prompt** : entrée « Pointage » ajoutée en `NavLink`
+séparé (`/pointage`, icône `ClipboardCheck`), indépendante de
+« Personnel ». Corrige exactement l'effet de bord identifié — mais pas
+corrigé — au Lot 6a : le rôle Responsable élevage a
+`ATTENDANCE_READ`/`EMPLOYEE_TASKS_READ` mais pas `EMPLOYEES_READ`, et ne
+voyait donc jamais « Personnel ». `NavLink` étendu d'un nouveau champ
+`anyPermission?: PermissionCode[]` (visible si au moins une des
+permissions listées est présente — alternatif à `permission`, jamais les
+deux ensemble) plutôt que de réutiliser `permission` (qui n'exprime
+qu'une AND/permission unique) — extension minimale de `nav-items.ts`
+(`isLinkVisible`), pas une réécriture du modèle de données existant.
+« Pointage » gardé par `ATTENDANCE_READ` OU `EMPLOYEE_TASKS_READ` :
+vérifié dans `roles.catalog.ts` que dans la matrice RBAC actuelle, ces
+deux permissions sont **toujours accordées ensemble** à chaque rôle qui
+en a une (Propriétaire/Administrateur, Gérant, Responsable élevage,
+Comptable, Lecteur) — gater sur `ATTENDANCE_READ` seul donnerait donc
+exactement la même visibilité aujourd'hui. Le OU est conservé
+volontairement pour deux raisons : (1) rester correct si un futur rôle
+découple un jour les deux permissions ; (2) `EMPLOYEE_TASKS_READ` est
+très probablement amené à pointer vers cette même entrée une fois le Lot
+6c (Tâches) construit, évitant d'ajouter une 3ᵉ entrée de nav pour un
+contenu très proche. Défense en profondeur ajoutée côté page
+(`/pointage`) malgré l'absence de cas réel aujourd'hui : le contenu
+(`AttendanceRegister`) reste gardé par `Can permission={ATTENDANCE_READ}`
+avec un message explicite en repli, au cas où un futur rôle atteindrait
+la page via `EMPLOYEE_TASKS_READ` seul sans jamais avoir
+`ATTENDANCE_READ`.
+
+**Aucun composant de calendrier réutilisable trouvé** (recherche menée
+avant tout code, conformément à la consigne) : ni ailleurs dans le repo
+(seule occurrence du mot « Calendar » dans `apps/web/src` avant ce lot :
+un test sans rapport, `day-number.test.ts`), ni comme dépendance déjà
+installée (`react-day-picker`, `date-fns` absents de
+`apps/web/package.json`). Grille de mois construite à la main
+(`features/employees/attendance-calendar-grid.ts`, fonction pure
+`buildMonthGrid`, testée isolément — même discipline que `day-number.ts`
+côté Broiler) plutôt que d'introduire une nouvelle dépendance pour un
+simple calcul de grille 6 semaines × 7 jours.
+
+**Deux écrans distincts pour les deux notions nommées par le prompt**
+(« planning » et « pointage quotidien ») :
+- Onglet **Présence** (`personnel/[id]`, rempli ce lot) :
+  `AttendanceCalendar` — calendrier mensuel **par employé**, un seul
+  appel réseau (`GET /employees/:id/attendance`, historique complet,
+  filtré côté client par mois affiché — même ordre de grandeur que le
+  reste de la fiche, aucune pagination ailleurs dans l'app non plus).
+  C'est la « vue calendrier des présences/absences » au sens strict du
+  prompt.
+- Nouvel écran **`/pointage`** (registre du jour, tous employés) :
+  `AttendanceRegister` — c'est le « pointage quotidien (arrivée/
+  départ) » : une ligne par employé éligible (voir plus bas), statut du
+  jour sélectionné + action Pointer/Modifier.
+
+**Registre du jour — N requêtes par employé, compromis assumé** : l'API
+Lot 3 n'expose que `/employees/:id/attendance` (nesté par employé),
+aucun endpoint farm-wide « tous les employés à une date donnée ». Ajouter
+un tel endpoint aurait été une modification backend hors périmètre
+strict de ce lot (fichiers concernés listés dans le prompt : uniquement
+front). `AttendanceRegister` interroge donc `GET /employees/:id/
+attendance/:date` une fois par employé éligible, en parallèle
+(`useQueries`) — borné par l'effectif de la ferme, pas paginé. Accepté
+comme compromis pour ce lot compte tenu de la contrainte de connectivité
+Samba (CLAUDE.md) : à revisiter si l'effectif dépasse quelques dizaines
+d'employés, ou si un Lot ultérieur ajoute un endpoint farm-wide (ce
+service/cet écran serait alors le premier bénéficiaire évident).
+
+**Éligibilité au registre — définition reprise du backend, pas de la
+liste employés** : `AttendanceRegister` exclut les employés
+`SUSPENDU`/`DEPART` (même ensemble que
+`RESTRICTED_EMPLOYEE_STATUSES`/`assertEmployeeActiveForNewAttendance`
+côté API, `attendance.validation.ts`) — différent du filtre "Actifs" de
+la liste employés (Lot 6a, qui n'exclut que `DEPART`) : ici c'est
+précisément l'éligibilité à un nouveau pointage qui compte, pas la
+visibilité RH générale. Évite de proposer un bouton "Pointer" qui
+échouerait systématiquement en 409 pour un employé suspendu.
+
+**Validation du formulaire de pointage — miroir exact du backend** :
+`attendanceFormSchema` (Zod) reproduit `assertAttendanceTimesConsistent`
+(`attendance.validation.ts`) — statut PRESENT exige `checkInTime`,
+tout autre statut interdit les deux champs heure, `checkOutTime` doit
+être strictement postérieur à `checkInTime` quand les deux sont
+renseignés. Jamais la seule barrière : le serveur revalide intégralement
+à chaque écriture, comme partout ailleurs dans le projet. Les champs
+heure sont masqués dans le formulaire hors statut PRESENT et vidés via
+un `useEffect` au changement de statut (évite qu'une valeur saisie puis
+masquée reste dans l'état du formulaire et fasse échouer la validation
+sans qu'aucun message ne soit visible, le champ portant l'erreur étant
+alors caché).
+
+**Un seul formulaire pour créer et corriger** (`AttendanceForm`) :
+branchement POST/PATCH sur la présence d'un enregistrement existant
+(`existing: Attendance | null`), pas sur une prop statique comme
+`EmployeeForm` (Lot 6a) — ici la présence dépend de la réponse d'un GET
+par date, pas de la navigation (fiche création vs édition).
+
+**Écriture — permission vérifiée au cas par cas, pas par proxy** :
+créer un jour vierge exige `ATTENDANCE_CREATE`, corriger un jour déjà
+saisi exige `ATTENDANCE_UPDATE` — les deux composants d'écriture
+(`AttendanceCalendar`, `AttendanceRegister`) sélectionnent la permission
+exacte selon qu'un enregistrement existe déjà pour la date concernée.
+Les 3 rôles avec accès en écriture (Propriétaire/Administrateur, Gérant/
+Responsable ferme, Responsable élevage) ont aujourd'hui toujours les
+deux permissions ensemble (vérifié dans `roles.catalog.ts`), donc aucune
+différence de comportement visible actuellement — codé correctement
+quand même plutôt que par un raccourci qui casserait silencieusement si
+la matrice RBAC se découplait un jour.
+
+**Tests `useQueries` — pas de précédent dans ce dépôt** :
+`attendance-register.test.tsx` mock `@tanstack/react-query` lui-même
+(en ne remplaçant que `useQueries`, via `importOriginal`) plutôt que de
+monter un vrai `QueryClientProvider` avec un fetch réseau simulé — aucun
+autre composant consommant `useQueries` (`broiler-batches`/
+`layer-batches`, précédent Phase antérieure) n'a de test dans ce dépôt,
+pas de patron `QueryClientProvider` de test à reprendre. Solution
+pragmatique, cohérente avec le mock systématique de `../hooks` déjà
+utilisé partout ailleurs dans les tests de ce module.
+
+**Interaction avec le composant `Select` (base-ui) — non testée par
+clic** : sélectionner une option puis vérifier l'effet résultant
+(`fireEvent.click` sur un `role="option"`) s'est avéré peu fiable en
+test (état non mis à jour de façon synchrone observable) et n'a aucun
+précédent ailleurs dans le dépôt (seul précédent existant,
+`asset-form.test.tsx`, vérifie uniquement la présence des options, jamais
+une sélection). Contourné en testant le comportement « statut ≠ PRESENT
+⇒ champs heure absents » de façon déclarative (via la prop `existing`)
+plutôt que par interaction — couverture équivalente, sans dépendre d'un
+mécanisme d'interaction non éprouvé dans ce projet. À investiguer si un
+lot futur a réellement besoin de tester une sélection d'option en direct.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
