@@ -31,3 +31,4 @@ export * from './maintenance';
 export * from './infrastructure';
 export * from './employees';
 export * from './attendance';
+export * from './employee-tasks';

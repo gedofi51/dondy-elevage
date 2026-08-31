@@ -2024,6 +2024,92 @@ plutôt que par interaction — couverture équivalente, sans dépendre d'un
 mécanisme d'interaction non éprouvé dans ce projet. À investiguer si un
 lot futur a réellement besoin de tester une sélection d'option en direct.
 
+## Personnel — Lot 6c (écrans EmployeeTask : onglet Tâches)
+
+Troisième lot frontend du module Personnel, stacké sur le Lot 6b
+(`feature/personnel-lot6b-attendance-screens`). Reprend le patron
+`features/employees/` (hooks.ts/schemas.ts étendus, composants dans
+`features/employees/components/`) et, pour la structure liste/formulaire/
+annulation elle-même, le précédent le plus proche cité par
+`MODULE_PERSONNEL.md` §5 : `MaintenanceTask` (`features/maintenance/...`),
+investigué avant tout code conformément à la consigne.
+
+**Vue « toutes les tâches de la ferme » — investiguée, explicitement
+exclue de ce lot** (décision documentée, pas silencieuse, conformément à
+la consigne). Contrairement à `MaintenanceTask`, dont `GET
+/maintenance-tasks` est un endpoint farm-wide sans filtre (toute la
+ferme en un seul appel, réutilisé tel quel par la page globale
+`/maintenance` ET par l'onglet Maintenance de la fiche Asset), l'API
+`EmployeeTask` du Lot 4 n'expose que `/employees/:employeeId/tasks`
+(nesté, aucun équivalent farm-wide). Une vue « toutes les tâches »
+reproduirait donc exactement le compromis N-requêtes-par-employé déjà
+assumé pour `/pointage` (Lot 6b, `AttendanceRegister`), sans qu'aucun
+besoin explicite ne soit exprimé au cadrage au-delà de « Rapport RH »
+(§3, fonctionnalité distincte, non construite). Le prompt du Lot 6c
+demandait explicitement de signaler plutôt que trancher seul si une
+vue dédiée s'avérait nécessaire : conclusion retenue ici — **pas
+nécessaire ce lot**, l'onglet Tâches de la fiche employé couvre déjà
+l'objectif énoncé (« liste des tâches assignées et création »), aucune
+nouvelle entrée de navigation n'est donc ajoutée (« Pointage », Lot 6b,
+reste suffisante). **Proposition, pas un rejet définitif** : à
+reconsidérer explicitement si un besoin réel de vue transverse émerge
+(ex. un Gérant voulant suivre toutes les tâches ouvertes de l'équipe en
+un coup d'œil) — candidate naturelle pour un lot dédié plutôt qu'un
+ajout silencieux ici.
+
+**Statuts — REALISEE directement en PATCH, à la différence de
+MaintenanceTask** : `EMPLOYEE_TASK_EDITABLE_STATUSES` inclut
+A_FAIRE/EN_COURS/**REALISEE** (contre seulement A_FAIRE/EN_COURS côté
+`MAINTENANCE_TASK_EDITABLE_STATUSES`) — EmployeeTask n'a pas d'entité
+« intervention » pour produire REALISEE en effet de bord, donc ce
+statut reste directement accessible via le formulaire d'édition
+(`EmployeeTaskForm`, Select limité à ces 3 valeurs). ANNULEE n'apparaît
+jamais dans ce Select — atteignable uniquement via
+`CancelEmployeeTaskDialog` → `POST .../annuler` (interdiction explicite
+du Lot 6c, respectée).
+
+**Motif d'annulation — obligatoire côté formulaire, optionnel côté API**
+: `CancelEmployeeTaskDto.cancelReason` est `@IsOptional()` côté backend
+(« même forme que CancelMaintenanceTaskDto », commentaire du DTO) —
+contrairement à l'énoncé du prompt Lot 6c (« motif obligatoire »).
+Résolu sans modification backend (interdiction explicite du lot) : la
+règle est imposée uniquement côté formulaire
+(`cancelEmployeeTaskSchema`, `cancelReason` requis, non vide) — une
+chaîne non vide reste toujours une entrée valide pour un champ optionnel
+côté serveur, donc aucune incohérence entre les deux couches. Écart
+volontaire au précédent Maintenance (`CancelTaskDialog`, dont le motif
+reste optionnel des deux côtés) : le prompt Lot 6c demande explicitement
+ce durcissement pour EmployeeTask, pas pour Maintenance — pas une
+généralisation à appliquer ailleurs sans demande équivalente.
+
+**Dialog d'annulation — patron Maintenance repris, pas
+`attendance-dialog.tsx`** : le prompt suggérait de réutiliser
+`attendance-dialog.tsx` (Lot 6b) « si pertinent ». Après lecture, ce
+composant est spécifiquement structuré pour le branchement POST/PATCH
+d'AttendanceForm (création/correction d'un pointage) et n'a aucune
+notion de motif ni de confirmation destructive — `cancel-task-dialog.tsx`
+(Maintenance) est un précédent structurellement bien plus proche
+(Dialog + un seul champ motif + confirmation destructive), repris tel
+quel pour `CancelEmployeeTaskDialog`. Écart mineur au libellé du prompt,
+signalé ici plutôt que suivi à la lettre contre l'évidence du code.
+
+**Bouton « Nouvelle tâche » masqué pour un employé inactif** : même
+principe que `AttendanceRegister` (Lot 6b) — `SUSPENDU`/`DEPART` exclus
+(même définition que `RESTRICTED_EMPLOYEE_STATUSES`/
+`assertEmployeeActiveForNewTask` côté API), message explicatif affiché à
+la place plutôt qu'un bouton menant systématiquement à un 409. Erreur
+API reflétée normalement (via `extractMessage`) si ce garde-fou est
+contourné (accès direct à l'URL, changement de statut concurrent).
+
+**Onglet Tâches — non gated au niveau de l'onglet, actions gated
+individuellement** : même vérification que Lot 6a/6b (`roles.catalog.ts`)
+— tout rôle avec `EMPLOYEES_READ` a aussi `EMPLOYEE_TASKS_READ`, pas de
+fuite à ce niveau. Écriture (Nouvelle tâche/Modifier/Annuler) gardée par
+`EMPLOYEE_TASKS_CREATE`/`EMPLOYEE_TASKS_UPDATE` individuellement, testé
+explicitement pour le cas Responsable élevage (a les permissions Tâches
+mais pas `EMPLOYEES_UPDATE`/`EMPLOYEES_DELETE` — voit les actions Tâches
+sans voir les actions Employee de la fiche).
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

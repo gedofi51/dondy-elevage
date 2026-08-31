@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EMPLOYEE_TASK_EDITABLE_STATUSES } from '@dondy-elevage/shared-types';
 
 export const employeeStatusOptions = ['ACTIF', 'CONGE', 'SUSPENDU', 'DEPART'] as const;
 
@@ -105,3 +106,38 @@ export const attendanceFormSchema = z
   });
 export type AttendanceFormInput = z.input<typeof attendanceFormSchema>;
 export type AttendanceFormValues = z.output<typeof attendanceFormSchema>;
+
+// Tâches assignées (Lot 6c) — miroir de CreateEmployeeTaskDto/
+// UpdateEmployeeTaskDto (apps/api/.../employee-tasks). `status` absent du
+// schéma de création : toujours A_FAIRE par défaut côté API.
+export const createEmployeeTaskSchema = z.object({
+  designation: z.string().min(1, 'Désignation requise').max(191),
+  dueDate: z.string().min(1, 'Échéance requise'),
+  observations: z.string().max(2000).optional().or(z.literal('')),
+});
+export type CreateEmployeeTaskFormInput = z.input<typeof createEmployeeTaskSchema>;
+export type CreateEmployeeTaskFormValues = z.output<typeof createEmployeeTaskSchema>;
+
+// `status` restreint aux 3 valeurs "libres" (EMPLOYEE_TASK_EDITABLE_
+// STATUSES) — ANNULEE reste exclusivement accessible via l'endpoint
+// /annuler dédié, jamais ce PATCH générique (interdiction explicite du
+// Lot 6c, même discipline que MaintenanceTask).
+export const updateEmployeeTaskSchema = z.object({
+  designation: z.string().min(1, 'Désignation requise').max(191),
+  dueDate: z.string().min(1, 'Échéance requise'),
+  status: z.enum(EMPLOYEE_TASK_EDITABLE_STATUSES),
+  observations: z.string().max(2000).optional().or(z.literal('')),
+});
+export type UpdateEmployeeTaskFormInput = z.input<typeof updateEmployeeTaskSchema>;
+export type UpdateEmployeeTaskFormValues = z.output<typeof updateEmployeeTaskSchema>;
+
+// Motif obligatoire — règle UI explicite du Lot 6c, plus stricte que le
+// DTO API (CancelEmployeeTaskDto.cancelReason est optionnel côté
+// serveur, même forme que CancelMaintenanceTaskDto) : imposé ici pour la
+// qualité de la donnée d'audit, sans modification backend (une chaîne
+// non vide reste toujours valide pour un champ optionnel côté API).
+export const cancelEmployeeTaskSchema = z.object({
+  cancelReason: z.string().min(1, 'Motif requis').max(1000),
+});
+export type CancelEmployeeTaskFormInput = z.input<typeof cancelEmployeeTaskSchema>;
+export type CancelEmployeeTaskFormValues = z.output<typeof cancelEmployeeTaskSchema>;

@@ -1,9 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import type { Employee } from '@dondy-elevage/shared-types';
+import type { ReactNode } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import type { Employee, EmployeeTaskWithComputed } from '@dondy-elevage/shared-types';
+import { PERMISSIONS } from '@dondy-elevage/shared-types';
 import { EmployeeDetailView } from './employee-detail-view';
 
 const useEmployeeMock = vi.fn();
+const useEmployeeTasksMock = vi.fn();
 
 vi.mock('@/features/employees/hooks', () => ({
   useEmployee: (id: string) => useEmployeeMock(id),
@@ -13,18 +16,57 @@ vi.mock('@/features/employees/hooks', () => ({
   // rendu — pas l'objet de ce test (voir attendance-calendar.test.tsx),
   // juste éviter un crash "not a function" faute d'export mocké.
   useEmployeeAttendance: () => ({ data: [], isLoading: false }),
+  // Onglet Tâches (Lot 6c) : idem pour EmployeeTaskTable/-Form/-Dialog —
+  // ce module unique est importé aussi bien directement par
+  // EmployeeDetailView (via l'alias @) que par EmployeeTaskDialog/
+  // CancelEmployeeTaskDialog (via '../hooks', même fichier résolu) : un
+  // seul vi.mock ici couvre les deux chemins d'import.
+  useEmployeeTasks: (id: string) => useEmployeeTasksMock(id),
+  useCreateEmployeeTask: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateEmployeeTask: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCancelEmployeeTask: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
 vi.mock('@/features/buildings/hooks', () => ({
   useBuildings: () => ({ data: [] }),
 }));
+
+// Permission set par défaut = rôle avec accès complet Personnel (pas
+// l'objet des tests salaire/chargement ci-dessous — voir
+// employee-form.test.tsx pour le masquage salaire, et le describe
+// « garde par rôle » plus bas pour la restriction de permissions).
+let mockPermissions = new Set<string>([
+  PERMISSIONS.EMPLOYEES_UPDATE,
+  PERMISSIONS.EMPLOYEES_DELETE,
+  PERMISSIONS.PAYROLL_READ,
+  PERMISSIONS.EMPLOYEE_TASKS_CREATE,
+  PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
+]);
+
 vi.mock('@/components/shared/permission-gate', () => ({
-  // Simule un rôle avec toutes les permissions Personnel (pas l'objet du
-  // test ici — voir employee-form.test.tsx pour le masquage lui-même).
-  Can: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  Can: ({
+    children,
+    permission,
+    fallback,
+  }: {
+    children: ReactNode;
+    permission: string;
+    fallback?: ReactNode;
+  }) => (mockPermissions.has(permission) ? <>{children}</> : <>{fallback ?? null}</>),
 }));
 vi.mock('next/link', () => ({
   default: ({ children }: { children: React.ReactNode }) => <a>{children}</a>,
 }));
+
+beforeEach(() => {
+  mockPermissions = new Set<string>([
+    PERMISSIONS.EMPLOYEES_UPDATE,
+    PERMISSIONS.EMPLOYEES_DELETE,
+    PERMISSIONS.PAYROLL_READ,
+    PERMISSIONS.EMPLOYEE_TASKS_CREATE,
+    PERMISSIONS.EMPLOYEE_TASKS_UPDATE,
+  ]);
+  useEmployeeTasksMock.mockReturnValue({ data: [], isLoading: false });
+});
 
 const baseEmployee: Employee = {
   id: 'employee-1',
@@ -68,5 +110,70 @@ describe('EmployeeDetailView', () => {
     });
     render(<EmployeeDetailView employeeId="employee-1" />);
     expect(screen.queryByText('Salaire de base')).not.toBeInTheDocument();
+  });
+});
+
+const openTask: EmployeeTaskWithComputed = {
+  id: 'task-1',
+  farmId: 'farm-1',
+  employeeId: 'employee-1',
+  designation: 'Nettoyer le bâtiment A',
+  dueDate: '2026-09-01',
+  status: 'A_FAIRE',
+  cancelReason: null,
+  observations: null,
+  createdAt: '2026-08-01T00:00:00.000Z',
+  updatedAt: '2026-08-01T00:00:00.000Z',
+  createdBy: 'user-1',
+  isLate: false,
+};
+
+// « Garde par rôle y compris Responsable élevage » (Lot 6c) — ce rôle a
+// EMPLOYEE_TASKS_CREATE/UPDATE mais pas EMPLOYEES_UPDATE/DELETE (voir
+// roles.catalog.ts) : les actions Tâches doivent rester visibles malgré
+// l'absence des permissions Employee, contrairement à Comptable/Lecteur
+// qui n'ont que EMPLOYEE_TASKS_READ.
+describe('EmployeeDetailView — onglet Tâches, garde par rôle', () => {
+  it('Responsable élevage (EMPLOYEE_TASKS_CREATE/UPDATE, pas EMPLOYEES_UPDATE) voit les actions Tâches', () => {
+    mockPermissions = new Set([PERMISSIONS.EMPLOYEE_TASKS_CREATE, PERMISSIONS.EMPLOYEE_TASKS_UPDATE]);
+    useEmployeeMock.mockReturnValue({ data: baseEmployee, isLoading: false });
+    useEmployeeTasksMock.mockReturnValue({ data: [openTask], isLoading: false });
+
+    render(<EmployeeDetailView employeeId="employee-1" />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Tâches' }));
+
+    expect(screen.getByRole('button', { name: /Nouvelle tâche/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Modifier' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Annuler' })).toBeInTheDocument();
+    // Et n'a pas les actions Employee (édition/suppression de la fiche).
+    expect(screen.queryByRole('button', { name: 'Supprimer' })).not.toBeInTheDocument();
+  });
+
+  it('Comptable/Lecteur (EMPLOYEE_TASKS_READ seul) ne voit aucune action Tâches', () => {
+    mockPermissions = new Set();
+    useEmployeeMock.mockReturnValue({ data: baseEmployee, isLoading: false });
+    useEmployeeTasksMock.mockReturnValue({ data: [openTask], isLoading: false });
+
+    render(<EmployeeDetailView employeeId="employee-1" />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Tâches' }));
+
+    // La liste reste visible (onglet Tâches non gated, voir
+    // DETTE_TECHNIQUE.md Lot 6a) — seules les actions d'écriture disparaissent.
+    expect(screen.getByText('Nettoyer le bâtiment A')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Nouvelle tâche/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Modifier' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Annuler' })).not.toBeInTheDocument();
+  });
+
+  it('ne propose pas « Nouvelle tâche » pour un employé suspendu/sorti, même avec les droits d’écriture', () => {
+    mockPermissions = new Set([PERMISSIONS.EMPLOYEE_TASKS_CREATE, PERMISSIONS.EMPLOYEE_TASKS_UPDATE]);
+    useEmployeeMock.mockReturnValue({ data: { ...baseEmployee, status: 'SUSPENDU' }, isLoading: false });
+    useEmployeeTasksMock.mockReturnValue({ data: [], isLoading: false });
+
+    render(<EmployeeDetailView employeeId="employee-1" />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Tâches' }));
+
+    expect(screen.queryByRole('button', { name: /Nouvelle tâche/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/aucune nouvelle tâche assignable/)).toBeInTheDocument();
   });
 });

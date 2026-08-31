@@ -54,10 +54,10 @@ cf. précision ci-dessus).
   **Réalisé (Lot 6a)**, filtre Actifs/Tous uniquement pour l'instant
   (poste/bâtiment restent à ajouter, voir `DETTE_TECHNIQUE.md`).
 * Fiche employé (détail, historique de paie, historique de présence,
-  documents) — **Réalisé partiellement (Lot 6a + 6b)** : onglet Présence
-  réalisé (Lot 6b, planning calendrier par employé) ; Tâches/Paie restent
-  des coquilles extensibles (placeholder), contenu réel prévu aux Lots
-  6c/6d ; documents non traités (hors périmètre).
+  documents) — **Réalisé partiellement (Lot 6a + 6b + 6c)** : onglets
+  Présence (Lot 6b) et Tâches (Lot 6c) réalisés ; Paie reste une coquille
+  extensible (placeholder), contenu réel prévu au Lot 6d ; documents non
+  traités (hors périmètre).
 * Création / édition employé — **Réalisé (Lot 6a)**.
 * Planning (vue calendrier, par employé ou par équipe) — **Réalisé
   partiellement (Lot 6b)** : vue calendrier par employé (onglet Présence)
@@ -65,8 +65,11 @@ cf. précision ci-dessus).
   « par équipe » agrégée sur plusieurs mois (aucun endpoint farm-wide
   côté API, voir `DETTE_TECHNIQUE.md`).
 * Pointage quotidien — **Réalisé (Lot 6b)**, écran `/pointage`.
-* Tâches assignées (liste + création — à mutualiser avec le moteur de
-  tâches transverse prévu en Phase 11, pas de duplication)
+* Tâches assignées (liste + création) — **Réalisé (Lot 6c)**, onglet
+  Tâches de la fiche employé ; pas de vue « toutes les tâches de la
+  ferme » (investiguée et explicitement exclue ce lot, aucun endpoint
+  farm-wide côté API — voir `DETTE_TECHNIQUE.md`, proposée comme
+  candidate pour un lot futur si le besoin se confirme).
 * Paie — enregistrement du relevé mensuel (suivi indicatif interne,
   sans valeur de bulletin légal), historique des paiements, avances
 * Rapport RH (effectif, absentéisme, coût de personnel par période)
@@ -324,3 +327,18 @@ aucune renumérotation des phases déjà livrées).
   nouvelle extension de `nav-items.ts`) — corrige le trou de navigation du
   rôle Responsable élevage identifié au Lot 6a. Voir `DETTE_TECHNIQUE.md`
   pour le détail des deux décisions et leurs compromis assumés.
+* **Lot 6c — Écrans EmployeeTask (onglet Tâches)** : LIVRÉ, validé
+  (`feature/personnel-lot6c-employee-tasks-screens`, cible
+  `feature/personnel-lot6b-attendance-screens`) — patron `MaintenanceTask`
+  investigué et repris (liste, formulaire création/édition, dialog
+  d'annulation). Décision documentée : vue « toutes les tâches de la
+  ferme » investiguée puis explicitement exclue (aucun endpoint farm-wide
+  côté API `EmployeeTask`, contrairement à `MaintenanceTask` — même
+  compromis N-requêtes que `/pointage` sans besoin explicite exprimé au
+  cadrage), proposée comme candidate pour un lot futur plutôt que
+  tranchée seule. REALISEE reste directement éditable en PATCH (pas
+  d'équivalent MaintenanceIntervention) ; ANNULEE isolé dans son propre
+  endpoint avec motif rendu obligatoire côté formulaire (le DTO API reste
+  optionnel, écart volontaire signalé). Aucune nouvelle entrée de
+  navigation (« Pointage », Lot 6b, couvre déjà `EMPLOYEE_TASKS_READ`).
+  Voir `DETTE_TECHNIQUE.md` pour le détail.

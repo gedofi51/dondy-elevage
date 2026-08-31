@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   Attendance,
+  CancelEmployeeTaskInput,
   CreateAttendanceInput,
   CreateEmployeeInput,
+  CreateEmployeeTaskInput,
   Employee,
+  EmployeeTaskWithComputed,
   UpdateAttendanceInput,
   UpdateEmployeeInput,
+  UpdateEmployeeTaskInput,
 } from '@dondy-elevage/shared-types';
 import { useApiFetch } from '@/lib/api/use-api-fetch';
 
@@ -103,5 +107,56 @@ export function useUpdateAttendance(employeeId: string, date: string) {
         body: input,
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees', employeeId, 'attendance'] }),
+  });
+}
+
+// Tâches assignées (Lot 6c) — même patron nesté que Présence (Lot 6b).
+export function useEmployeeTasks(employeeId: string) {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['employees', employeeId, 'tasks'],
+    queryFn: () => apiFetch<EmployeeTaskWithComputed[]>(`/employees/${employeeId}/tasks`),
+    enabled: !!employeeId,
+  });
+}
+
+export function useCreateEmployeeTask(employeeId: string) {
+  const apiFetch = useApiFetch();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateEmployeeTaskInput) =>
+      apiFetch<EmployeeTaskWithComputed>(`/employees/${employeeId}/tasks`, {
+        method: 'POST',
+        body: input,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees', employeeId, 'tasks'] }),
+  });
+}
+
+export function useUpdateEmployeeTask(employeeId: string, taskId: string) {
+  const apiFetch = useApiFetch();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateEmployeeTaskInput) =>
+      apiFetch<EmployeeTaskWithComputed>(`/employees/${employeeId}/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: input,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees', employeeId, 'tasks'] }),
+  });
+}
+
+/** Endpoint dédié, jamais via useUpdateEmployeeTask — ANNULEE est isolé
+ * du PATCH générique (voir schemas.ts, cancelEmployeeTaskSchema). */
+export function useCancelEmployeeTask(employeeId: string, taskId: string) {
+  const apiFetch = useApiFetch();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CancelEmployeeTaskInput) =>
+      apiFetch<EmployeeTaskWithComputed>(`/employees/${employeeId}/tasks/${taskId}/annuler`, {
+        method: 'POST',
+        body: input,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees', employeeId, 'tasks'] }),
   });
 }

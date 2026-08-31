@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Pencil, Trash2 } from 'lucide-react';
-import { PERMISSIONS } from '@dondy-elevage/shared-types';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { PERMISSIONS, type EmployeeTaskWithComputed } from '@dondy-elevage/shared-types';
 import { PageHeader } from '@/components/shared/page-header';
 import { Can } from '@/components/shared/permission-gate';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -14,15 +14,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ApiError } from '@/lib/api/client';
 import { extractMessage } from '@/lib/api/extract-error-message';
-import { useDeleteEmployee, useEmployee, useEmployees } from '@/features/employees/hooks';
+import { useDeleteEmployee, useEmployee, useEmployees, useEmployeeTasks } from '@/features/employees/hooks';
 import { useBuildings } from '@/features/buildings/hooks';
 import { employeeStatusConfig } from '@/features/employees/components/employee-table';
 import { AttendanceCalendar } from '@/features/employees/components/attendance-calendar';
+import { EmployeeTaskTable } from '@/features/employees/components/employee-task-table';
+import { EmployeeTaskDialog } from '@/features/employees/components/employee-task-dialog';
+import { CancelEmployeeTaskDialog } from '@/features/employees/components/cancel-employee-task-dialog';
 
-// Onglets Tâches/Paie : coquille visible dès le Lot 6a (fiche
-// « extensible » demandée), contenu réel construit aux Lots 6c/6d —
-// interdiction explicite du Lot 6b de les remplir ici. Présence a son
-// contenu réel depuis le Lot 6b (AttendanceCalendar, ci-dessous).
+// Onglet Paie : coquille visible dès le Lot 6a (fiche « extensible »
+// demandée), contenu réel prévu au Lot 6d — interdiction explicite du
+// Lot 6c de le remplir ici. Présence (Lot 6b) et Tâches (Lot 6c) ont
+// désormais leur contenu réel.
 function PlaceholderTabContent({ label }: { label: string }) {
   return (
     <p className="text-sm text-muted-foreground">
@@ -31,12 +34,24 @@ function PlaceholderTabContent({ label }: { label: string }) {
   );
 }
 
+// A_FAIRE/EN_COURS uniquement — REALISEE/ANNULEE sont terminaux (aucune
+// action de correction/annulation proposée, le PATCH échouerait en 409
+// côté API, voir TERMINAL_TASK_STATUSES). Même patron que asset-detail-
+// view.tsx (OPEN_TASK_STATUSES, MaintenanceTask).
+const OPEN_EMPLOYEE_TASK_STATUSES = new Set(['A_FAIRE', 'EN_COURS']);
+
 export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
   const { data: employee, isLoading } = useEmployee(employeeId);
   const { data: buildings } = useBuildings();
   const { data: employees } = useEmployees();
+  const { data: tasks, isLoading: tasksLoading } = useEmployeeTasks(employeeId);
   const deleteMutation = useDeleteEmployee();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [taskDialogState, setTaskDialogState] = useState<{
+    open: boolean;
+    task?: EmployeeTaskWithComputed;
+  }>({ open: false });
+  const [cancelTaskId, setCancelTaskId] = useState<string | null>(null);
 
   const buildingsById = new Map((buildings ?? []).map((b) => [b.id, b.name]));
   const employeesById = new Map((employees ?? []).map((e) => [e.id, e.name]));
@@ -63,6 +78,13 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
   // ne jamais afficher de ligne vide suspecte à la place (règle UI
   // explicite du Lot 6a, voir DETTE_TECHNIQUE.md).
   const hasSalary = employee.baseSalaryFcfa !== undefined;
+
+  // Même définition d'« employé actif » que côté API pour la création
+  // d'une tâche (assertEmployeeActiveForNewTask / RESTRICTED_EMPLOYEE_
+  // STATUSES, apps/api/.../employees.validation.ts) — évite de proposer
+  // un bouton qui échouerait systématiquement en 409, même logique que
+  // REGISTER_ELIGIBLE_STATUSES côté AttendanceRegister (Lot 6b).
+  const canCreateTaskForEmployee = employee.status === 'ACTIF' || employee.status === 'CONGE';
 
   return (
     <div className="flex flex-col gap-6">
@@ -139,7 +161,47 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
           <AttendanceCalendar employeeId={employeeId} />
         </TabsContent>
         <TabsContent value="taches">
-          <PlaceholderTabContent label="Tâches" />
+          <div className="flex flex-col gap-3">
+            <Can permission={PERMISSIONS.EMPLOYEE_TASKS_CREATE}>
+              <div className="flex items-center justify-end">
+                {canCreateTaskForEmployee ? (
+                  <Button size="sm" variant="outline" onClick={() => setTaskDialogState({ open: true })}>
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                    Nouvelle tâche
+                  </Button>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Fiche {employeeStatusConfig[employee.status].label.toLowerCase()} — aucune nouvelle
+                    tâche assignable.
+                  </p>
+                )}
+              </div>
+            </Can>
+            <EmployeeTaskTable
+              data={tasks}
+              isLoading={tasksLoading}
+              rowActions={(task) =>
+                OPEN_EMPLOYEE_TASK_STATUSES.has(task.status) ? (
+                  <div className="flex justify-end gap-2">
+                    <Can permission={PERMISSIONS.EMPLOYEE_TASKS_UPDATE}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setTaskDialogState({ open: true, task })}
+                      >
+                        Modifier
+                      </Button>
+                    </Can>
+                    <Can permission={PERMISSIONS.EMPLOYEE_TASKS_UPDATE}>
+                      <Button size="sm" variant="outline" onClick={() => setCancelTaskId(task.id)}>
+                        Annuler
+                      </Button>
+                    </Can>
+                  </div>
+                ) : null
+              }
+            />
+          </div>
         </TabsContent>
         <Can permission={PERMISSIONS.PAYROLL_READ}>
           <TabsContent value="paie">
@@ -156,6 +218,21 @@ export function EmployeeDetailView({ employeeId }: { employeeId: string }) {
         description={`« ${employee.name} » sera supprimé (suppression réversible uniquement en base — aucune restauration depuis l’interface).`}
         confirmLabel="Supprimer"
       />
+
+      <EmployeeTaskDialog
+        open={taskDialogState.open}
+        onOpenChange={(open) => setTaskDialogState({ open })}
+        employeeId={employeeId}
+        task={taskDialogState.task}
+      />
+      {cancelTaskId ? (
+        <CancelEmployeeTaskDialog
+          employeeId={employeeId}
+          taskId={cancelTaskId}
+          open={!!cancelTaskId}
+          onOpenChange={(open) => !open && setCancelTaskId(null)}
+        />
+      ) : null}
     </div>
   );
 }
