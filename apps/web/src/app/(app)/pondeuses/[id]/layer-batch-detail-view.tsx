@@ -27,6 +27,7 @@ import { HealthEventCreateDialog } from '@/features/layer-batches/components/hea
 import { EggStockLotTable } from '@/features/egg-stock/components/egg-stock-lot-table';
 import { EggStockMovementCreateDialog } from '@/features/egg-stock/components/egg-stock-movement-create-dialog';
 import { EntityAlertsWidget } from '@/components/shared/entity-alerts-widget';
+import { QrCodePanel } from '@/features/qr-codes/components/qr-code-panel';
 import { SaleTable } from '@/features/sales/components/sale-table';
 import { ClosureDialog } from '@/features/layer-batches/components/closure-dialog';
 
@@ -126,6 +127,12 @@ export function LayerBatchDetailView({ batchId }: { batchId: string }) {
       />
 
       <EntityAlertsWidget entityId={batchId} />
+      <QrCodePanel
+        apiSegment="layer-batches"
+        entityId={batchId}
+        readPermission={PERMISSIONS.LAYER_BATCHES_READ}
+        updatePermission={PERMISSIONS.LAYER_BATCHES_UPDATE}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard label="Effectif actuel" value={batch.currentHeadcount} unit="poules" />

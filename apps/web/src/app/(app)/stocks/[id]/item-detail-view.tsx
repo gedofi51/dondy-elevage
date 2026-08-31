@@ -8,6 +8,7 @@ import { Can } from '@/components/shared/permission-gate';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { KpiCard } from '@/components/shared/kpi-card';
 import { EntityAlertsWidget } from '@/components/shared/entity-alerts-widget';
+import { QrCodePanel } from '@/features/qr-codes/components/qr-code-panel';
 import { Button } from '@/components/ui/button';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
 import { useItem } from '@/features/items/hooks';
@@ -48,6 +49,12 @@ export function ItemDetailView({ itemId }: { itemId: string }) {
       />
 
       <EntityAlertsWidget entityId={itemId} />
+      <QrCodePanel
+        apiSegment="items"
+        entityId={itemId}
+        readPermission={PERMISSIONS.ITEMS_READ}
+        updatePermission={PERMISSIONS.ITEMS_UPDATE}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard
