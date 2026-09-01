@@ -1,7 +1,26 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import type { Attendance, Employee, Payroll } from '@dondy-elevage/shared-types';
 import { HrReport } from './hr-report';
+
+// Les valeurs par défaut de HrReport (from/to) dérivent de `new Date()` —
+// sans horloge figée, les fixtures d'août 2026 ci-dessous sortent de la
+// fenêtre [firstDayOfCurrentMonth, today] dès que la date système dépasse
+// août 2026, faisant échouer ces tests sans lien avec le composant lui-même
+// (bug constaté : la date système est passée à septembre 2026). Même
+// convention que attendance-calendar.test.tsx (Personnel Lot 6b) — horloge
+// figée sur une date compatible avec les fixtures, jamais la date système
+// réelle du poste qui exécute les tests.
+const NOW = new Date('2026-08-15T12:00:00.000Z');
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const useEmployeesMock = vi.fn();
 
