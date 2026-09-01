@@ -10,6 +10,7 @@ import { Can } from '@/components/shared/permission-gate';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { KpiCard } from '@/components/shared/kpi-card';
 import { EntityAlertsWidget } from '@/components/shared/entity-alerts-widget';
+import { QrCodePanel } from '@/features/qr-codes/components/qr-code-panel';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -159,6 +160,12 @@ export function AssetDetailView({ assetId }: { assetId: string }) {
       />
 
       <EntityAlertsWidget entityId={assetId} />
+      <QrCodePanel
+        apiSegment="assets"
+        entityId={assetId}
+        readPermission={PERMISSIONS.ASSETS_READ}
+        updatePermission={PERMISSIONS.ASSETS_UPDATE}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <KpiCard label="Coût d’acquisition" value={asset.totalAcquisitionCostFcfa.toLocaleString('fr-FR')} unit="FCFA" />

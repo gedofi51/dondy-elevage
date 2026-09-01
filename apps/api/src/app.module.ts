@@ -51,6 +51,11 @@ import { AttendanceModule } from './modules/employees/attendance/attendance.modu
 import { EmployeeTasksModule } from './modules/employees/tasks/employee-tasks.module';
 import { PayrollModule } from './modules/employees/payroll/payroll.module';
 import { SalaryAdvancesModule } from './modules/employees/advances/salary-advances.module';
+import { QrCodesModule } from './modules/qr-codes/qr-codes.module';
+import { BroilerBatchQrCodeModule } from './modules/broiler-batches/qr-code/qr-code.module';
+import { LayerBatchQrCodeModule } from './modules/layer-batches/qr-code/qr-code.module';
+import { AssetQrCodeModule } from './modules/assets/qr-code/qr-code.module';
+import { ItemQrCodeModule } from './modules/items/qr-code/qr-code.module';
 
 @Module({
   imports: [
@@ -79,16 +84,19 @@ import { SalaryAdvancesModule } from './modules/employees/advances/salary-advanc
     DocumentsModule,
     NotificationsModule,
     AlertsModule,
+    QrCodesModule,
     BroilerBatchesModule,
     BroilerDailyRecordsModule,
     MortalityModule,
     BroilerHealthEventsModule,
+    BroilerBatchQrCodeModule,
     ExpensesModule,
     SalesModule,
     PaymentsModule,
     LayerBatchesModule,
     LayerDailyRecordsModule,
     LayerHealthEventsModule,
+    LayerBatchQrCodeModule,
     EggStockModule,
     IncubatorsModule,
     BreederBatchesModule,
@@ -100,12 +108,14 @@ import { SalaryAdvancesModule } from './modules/employees/advances/salary-advanc
     WaterPointsModule,
     WaterReadingsModule,
     ItemsModule,
+    ItemQrCodeModule,
     StockMovementsModule,
     PurchaseOrdersModule,
     GoodsReceiptsModule,
     SupplierPaymentsModule,
     TreasuryModule,
     AssetsModule,
+    AssetQrCodeModule,
     MaintenanceModule,
     InfrastructureModule,
     EmployeesModule,

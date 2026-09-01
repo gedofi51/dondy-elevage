@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { StringValue } from 'ms';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AccessTokenPayload, TwoFactorChallengePayload } from './jwt-payload.interface';
-import { generateOpaqueToken, hashOpaqueToken } from './tokens.util';
+import { generateOpaqueToken, hashOpaqueToken } from '../../common/security/opaque-token.util';
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // aligné sur JWT_REFRESH_EXPIRES_IN=30d par défaut
 

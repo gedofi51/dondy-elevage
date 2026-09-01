@@ -34,3 +34,4 @@ export * from './attendance';
 export * from './employee-tasks';
 export * from './payroll';
 export * from './salary-advances';
+export * from './qr-codes';

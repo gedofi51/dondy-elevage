@@ -2307,6 +2307,112 @@ périmètre de ce correctif.
 Lot 7-correctif pour la confirmation que Responsable élevage peut
 désormais pointer un employé de bout en bout sur `/pointage`.
 
+## QR Codes — Lot 1 (fondations)
+
+Cahier V6 §9 : "QR Code pour bandes, bâtiments, couveuses, magasins,
+équipements et articles [...] Scan depuis smartphone pour ouvrir
+directement la fiche concernée [...] Identifiant sécurisé : le QR Code
+ne doit pas contenir d'information sensible exploitable sans
+authentification." Investigation préalable (voir le rapport livré avant
+le code) confirmant que le périmètre suggéré par le prompt ("Bande et
+Bâtiment") n'était pas le plus solide disponible :
+
+- **Périmètre confirmé : `BroilerBatch`/`LayerBatch`/`Asset`/`Item`
+  uniquement — `Building`/`Incubator` explicitement reportés**,
+  décision du porteur de projet après signalement. Raison : ce sont les
+  2 seules entités du cahier §9 sans aucune fiche de lecture côté web
+  (`Building` : aucune route ; `Incubator`/Couveuse : seulement
+  `couveuses/[id]/modifier`, pas de `couveuses/[id]/page.tsx`) — un QR
+  scanné n'aurait nulle part où rediriger sans construire d'abord ces
+  écrans, hors périmètre "fondations". `Asset`/`Item`, non suggérés par
+  le prompt, remplissent en revanche exactement le même standard que
+  Bande (fiche de lecture réelle + permissions `*_READ`/`*_UPDATE` +
+  identifiant stable) — retenus à leur place.
+- **Aucune entité "Magasin"** — pas une lacune de ce lot : dette déjà
+  documentée Phase 7 ci-dessus (concept multi-magasin absent du modèle
+  de données, `Item.currentStock` un nombre unique par ferme sans
+  `buildingId`). Rien créé ici sans migration, conformément à
+  l'interdiction explicite du prompt.
+- **Modèle générique `QrCode`/`QrCodeScan`** (migration
+  `20260831222701_add_qr_codes_module`) — `entityType`/`entityId` même
+  patron polymorphe que `Document`/`AuditLog`, mais `entityType` en
+  **enum Prisma restreint** (`QrEntityType`) plutôt qu'en `String` libre
+  comme ces deux précédents : la résolution d'un scan doit faire un
+  aiguillage exhaustif (permission + route par type), un enum sécurise
+  ça côté TypeScript. `entityId` reste une référence libre (pas de FK) —
+  une entité supprimée depuis laisse un QR qui résout en 404, comportement
+  déjà accepté pour Document. `revokedAt: DateTime?` (nullable) plutôt
+  qu'un enum de statut séparé — même idiome que `RefreshToken.revokedAt`.
+  `QrCodeScan` est une table dédiée (append-only, `farmId` porté malgré
+  la dérivation possible depuis `QrCode`, conformément à la règle
+  transversale "toute table métier porte un farmId") plutôt qu'un
+  détournement d'`AuditLog` : portée opérationnelle (compteur/historique
+  pour l'écran de gestion), pas sécurité/conformité.
+- **Jeton opaque réutilisé tel quel depuis l'auth** (`generateOpaqueToken`/
+  `hashOpaqueToken`, mêmes garanties que les jetons d'activation/reset :
+  32 octets aléatoires, seul le hash SHA-256 stocké) — relocalisé de
+  `modules/auth/tokens.util.ts` vers `common/security/opaque-token.util.ts`
+  à cette occasion (3ᵉ usage, mutualisation au 2ᵉ/3ᵉ usage selon la
+  doctrine du projet), les 3 imports existants mis à jour, comportement
+  inchangé.
+- **Conséquence assumée du hash irréversible : l'image du QR n'est
+  affichable qu'au moment même de la génération/régénération, jamais
+  depuis un simple `GET` de statut ultérieur** — le serveur ne peut par
+  construction jamais reconstituer le jeton en clair après coup. L'écran
+  de gestion (`QrCodePanel`) explique ce point à l'utilisateur plutôt que
+  de le laisser deviner pourquoi l'image a disparu ; `scanUrl` (l'URL en
+  clair, même information que celle encodée dans l'image) est renvoyé en
+  plus de `qrCodeDataUrl` à la génération/régénération, jamais au `GET`
+  de statut. Seul recours pour ré-obtenir une image imprimable : régénérer
+  (invalide l'ancien QR). Trade-off de sécurité délibéré, cohérent avec le
+  patron déjà en place pour les jetons d'activation/reset — pas un défaut.
+- **Aucune permission RBAC dédiée** — génération/régénération/révocation
+  réutilisent la permission `*_UPDATE` de l'entité concernée (décision
+  confirmée par le porteur de projet), la résolution réutilise `*_READ`.
+  Aucun ajout à `roles.catalog.ts` : les 11 rôles héritent du
+  comportement QR directement de leurs permissions CRUD existantes.
+- **Aucun endpoint public/non-authentifié** — confirmé par investigation
+  qu'aucun précédent de ce type n'existe dans le dépôt (`JwtAuthGuard`
+  appliqué explicitement par contrôleur, jamais de bypass `@Public()`).
+  Cohérent avec la règle métier du prompt elle-même : la résolution d'un
+  scan applique les MÊMES contrôles RBAC/farmId qu'un accès direct à la
+  fiche (`assertSameFarm`, 404 générique jamais 403, réutilisés tels
+  quels) — un utilisateur non connecté est redirigé vers `/connexion`
+  comme pour toute autre route `(app)`, pas de mécanisme de lien public à
+  construire.
+- **`APP_URL` du `.env` racine corrigé (`3002` → `3001`)** — trouvé
+  incohérent avec `.env.example` et `.claude/launch.json` (serveur web
+  natif sur 3001) en vérifiant manuellement le QR généré au navigateur :
+  l'URL encodée pointait vers un port différent de celui réellement
+  utilisé en dev. Pré-existant (`APP_URL` alimentait déjà les liens
+  d'activation de compte/réinitialisation de mot de passe, jamais
+  cliqués manuellement en dev jusqu'ici) — corrigé à cette occasion,
+  fichier non versionné (`.env` jamais committé).
+- **Résolution nestée dans chaque module d'entité, moteur générique
+  partagé** — `QrCodesService` (permission/existence/hash/audit/scan,
+  seul point vraiment polymorphe : `GET /qr-codes/resoudre/:token`) est
+  invoqué par 4 modules nestés fins (`broiler-batches/qr-code`,
+  `layer-batches/qr-code`, `assets/qr-code`, `items/qr-code`), même
+  patron que `Attendance`/`EmployeeTask`/`Payroll` sous `Employee` —
+  chaque module nesté vérifie l'existence/l'appartenance-ferme de SA
+  propre entité via le `findOne()` déjà existant de son service parent,
+  sans dupliquer cette logique.
+- **Écran de gestion intégré à la fiche existante, pas un nouvel écran
+  top-level** — `QrCodePanel` greffé sur chacune des 4 fiches (même
+  patron d'injection que `EntityAlertsWidget`), aucune nouvelle entrée
+  de menu, n'interfère pas avec la Phase 21 (réorganisation du menu).
+- **Pas de librairie de lecture QR ajoutée côté web** — le scan physique
+  passe par l'appareil photo natif du téléphone (ouverture directe de
+  l'URL encodée dans le navigateur, résolue par `/scanner/[token]`,
+  page authentifiée du groupe `(app)`) ; `qrcode` (génération, déjà
+  présent pour le QR TOTP de la 2FA) est la seule dépendance réutilisée,
+  aucune nouvelle ajoutée.
+- **Pas de tests unitaires `.service.spec.ts` pour `QrCodesService`** —
+  cohérent avec la convention du dépôt (aucun module métier adossé à
+  Prisma n'en a, uniquement les services sans base de données comme
+  `PasswordService`/`TokenService`) : couverture exclusivement via
+  `qr-codes.e2e-spec.ts` (21 tests, base MySQL réelle).
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

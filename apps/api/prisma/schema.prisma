@@ -88,6 +88,8 @@ model Farm {
   employeeTasks               EmployeeTask[]
   payrolls                    Payroll[]
   salaryAdvances              SalaryAdvance[]
+  qrCodes                     QrCode[]
+  qrCodeScans                 QrCodeScan[]
 
   @@map("farms")
 }
@@ -134,6 +136,7 @@ model User {
   waterReadingsAsOperator        WaterReading[]       @relation("WaterReadingOperator")
   goodsReceiptsAsResponsible     GoodsReceipt[]       @relation("GoodsReceiptResponsible")
   assetsAsResponsible            Asset[]              @relation("AssetResponsible")
+  qrCodeScans                    QrCodeScan[]
 
   @@unique([farmId, email])
   @@index([farmId])
@@ -2399,4 +2402,79 @@ model SalaryAdvance {
   @@index([employeeId])
   @@index([deductedInPayrollId])
   @@map("salary_advances")
+}
+
+/// QR Codes (Lot 1 "fondations", cahier V6 §9) — périmètre confirmé après
+/// investigation : BroilerBatch/LayerBatch/Asset/Item, seules entités avec
+/// une fiche de lecture réelle côté web. Building/Incubator explicitement
+/// reportés (aucune fiche de lecture existante à ce jour) — voir
+/// DETTE_TECHNIQUE.md. Aucune entité "Magasin" (dette déjà documentée,
+/// Phase 7 : concept multi-magasin absent du modèle de données).
+enum QrEntityType {
+  BROILER_BATCH
+  LAYER_BATCH
+  ASSET
+  ITEM
+}
+
+/// Générique par construction (entityType/entityId), même patron que
+/// Document/AuditLog — entityId en référence libre, pas de FK Prisma (un
+/// parent supprimé laisse un QR qui résout en 404 à la lecture, comme pour
+/// Document). Le QR n'encode jamais de donnée métier : seul un jeton
+/// opaque haute entropie, dont uniquement le hash est stocké ici (même
+/// patron que les jetons d'activation/reset — voir auth/tokens.util.ts,
+/// réutilisé tel quel). Résolution et génération appliquent les MÊMES
+/// contrôles RBAC/farmId qu'un accès direct à la fiche — voir
+/// QrCodesService.
+///
+/// revokedAt (nullable), pas un enum de statut séparé — même idiome que
+/// RefreshToken.revokedAt. Au plus un QR actif (revokedAt = null) par
+/// (entityType, entityId) à la fois : invariant appliqué en service
+/// (transaction sur régénération/révocation), pas en contrainte BDD —
+/// MySQL/Prisma ne supporte pas d'index unique partiel sur revokedAt IS
+/// NULL.
+model QrCode {
+  id         String       @id @default(uuid())
+  farmId     String
+  entityType QrEntityType
+  entityId   String
+  /// SHA-256 du jeton opaque encodé dans le QR — jamais la valeur en clair.
+  tokenHash  String       @unique
+
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String?
+
+  farm  Farm         @relation(fields: [farmId], references: [id])
+  scans QrCodeScan[]
+
+  @@index([farmId])
+  @@index([entityType, entityId])
+  @@map("qr_codes")
+}
+
+/// Append-only (comme AuditLog/StockMovement) — jamais de UPDATE/DELETE.
+/// Distinct d'AuditLog à dessein : portée opérationnelle (compteur de
+/// scans, dernier scan pour l'écran de gestion), pas la portée
+/// sécurité/conformité transverse d'AuditLog — un scan n'y est pas
+/// dupliqué.
+model QrCodeScan {
+  id              String   @id @default(uuid())
+  farmId          String
+  qrCodeId        String
+  /// Null si le token JWT n'a pas pu être résolu en utilisateur (ne devrait
+  /// pas arriver en pratique, la route exige déjà un JwtAuthGuard) — champ
+  /// nullable par prudence, jamais absence de traçabilité côté ipAddress.
+  scannedByUserId String?
+  ipAddress       String?
+  scannedAt       DateTime @default(now())
+
+  farm          Farm   @relation(fields: [farmId], references: [id])
+  qrCode        QrCode @relation(fields: [qrCodeId], references: [id])
+  scannedByUser User?  @relation(fields: [scannedByUserId], references: [id])
+
+  @@index([farmId])
+  @@index([qrCodeId])
+  @@map("qr_code_scans")
 }

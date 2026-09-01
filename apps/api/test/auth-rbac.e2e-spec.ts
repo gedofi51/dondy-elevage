@@ -7,7 +7,7 @@ import type { Response } from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PasswordService } from '../src/modules/auth/password.service';
-import { hashOpaqueToken } from '../src/modules/auth/tokens.util';
+import { hashOpaqueToken } from '../src/common/security/opaque-token.util';
 import { MailService } from '../src/mail/mail.service';
 import { closeAppSafely } from './helpers/e2e-test-utils';
 

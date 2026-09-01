@@ -8,7 +8,7 @@ import { MailService } from '../../mail/mail.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
-import { generateOpaqueToken, hashOpaqueToken } from './tokens.util';
+import { generateOpaqueToken, hashOpaqueToken } from '../../common/security/opaque-token.util';
 import type { ActivateAccountDto } from './dto/activate-account.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
