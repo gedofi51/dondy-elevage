@@ -30,6 +30,7 @@ import { useBreederBatches } from '@/features/breeder-batches/hooks';
 import { useIncubationBatches } from '@/features/incubation-batches/hooks';
 import { computeHatchRatePercent } from '@/features/incubation-batches/kpi';
 import { useItems } from '@/features/items/hooks';
+import { StockForecastWidget } from '@/features/items/components/stock-forecast-widget';
 import { useTreasuryPayables, useTreasurySummary } from '@/features/treasury/hooks';
 import { useAssets } from '@/features/assets/hooks';
 import { useMaintenanceTasks } from '@/features/maintenance/hooks';
@@ -102,6 +103,10 @@ export default function DashboardPage() {
 
       <Can permission={PERMISSIONS.ALERTS_READ}>
         <AlertsWidget />
+      </Can>
+
+      <Can permission={PERMISSIONS.ITEMS_READ}>
+        <StockForecastWidget />
       </Can>
     </div>
   );
