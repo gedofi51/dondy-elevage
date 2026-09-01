@@ -182,7 +182,9 @@ describe('QR Codes — génération/révocation, résolution, RBAC, isolation fa
       // BroilerDailyRecord : 45 lignes auto-générées par bande à la
       // création (même patron que assets.e2e-spec.ts pour DepreciationEntry)
       // — doivent être supprimées avant la bande elle-même (FK batchId).
-      await prisma.broilerDailyRecord.deleteMany({ where: { batchId: { in: createdBroilerBatchIds } } });
+      await prisma.broilerDailyRecord.deleteMany({
+        where: { batchId: { in: createdBroilerBatchIds } },
+      });
       await prisma.broilerBatch.deleteMany({ where: { id: { in: createdBroilerBatchIds } } });
       await prisma.layerBatch.deleteMany({ where: { id: { in: createdLayerBatchIds } } });
       // DepreciationEntry : lignes auto-générées par actif à la création

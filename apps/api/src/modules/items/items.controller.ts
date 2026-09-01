@@ -20,6 +20,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PERMISSIONS } from '../../common/rbac/permissions.constants';
 import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
 import { ItemsService, type ItemWithComputed } from './items.service';
+import type { ItemForecast } from './calculations/stock-forecast.calculations';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
 import { ListItemsQueryDto } from './dto/list-items.query.dto';
@@ -46,6 +47,15 @@ export class ItemsController {
     @Query() query: ListItemsQueryDto,
   ): Promise<ItemWithComputed[]> {
     return this.itemsService.findAll(user, query);
+  }
+
+  /** Doit rester déclarée avant @Get(':id') — sinon Nest matcherait
+   * "previsions" comme :id (routes évaluées dans l'ordre de déclaration,
+   * même précaution que GET /employees/roster, Lot 7-correctif). */
+  @Get('previsions')
+  @RequirePermissions(PERMISSIONS.ITEMS_READ)
+  async previsions(@CurrentUser() user: AccessTokenPayload): Promise<ItemForecast[]> {
+    return this.itemsService.findAllForecast(user);
   }
 
   @Get(':id')

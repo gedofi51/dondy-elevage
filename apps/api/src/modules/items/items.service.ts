@@ -5,9 +5,20 @@ import { AuditLogService } from '../../common/audit/audit-log.service';
 import { assertSameFarm } from '../../common/rbac/farm-scope.util';
 import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
 import { computeStockStatus, type StockStatus } from './calculations/stock-status.calculations';
+import {
+  buildItemForecast,
+  FORECAST_WINDOW_DAYS,
+  type ItemForecast,
+} from './calculations/stock-forecast.calculations';
 import type { CreateItemDto } from './dto/create-item.dto';
 import type { UpdateItemDto } from './dto/update-item.dto';
 import type { ListItemsQueryDto } from './dto/list-items.query.dto';
+
+interface StockMovementAggregateRow {
+  itemId: string;
+  totalSortie: string | number | null;
+  movementDays: string | number | bigint;
+}
 
 export interface ItemWithComputed extends Item {
   status: StockStatus;
@@ -88,6 +99,55 @@ export class ItemsService {
       return withComputed.filter((item) => item.status !== 'VERT');
     }
     return withComputed;
+  }
+
+  /**
+   * Prévisions stocks (Lot 2) — GET /items/previsions. Une seule requête
+   * groupée (SUM/COUNT DISTINCT sur la fenêtre glissante) pour tous les
+   * articles de la ferme, pas une requête par article (voir
+   * DETTE_TECHNIQUE.md) — puis délégation à buildItemForecast() (pure,
+   * testée séparément) pour l'arithmétique. AJUSTEMENT exclu ici (au
+   * niveau SQL) : une correction d'inventaire n'est pas une consommation
+   * réelle, voir stock-forecast.calculations.ts.
+   */
+  async findAllForecast(actingUser: AccessTokenPayload): Promise<ItemForecast[]> {
+    const items = await this.prisma.item.findMany({
+      where: { farmId: actingUser.farmId },
+      orderBy: { name: 'asc' },
+    });
+
+    const now = new Date();
+    const windowStart = new Date(now);
+    windowStart.setUTCDate(windowStart.getUTCDate() - FORECAST_WINDOW_DAYS);
+
+    const aggregates = await this.prisma.$queryRaw<StockMovementAggregateRow[]>`
+      SELECT itemId, SUM(quantity) as totalSortie, COUNT(DISTINCT date) as movementDays
+      FROM stock_movements
+      WHERE farmId = ${actingUser.farmId}
+        AND type = 'SORTIE'
+        AND reason != 'AJUSTEMENT'
+        AND date >= ${windowStart}
+      GROUP BY itemId
+    `;
+    const aggregateByItemId = new Map(aggregates.map((row) => [row.itemId, row]));
+
+    return items.map((item) => {
+      const aggregate = aggregateByItemId.get(item.id);
+      return buildItemForecast(
+        {
+          itemId: item.id,
+          currentStock: Number(item.currentStock),
+          minThreshold: item.minThreshold ? Number(item.minThreshold) : null,
+          status: computeStockStatus(
+            Number(item.currentStock),
+            item.minThreshold ? Number(item.minThreshold) : null,
+          ),
+          totalSortieInWindow: aggregate ? Number(aggregate.totalSortie ?? 0) : 0,
+          movementDaysInWindow: aggregate ? Number(aggregate.movementDays) : 0,
+        },
+        now,
+      );
+    });
   }
 
   async findOne(actingUser: AccessTokenPayload, id: string): Promise<ItemWithComputed> {

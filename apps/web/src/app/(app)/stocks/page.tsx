@@ -10,10 +10,12 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Can } from '@/components/shared/permission-gate';
 import { ConfirmDialog } from '@/components/shared/confirm-dialog';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ApiError } from '@/lib/api/client';
 import { extractMessage } from '@/lib/api/extract-error-message';
 import { useDeleteItem, useItems } from '@/features/items/hooks';
 import { ItemTable } from '@/features/items/components/item-table';
+import { StockForecastReport } from '@/features/items/components/stock-forecast-report';
 
 export default function ItemsListPage() {
   const [filter, setFilter] = useState<'alerte' | 'tous'>('tous');
@@ -52,33 +54,55 @@ export default function ItemsListPage() {
         }
       />
 
-      {/* belowThreshold=true est un filtre SERVEUR réel (GET
-          /items?belowThreshold=true), contrairement au toggle Actifs/Tous
-          purement client des autres modules. */}
-      <div className="flex gap-2">
-        <Button variant={filter === 'tous' ? 'default' : 'outline'} size="sm" onClick={() => setFilter('tous')}>
-          Tous
-        </Button>
-        <Button
-          variant={filter === 'alerte' ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setFilter('alerte')}
-        >
-          En alerte
-        </Button>
-      </div>
+      {/* Même RBAC que la fiche article (ITEMS_READ) pour les deux
+          onglets — Lot 2 "RBAC/farmId identiques à l'accès classique",
+          pas de permission dédiée aux prévisions. */}
+      <Tabs defaultValue="articles">
+        <TabsList>
+          <TabsTrigger value="articles">Articles</TabsTrigger>
+          <TabsTrigger value="previsions">Prévisions</TabsTrigger>
+        </TabsList>
 
-      <ItemTable
-        data={data}
-        isLoading={isLoading}
-        rowActions={(item) => (
-          <Can permission={PERMISSIONS.ITEMS_DELETE}>
-            <Button variant="outline" size="icon" onClick={() => setToDelete(item)}>
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </Can>
-        )}
-      />
+        <TabsContent value="articles">
+          <div className="flex flex-col gap-4">
+            {/* belowThreshold=true est un filtre SERVEUR réel (GET
+                /items?belowThreshold=true), contrairement au toggle
+                Actifs/Tous purement client des autres modules. */}
+            <div className="flex gap-2">
+              <Button
+                variant={filter === 'tous' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilter('tous')}
+              >
+                Tous
+              </Button>
+              <Button
+                variant={filter === 'alerte' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setFilter('alerte')}
+              >
+                En alerte
+              </Button>
+            </div>
+
+            <ItemTable
+              data={data}
+              isLoading={isLoading}
+              rowActions={(item) => (
+                <Can permission={PERMISSIONS.ITEMS_DELETE}>
+                  <Button variant="outline" size="icon" onClick={() => setToDelete(item)}>
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </Can>
+              )}
+            />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="previsions">
+          <StockForecastReport />
+        </TabsContent>
+      </Tabs>
 
       <ConfirmDialog
         open={!!toDelete}

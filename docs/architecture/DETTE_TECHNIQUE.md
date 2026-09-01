@@ -2413,6 +2413,71 @@ Bâtiment") n'était pas le plus solide disponible :
   `PasswordService`/`TokenService`) : couverture exclusivement via
   `qr-codes.e2e-spec.ts` (21 tests, base MySQL réelle).
 
+## Prévisions Stocks — Lot 2 (autonomie, date de rupture, réapprovisionnement)
+
+STOCKS.md : "Calculer l'autonomie lorsque cela est pertinent." Investigation
+préalable (voir le rapport livré avant le code) ayant trouvé
+`computeStockAutonomyDays()` déjà présente dans le dépôt (Phase 8,
+`stock-status.calculations.ts`), testée mais jamais câblée à un
+endpoint — réutilisée telle quelle plutôt que dupliquée.
+
+- **Fenêtre glissante fixe de 30 jours, seuil de suffisance à 3 dates de
+  sortie distinctes** — décision documentée (pas tranchée par le porteur
+  de projet, prompt Lot 2 laissait le choix) : 30 jours lisse les
+  mouvements irréguliers d'une petite exploitation (plus stable qu'une
+  fenêtre à 7 jours), 3 points minimum avant de parler de tendance.
+  Fenêtre TOUJOURS reportée dans la réponse (`windowDays`), jamais
+  implicite — voir prompt Lot 2, règle "chaque prévision affiche sa
+  période de référence".
+- **Sorties `AJUSTEMENT` exclues de la consommation** — une correction
+  d'inventaire n'est pas une consommation réelle et fausserait la
+  moyenne ; toutes les autres raisons SORTIE (DISTRIBUTION_BANDE, VENTE,
+  PERTE, CASSE, CONSOMMATION_INTERNE, MAINTENANCE) comptent.
+- **`computeStockAutonomyDays(x, 0) === 0` (garde division par zéro,
+  Phase 8) jamais invoquée directement sur une consommation nulle** —
+  0 jour d'autonomie serait un chiffre inventé et maximalement alarmant
+  pour "pas de signal de consommation", pas "rupture imminente" (voir
+  prompt Lot 2, règle "données insuffisantes -> état explicite, jamais
+  un chiffre inventé"). `buildItemForecast()` court-circuite ce cas en
+  `dataStatus: 'INSUFFISANT'` avant tout appel à cette fonction.
+- **Repli sur `minThreshold`** quand la consommation est indéterminée
+  mais le stock est déjà sous son seuil minimum — seule donnée réelle
+  disponible dans ce cas, jamais un chiffre inventé ; `reorderBasis`
+  (`CONSOMMATION`/`SEUIL_MINIMUM`) distingue explicitement l'origine de
+  la suggestion, y compris côté UI (libellé "conso. 30j"/"seuil min.").
+- **`GET /items/previsions`, pas un nouveau module** — même précédent que
+  `GET /employees/roster` (Personnel Lot 7-correctif) : endpoint
+  spécialisé ajouté à `ItemsController`/`ItemsService` existants, déclaré
+  avant `:id` (même précaution de routage). Une seule requête SQL brute
+  groupée (`SUM`/`COUNT DISTINCT` sur la fenêtre) pour tous les articles
+  de la ferme — pas une requête par article.
+- **Payload prévisionnel séparé des métadonnées article** —
+  `ItemForecast` ne porte que `itemId` + champs calculés, jamais
+  `name`/`category`/`unit` : le frontend (`useItemsWithForecast()`)
+  croise avec `useItems()` déjà en cache React Query plutôt que de
+  dupliquer ces champs sur chaque ligne de la réponse — payload plus
+  léger (connectivité Samba, CLAUDE.md).
+- **Aucune permission RBAC dédiée** — `ITEMS_READ` (déjà existante) gate
+  tout l'endpoint et tout l'onglet "Prévisions", décision confirmée par
+  le prompt Lot 2 ("RBAC/farmId identiques à l'accès classique").
+- **Aucune nouvelle alerte créée** — le mécanisme VERT/ORANGE/ROUGE +
+  `ItemsAlertsCronService` (Phase 8) reste la seule source d'alerte stock ;
+  ce lot expose une VUE complémentaire (prévision), pas un nouveau canal
+  de déclenchement — lecture retenue de "calculer et exposer" (objectif
+  du prompt), pas "créer de nouvelles alertes".
+- **Distinction visuelle prévisionnel/réel** (règle non négociable du
+  prompt) : colonnes prévisionnelles en italique + libellés explicites
+  "(estimé)"/"(estimée)" dans l'en-tête de chaque colonne concernée —
+  texte, pas seulement une couleur (accessibilité daltonisme).
+- **Écran détaillé = nouvel onglet sur `/stocks` existant, pas une
+  nouvelle route top-level** — même patron que Personnel Lot 6d
+  ("Rapport RH" ajouté en onglet sur `/personnel`) ; aucune entrée de
+  menu nouvelle, aucune interférence avec la Phase 21.
+- **Bloc dashboard sans seuil de gravité arbitraire** — même patron que
+  `AlertsWidget` (page d'accueil) : top 5 par autonomie croissante, sans
+  filtre de magnitude supplémentaire au-delà du tri (cohérent avec "5
+  alertes les plus récentes" déjà en place).
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
