@@ -56,6 +56,7 @@ import { BroilerBatchQrCodeModule } from './modules/broiler-batches/qr-code/qr-c
 import { LayerBatchQrCodeModule } from './modules/layer-batches/qr-code/qr-code.module';
 import { AssetQrCodeModule } from './modules/assets/qr-code/qr-code.module';
 import { ItemQrCodeModule } from './modules/items/qr-code/qr-code.module';
+import { AnomalyDetectionModule } from './modules/anomaly-detection/anomaly-detection.module';
 
 @Module({
   imports: [
@@ -123,6 +124,9 @@ import { ItemQrCodeModule } from './modules/items/qr-code/qr-code.module';
     EmployeeTasksModule,
     PayrollModule,
     SalaryAdvancesModule,
+    // Détection d'anomalies (Lot 4) — croise Broiler/Layer, aucun
+    // contrôleur propre (consultation via GET /alerts existant).
+    AnomalyDetectionModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

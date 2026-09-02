@@ -157,6 +157,7 @@ export class AlertsService {
       farmId: actingUser.farmId,
       status: query.status,
       severity: query.severity,
+      type: query.typePrefix ? { startsWith: query.typePrefix } : undefined,
     };
 
     const [items, total] = await Promise.all([

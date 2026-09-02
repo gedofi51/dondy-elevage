@@ -2590,6 +2590,122 @@ avec la philosophie non-persistante des Lots 1/2.
   italique + libellés explicites "(estimé)"/"(estimée)", jamais la
   couleur seule.
 
+## IA — Détection d'anomalies & Comparaison — Lot 4
+
+Investigation préalable (rapport livré avant le code) : le moteur
+d'alertes (Phase 11/13, `Alert`/`AlertsService`/`Setting`) convenait
+intégralement — aucune duplication, la détection d'anomalies s'implémente
+comme un cron de plus (`AnomalyDetectionCronService`) appelant
+`AlertsService.createSystemAlert()`, exactement comme les 8 crons
+existants. Persistance/acquittement : gratuits (le modèle `Alert` a déjà
+`status: CREATED/TRIGGERED/ACKNOWLEDGED` + `acknowledgedAt/By`), pas de
+nouvelle table ni de nouveau champ.
+
+Deux zones grises signalées avant développement (prompt Lot 4, points 3 et
+5), arbitrées par le porteur de projet :
+
+- **Couvoir (`IncubationBatch`) inclus dans la Comparaison, mais
+  UNIQUEMENT les couvoirs `ECLOS`** — contrairement au Lot 3 (Prévisions,
+  exclusion totale), la Comparaison ne projette rien : un couvoir déjà
+  éclos a des indicateurs réels et acquis (taux d'éclosion, coût par
+  poussin), directement comparables à une bande close. `EN_INCUBATION`
+  reste exclu (aucune donnée intermédiaire, comme au Lot 3).
+- **Deux écrans dédiés séparés** (`/anomalies` et `/comparaison`), pas un
+  seul écran à onglets — détection automatique (surveillance passive) et
+  sélection manuelle (exploration active) sont deux logiques d'usage
+  distinctes ; même principe "une route = un besoin" qu'au Lot 3.
+
+### Détection d'anomalies
+
+- **Asymétrie chair/pondeuses** (investigation, point 2) : `LayerDailyRecord`
+  n'a AUCUN champ eau (contrairement à `BroilerDailyRecord`) — l'eau
+  n'est suivie qu'au niveau `WaterPoint`, jamais rattachée à un lot
+  précis. Règle Broiler à 3 signaux (eau+aliment+mortalité), règle Layer à
+  2 signaux (aliment+mortalité) seulement — écart assumé, pas une
+  incohérence.
+- **Règle croisée, jamais un seuil isolé** : les alertes existantes
+  (`checkPreviousDayIssues`) comparent UN jour à un seuil absolu
+  (0,5 %/j) ; ce lot compare une fenêtre de `RECENT_WINDOW_DAYS = 3`
+  jours à une fenêtre de référence de `BASELINE_WINDOW_DAYS = 3` jours
+  immédiatement précédente — les deux mécanismes cohabitent, tournent en
+  parallèle, ne se recouvrent jamais (vérifié en e2e). Seuils calibrés
+  (décision Lot 4, non tranchée par le porteur de projet, même principe
+  que la fenêtre 30j du Lot 2) : eau -15 %, aliment -10 %, mortalité
+  +50 % (relatif, volontairement plus permissif que le seuil absolu
+  existant — cette règle détecte une TENDANCE, pas un pic ponctuel).
+- **Fenêtre exigée SUR DES JOURS CONSÉCUTIFS SAISIS côté Broiler**
+  (`operatorId` non nul sur chacun des 6 jours), **sur les N dernières
+  LIGNES EXISTANTES côté Layer** (`LayerDailyRecord` créé à la demande,
+  l'absence de ligne EST le signal "non saisi", pas une ligne à
+  operatorId nul) — deux définitions de fenêtre différentes pour deux
+  modèles de saisie différents, pas une incohérence.
+- **Un signal manquant (eau/aliment non mesuré un jour de la fenêtre)
+  n'est jamais moyenné sur une valeur absente** — le signal devient `null`
+  dans la décomposition, la règle ne peut alors pas se déclencher (un
+  signal requis manque) plutôt que d'inventer une moyenne partielle.
+- **Décomposition stockée dans `Alert.message` (texte formaté,
+  `@db.Text`), pas un JSON** — aucune migration, même convention que les
+  titres d'alerte existants qui embarquent déjà leurs valeurs calculées
+  (`batch_high_mortality_j{N}`). Une ligne par signal + une ligne de
+  règle, locale `fr-FR` explicite sur chaque nombre (leçon des Lots 2/3).
+- **Type d'alerte = préfixe stable + suffixe jour/date**
+  (`anomalie_croisee_broiler_j{N}` / `anomalie_croisee_layer_{date}`) —
+  même convention que `batch_high_mortality_j{N}` : une anomalie qui
+  persiste plusieurs jours génère une alerte par jour (les données
+  sous-jacentes diffèrent réellement chaque jour), idempotence vérifiée
+  (un même passage de cron le même jour ne recrée jamais l'alerte).
+- **`GET /alerts` étendu d'un filtre `typePrefix`** (préfixe, PAS une
+  égalité stricte — les types embarquent presque tous un suffixe
+  variable) plutôt qu'un nouvel endpoint dédié — extension de
+  l'existant, pas un mécanisme parallèle.
+- **RBAC : `ALERTS_READ` seule** — une anomalie est une `Alert` comme une
+  autre, la décomposition est embarquée dans son message, aucune
+  permission d'entité sous-jacente requise pour la lire (voir prompt Lot
+  4, point 4 : principe cohérent avec l'existant plutôt qu'une permission
+  dédiée).
+
+### Comparaison de bandes/couveuses
+
+- **Aucun nouvel endpoint backend** — réutilise tel quel
+  `GET /:id/profitability` (Broiler/Layer/Incubation, déjà exposé),
+  appelé en parallèle par entité sélectionnée via `useQueries`
+  (`@tanstack/react-query`), même précédent que
+  `useTodayMortalityTotal`/`useTodayEggProductionTotal`. QueryKeys
+  identiques aux hooks à entité unique déjà existants
+  (`useBatchProfitability`, etc.) — cache partagé, pas de fetch
+  redondant si l'utilisateur a déjà consulté la fiche de la bande.
+- **Comparaison intra-type uniquement** (2+ bandes chair ENTRE elles, 2+
+  lots pondeuses ENTRE eux, 2+ couvoirs éclos ENTRE eux) — comparer un
+  poulet de chair à une pondeuse n'aurait pas de sens (unités
+  différentes) ; un onglet par type, chacun gated par sa propre
+  permission (même principe que `/previsions`, Lot 3).
+- **Couvoir — taux d'éclosion/fécondité recalculés côté client**
+  (`features/incubation-batches/kpi.ts`) — aucune route ne les expose
+  (dette déjà documentée Phase 13), duplication assumée, pas nouvelle.
+
+### Fragilité découverte (non introduite par ce lot) — cleanup e2e en exécution parallèle
+
+`npx jest --config ./test/jest-e2e.json` (parallèle, commande utilisée par
+la CI) échoue occasionnellement — pas sur une assertion (324/324 toujours
+vertes), mais sur le `afterAll` d'un fichier e2e AU HASARD (fichier et
+erreur différents à chaque exécution : contrainte FK sur `farm` une fois,
+deadlock MySQL une autre) tandis que
+`npx jest --config ./test/jest-e2e.json --runInBand` (séquentiel) est
+systématiquement 100 % vert. Cause : plusieurs fichiers e2e tournent en
+parallèle contre la MÊME base MySQL de test ; les crons appelés
+explicitement dans certains tests (`runDailySweep()`) parcourent
+INTENTIONNELLEMENT toute la table (toutes fermes confondues, comportement
+correct pour un cron réel — voir `BroilerAlertsCronService` déjà ainsi
+avant ce lot) et entrent donc en contention avec les écritures/suppressions
+d'un AUTRE fichier e2e s'exécutant au même instant. Préexistant au Lot 4
+(déjà latent dès qu'un 2e fichier appelle un cron en parallèle d'un
+autre) — ce lot ajoute un 4e fichier e2e avec cron (`anomaly-detection.e2e-spec.ts`),
+ce qui a rendu la collision plus probable à observer, sans en être la
+cause structurelle. Non corrigé ici (changerait la configuration CI
+partagée, hors mandat de ce lot) — signalé pour arbitrage : passer la CI
+en `--runInBand` (plus lent, mais déterministe) ou accepter un retry
+automatique sur échec de cleanup.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
