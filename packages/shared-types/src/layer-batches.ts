@@ -167,6 +167,25 @@ export interface CreateLayerHealthEventInput {
   observation?: string;
 }
 
+export type LayerForecastDataStatus = 'SUFFISANT' | 'INSUFFISANT';
+
+/**
+ * Prévisions production (Lot 3) — GET /layer-batches/previsions. Fenêtre
+ * glissante de 30 jours (même convention que Lot 2, items), uniquement
+ * sur les lots ELEVAGE/PONTE (REFORME/CLOTURE/ANNULEE exclus côté
+ * service — cycle terminé, rien à projeter).
+ */
+export interface LayerForecast {
+  batchId: string;
+  windowDays: number;
+  recordDaysInWindow: number;
+  dataStatus: LayerForecastDataStatus;
+  averageDailyEggs: number | null;
+  projectedEggsNextWindow: number | null;
+  projectedLayingRatePercent: number | null;
+  calculatedAt: string;
+}
+
 /** Renvoyé par GET /:id/profitability (lecture pure, à tout moment sur un
  * lot actif) ET par la réponse de POST /:id/cloturer (même forme) — un
  * seul type pour les deux usages. Structure différente de

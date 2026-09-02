@@ -24,8 +24,25 @@ import {
   computeRevenueFcfa,
   computeTotalExpensesFcfa,
 } from './calculations/broiler-finance.calculations';
+import {
+  buildBroilerForecast,
+  type BroilerForecast,
+} from './calculations/broiler-forecast.calculations';
 import type { CreateBroilerBatchDto } from './dto/create-broiler-batch.dto';
 import type { UpdateBroilerBatchDto } from './dto/update-broiler-batch.dto';
+
+/** Prévisions production (Lot 3) — statuts pour lesquels une projection a
+ * un sens : BROUILLON/PLANIFIEE (cycle pas encore démarré, pas de
+ * tendance à extrapoler) et VENDUE/CLOTUREE/ANNULEE (cycle terminé, plus
+ * de trajectoire future) sont exclus de GET /broiler-batches/previsions —
+ * décision Lot 3, voir DETTE_TECHNIQUE.md. */
+const PROJECTABLE_BROILER_STATUSES: BroilerBatchStatus[] = [
+  'EN_DEMARRAGE',
+  'EN_CROISSANCE',
+  'EN_FINITION',
+  'PRETE_A_VENDRE',
+  'EN_VENTE',
+];
 
 const DAILY_CYCLE_LENGTH = 45;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -329,6 +346,60 @@ export class BroilerBatchesService {
       orderBy: { createdAt: 'desc' },
     });
     return Promise.all(batches.map((batch) => this.attachComputedFields(batch)));
+  }
+
+  /**
+   * Prévisions production (Lot 3) — GET /broiler-batches/previsions. Une
+   * requête par bande (pas de requête groupée type Lot 2/items) : même
+   * précédent que findAll()/attachComputedFields() dans ce service, qui
+   * fait déjà un aller BDD par bande pour computeCurrentHeadcount — un
+   * nombre de bandes actives reste de l'ordre de la dizaine par ferme,
+   * contrairement aux mouvements de stock. Délégation à
+   * buildBroilerForecast() (pure, testée séparément) pour l'arithmétique.
+   */
+  async findAllForecast(actingUser: AccessTokenPayload): Promise<BroilerForecast[]> {
+    const batches = await this.prisma.broilerBatch.findMany({
+      where: { farmId: actingUser.farmId, status: { in: PROJECTABLE_BROILER_STATUSES } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const now = new Date();
+
+    return Promise.all(
+      batches.map(async (batch) => {
+        const figures = this.computeAcquisitionFigures(batch);
+        const [currentHeadcount, dailyAgg, weighings] = await Promise.all([
+          this.computeCurrentHeadcount(batch.id, figures.startedQuantity),
+          this.prisma.broilerDailyRecord.aggregate({
+            where: { batchId: batch.id },
+            _sum: { mortalityQuantity: true },
+          }),
+          this.prisma.broilerDailyRecord.findMany({
+            where: { batchId: batch.id, averageWeightG: { not: null } },
+            orderBy: { dayNumber: 'desc' },
+            take: 2,
+            select: { dayNumber: true, averageWeightG: true },
+          }),
+        ]);
+
+        return buildBroilerForecast(
+          {
+            batchId: batch.id,
+            arrivalDate: batch.arrivalDate,
+            plannedSaleDate: batch.plannedSaleDate,
+            startedQuantity: figures.startedQuantity,
+            currentHeadcount,
+            cumulativeMortality: dailyAgg._sum.mortalityQuantity ?? 0,
+            latestWeighing: weighings[0]
+              ? { dayNumber: weighings[0].dayNumber, averageWeightG: weighings[0].averageWeightG! }
+              : null,
+            previousWeighing: weighings[1]
+              ? { dayNumber: weighings[1].dayNumber, averageWeightG: weighings[1].averageWeightG! }
+              : null,
+          },
+          now,
+        );
+      }),
+    );
   }
 
   /** Usage interne (update/remove/annuler/clôturer) : pas de champs calculés. */

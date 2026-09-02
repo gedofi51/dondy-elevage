@@ -9,6 +9,7 @@ import {
   Feather,
   Landmark,
   LayoutDashboard,
+  LineChart,
   Package,
   Receipt,
   Settings2,
@@ -53,6 +54,25 @@ export type NavEntry = NavLink | NavCategory;
 // dédiée, "Personnel"/"Rapports" n'existent pas).
 export const navItems: NavEntry[] = [
   { type: 'link', label: 'Tableau de bord', href: '/', icon: LayoutDashboard },
+  // Prévisions (Lot 3) — écran transverse Production+Finance, une seule
+  // route de premier niveau : reste un NavLink direct (même règle que
+  // Points d'eau/Stocks/Achats). Placée juste après Tableau de bord (même
+  // nature "vue d'ensemble") plutôt que dans une catégorie existante —
+  // elle ne relève d'aucune des trois (Élevage/Finances/Équipements)
+  // exclusivement, voir DETTE_TECHNIQUE.md Lot 3. anyPermission (au moins
+  // une des 3 permissions de domaine) : reste atteignable même pour un
+  // rôle qui n'a accès qu'à une seule des deux sections de l'écran.
+  {
+    type: 'link',
+    label: 'Prévisions',
+    href: '/previsions',
+    icon: LineChart,
+    anyPermission: [
+      PERMISSIONS.BROILER_BATCHES_READ,
+      PERMISSIONS.LAYER_BATCHES_READ,
+      PERMISSIONS.TREASURY_READ,
+    ],
+  },
   {
     type: 'link',
     label: "Points d'eau",

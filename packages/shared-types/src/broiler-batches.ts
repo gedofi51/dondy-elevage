@@ -282,6 +282,34 @@ export interface CreateHealthEventInput {
   observation?: string;
 }
 
+export type BroilerForecastDataStatus = 'SUFFISANT' | 'INSUFFISANT';
+
+/**
+ * Prévisions production (Lot 3) — GET /broiler-batches/previsions.
+ * Projection jusqu'à plannedSaleDate à partir de la tendance mortalité/GMQ
+ * observée à date sur des bandes en cours de cycle (BROUILLON/PLANIFIEE/
+ * VENDUE/CLOTUREE/ANNULEE exclues côté service). mortalityDataStatus/
+ * weightDataStatus indépendants : `null` sur les champs projetés
+ * correspondants tant que la donnée est insuffisante — jamais un chiffre
+ * inventé (voir StockForecastReport pour le même principe, Lot 2).
+ */
+export interface BroilerForecast {
+  batchId: string;
+  /** ISO — période de référence : de l'arrivée à la vente prévue. */
+  referenceStart: string;
+  referenceEnd: string;
+  elapsedDays: number;
+  remainingDays: number;
+  mortalityDataStatus: BroilerForecastDataStatus;
+  projectedAdditionalMortality: number | null;
+  projectedSellableCount: number | null;
+  weightDataStatus: BroilerForecastDataStatus;
+  gmqTrendGramsPerDay: number | null;
+  projectedFinalWeightG: number | null;
+  /** ISO complet — date de calcul de la prévision. */
+  calculatedAt: string;
+}
+
 /** Renvoyé par GET /:id/profitability (lecture pure, à tout moment) ET par
  * la réponse de POST /:id/cloturer (même forme) — un seul type pour les
  * deux usages. */

@@ -6,6 +6,10 @@ import {
   computeGrossMarginFcfa,
   computeProfitabilityRate,
 } from '../broiler-batches/calculations/broiler-finance.calculations';
+import {
+  buildTreasuryForecast,
+  type TreasuryForecast,
+} from './calculations/treasury-forecast.calculations';
 import type { GetTreasuryPeriodQueryDto } from './dto/get-treasury-period.query.dto';
 
 /** §10.5 : mêmes statuts que BroilerBatchesService/ChickBatchesService/
@@ -283,5 +287,36 @@ export class TreasuryService {
       profitabilityRate: computeProfitabilityRate(grossMarginFcfa, totalExpensesFcfa),
       netTreasuryFcfa,
     };
+  }
+
+  /**
+   * Prévisions finance (Lot 3) — GET /treasury/previsions. Période
+   * implicite = mois calendaire courant (pas de query params — décision
+   * Lot 3, voir DETTE_TECHNIQUE.md, contrairement à getJournal/getSummary
+   * qui exigent une période explicite). "Réalisé" = this.getSummary() du
+   * 1er du mois à aujourd'hui — MÊME définition réelle, jamais dupliquée
+   * (prompt Lot 3, interdiction explicite de réinventer CA/marge/
+   * trésorerie).
+   */
+  async getForecast(actingUser: AccessTokenPayload): Promise<TreasuryForecast> {
+    const now = new Date();
+    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+
+    const realized = await this.getSummary(actingUser, {
+      from: periodStart.toISOString(),
+      to: now.toISOString(),
+    });
+
+    return buildTreasuryForecast(
+      {
+        periodStart,
+        periodEnd,
+        revenueToDateFcfa: realized.revenueFcfa,
+        totalExpensesToDateFcfa: realized.totalExpensesFcfa,
+        netTreasuryToDateFcfa: realized.netTreasuryFcfa,
+      },
+      now,
+    );
   }
 }

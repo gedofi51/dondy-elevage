@@ -6,6 +6,7 @@ import type {
   LayerBatchClosureSummary,
   LayerBatchWithComputed,
   LayerDailyRecord,
+  LayerForecast,
   LayerHealthEvent,
   UpdateLayerBatchInput,
   UpdateLayerDailyRecordInput,
@@ -41,6 +42,42 @@ export function useLayerBatchProfitability(id: string) {
     queryFn: () => apiFetch<LayerBatchClosureSummary>(`/layer-batches/${id}/profitability`),
     enabled: !!id,
   });
+}
+
+/** Prévisions production (Lot 3) — uniquement les lots ELEVAGE/PONTE
+ * (voir PROJECTABLE_LAYER_STATUSES côté service). */
+export function useLayerBatchForecasts() {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['layer-batches', 'previsions'],
+    queryFn: () => apiFetch<LayerForecast[]>('/layer-batches/previsions'),
+  });
+}
+
+export interface LayerBatchWithForecast {
+  batch: LayerBatchWithComputed;
+  forecast: LayerForecast;
+}
+
+/** Jointure côté client — même patron que useBroilerBatchesWithForecast :
+ * on itère sur les prévisions (déjà filtrées aux lots ELEVAGE/PONTE côté
+ * service), pas sur tous les lots. */
+export function useLayerBatchesWithForecast(): {
+  data: LayerBatchWithForecast[] | undefined;
+  isLoading: boolean;
+} {
+  const batchesQuery = useLayerBatches();
+  const forecastsQuery = useLayerBatchForecasts();
+
+  const batchById = new Map((batchesQuery.data ?? []).map((b) => [b.id, b]));
+  const data = forecastsQuery.data
+    ?.map((forecast) => {
+      const batch = batchById.get(forecast.batchId);
+      return batch ? { batch, forecast } : null;
+    })
+    .filter((row): row is LayerBatchWithForecast => row !== null);
+
+  return { data, isLoading: batchesQuery.isLoading || forecastsQuery.isLoading };
 }
 
 export function useCreateLayerBatch() {

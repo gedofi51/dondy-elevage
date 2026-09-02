@@ -2478,6 +2478,118 @@ endpoint — réutilisée telle quelle plutôt que dupliquée.
   filtre de magnitude supplémentaire au-delà du tri (cohérent avec "5
   alertes les plus récentes" déjà en place).
 
+## Prévisions Production/Finance — Lot 3 (bandes chair/pondeuses, trésorerie)
+
+Investigation préalable (rapport livré avant le code) : contrairement au
+Lot 2, **aucun code de projection dormant** trouvé (tous les calculs
+existants — GMQ, taux de ponte, taux d'éclosion, marge, rentabilité — sont
+déjà câblés sur des endpoints réels, purement descriptifs de données déjà
+survenues). Ce lot écrit donc une arithmétique de projection réellement
+neuve, mais **réutilise** les définitions réelles déjà établies
+(`computeGmqGramsPerDay`, `computeLayingRatePercent`,
+`computeGrossMarginFcfa`, `computeProfitabilityRate`,
+`TreasuryService.getSummary()`) plutôt que d'en inventer de nouvelles
+(prompt Lot 3, interdiction explicite).
+
+Trois décisions d'architecture signalées avant développement plutôt que
+tranchées seul (prompt Lot 3, point 5) — arbitrages du porteur de projet :
+**périmètre Production limité à Poulets de chair + Pondeuses** (Couvoir/
+poussins explicitement exclus ce lot, malgré la lettre du prompt qui
+citait "poussins" — reporté à un lot ultérieur pour contenir la surface
+ajoutée) ; **écran dédié transverse `/previsions`** plutôt que prolonger
+le patron Lot 2 (onglet par module), la double nature Production+Finance
+ne recoupant aucun écran existant ; **comparatif prévu/réalisé calculé en
+direct, sans persistance** (pas de nouvelle table snapshot) — cohérent
+avec la philosophie non-persistante des Lots 1/2.
+
+- **`BroilerForecast` — deux `dataStatus` indépendants (mortalité/poids),
+  pas un seul état bloquant** — un lot peut avoir une mortalité déjà
+  mesurable sans encore avoir de pesée (les pesées ne démarrent pas J1),
+  ou l'inverse ; forcer un seul état INSUFFISANT aurait masqué une
+  projection par ailleurs valide (prompt Lot 3, "jamais un chiffre
+  inventé" appliqué strictement par métrique, pas globalement).
+- **Projection mortalité = extrapolation linéaire du taux journalier
+  cumulé** (`cumulativeMortality / elapsedDays`) sur les jours restants
+  jusqu'à `plannedSaleDate`, seuil de suffisance à 3 jours écoulés (même
+  principe que `MIN_MOVEMENT_DAYS_FOR_FORECAST`, Lot 2). Seule la
+  mortalité ADDITIONNELLE est projetée (culls/autres sorties/ventes ne le
+  sont pas, faute de taux fiable à extrapoler) — `projectedSellableCount`
+  = effectif vivant actuel moins cette mortalité additionnelle projetée.
+- **Projection poids = GMQ tendance entre les 2 dernières pesées**
+  (`computeGmqGramsPerDay`, réutilisée telle quelle), recherchées par
+  `dayNumber DESC` (immuable) et non par `date` (peut être corrigée
+  rétroactivement avec `arrivalDate`, voir précédent alerte J40 Phase 3).
+- **Pondeuses (`LayerForecast`) — même fenêtre glissante de 30 jours que
+  le Lot 2**, pas d'échéance de cycle fixe (contrairement au poulet de
+  chair, la ponte est continue) : "les 30 prochains jours ressembleront
+  aux 30 derniers", même lecture intuitive que la cible de
+  réapprovisionnement du Lot 2. Seuil de suffisance : au moins 3
+  `LayerDailyRecord` (journées SAISIES) dans la fenêtre — pas "avec un
+  mouvement" comme les stocks, une pondeuse créée à la demande n'a une
+  ligne QUE si l'opérateur a saisi ce jour-là.
+- **Statuts "projetables" filtrés côté service, avant même d'atteindre la
+  fonction pure** — `BROUILLON`/`PLANIFIEE` (cycle pas démarré) et
+  `VENDUE`/`CLOTUREE`/`ANNULEE` (cycle terminé) exclues de
+  `GET /broiler-batches/previsions` ; `REFORME`/`CLOTURE`/`ANNULEE`
+  exclues de `GET /layer-batches/previsions`. Une bande fraîchement créée
+  reste donc `BROUILLON` par défaut (aucun champ status dans
+  `CreateBroilerBatchInput`/`CreateLayerBatchInput`) et n'apparaît dans
+  aucune des deux listes tant qu'elle n'a pas été explicitement démarrée
+  — comportement vérifié en e2e.
+- **`GET .../previsions` sur les contrôleurs existants** (Broiler/Layer),
+  déclarés avant `:id` (même précaution de routage que Lot 2/Personnel) —
+  pas de nouveau module. Une requête BDD par bande (pas de requête
+  groupée SQL type Lot 2/items) : même précédent que
+  `findAll()`/`computeCurrentHeadcount()` dans ces deux services, qui
+  font déjà un aller BDD par bande — nombre de bandes actives de l'ordre
+  de la dizaine par ferme, sans commune mesure avec les mouvements de
+  stock.
+- **`TreasuryForecast` — période implicite = mois calendaire courant, pas
+  de query params** — contrairement à `/journal` et `/summary`
+  (`GetTreasuryPeriodQueryDto`, période toujours explicite). Décision Lot
+  3 : le "besoin de trésorerie" est par nature une préoccupation à court
+  terme (mois en cours), une sélection de période ajouterait de la
+  friction sans bénéfice pour ce cas d'usage précis — les deux autres
+  endpoints Trésorerie restent inchangés et gardent leur période
+  explicite.
+- **`realized` = exactement `TreasuryService.getSummary()` du 1er du mois
+  à aujourd'hui, appelé tel quel** (pas une réimplémentation parallèle) —
+  garantit qu'aucune divergence de définition ne peut apparaître entre
+  `/tresorerie` et `/previsions`.
+- **`projected` = règle de trois** (`daysTotal / daysElapsed` appliqué à
+  `revenueFcfa`/`totalExpensesFcfa`/`netTreasuryFcfa` réalisés), seuil de
+  suffisance à `MIN_DAYS_ELAPSED_FOR_FORECAST = 3` jours écoulés dans le
+  mois (avant, une règle de trois amplifierait démesurément un rythme à
+  peine amorcé — même risque que la fenêtre stocks trop courte, Lot 2).
+  `netTreasuryFcfa` projeté négatif = besoin de trésorerie, affiché tel
+  quel (jamais masqué), cohérent avec "jamais un chiffre inventé" (un
+  besoin de trésorerie négatif REÇU n'est pas une erreur à cacher).
+- **Comparatif prévu/réalisé sans persistance** (décision signalée,
+  confirmée par le porteur de projet) : `realized` (à date) et
+  `projected` (fin de mois) recalculés à chaque lecture, tous deux
+  horodatés (`calculatedAt`) — pas de table de snapshot, pas de cron de
+  capture périodique. Conséquence assumée : impossible de répondre à "que
+  prévoyait-on il y a 2 semaines" (un vrai historique de prévisions
+  demanderait une table dédiée + une politique de rétention, hors
+  périmètre "petites phases" de CLAUDE.md tant qu'aucun besoin explicite
+  ne le justifie).
+- **Écran dédié transverse `/previsions`** (décision signalée, confirmée)
+  — sections Production et Finance, chacune gated indépendamment par sa
+  propre permission (`BROILER_BATCHES_READ`/`LAYER_BATCHES_READ`/
+  `TREASURY_READ`, RBAC identique à l'accès classique, aucune permission
+  nouvelle). Entrée de nav `NavLink` directe (une seule route de premier
+  niveau), placée juste après "Tableau de bord" plutôt que dans une
+  catégorie existante — ne relève exclusivement d'aucune des trois
+  catégories Phase 21 (Élevage/Finances/Équipements) ; gated par
+  `anyPermission` (au moins une des 3 permissions de domaine), pas
+  `permission` unique — reste atteignable pour un rôle qui n'a accès qu'à
+  une seule des deux sections de l'écran (ex. Comptable sans accès
+  bandes).
+- **Distinction visuelle prévisionnel/réel** (règle non négociable du
+  prompt) : même patron que le Lot 2 — colonnes/valeurs projetées en
+  italique + libellés explicites "(estimé)"/"(estimée)", jamais la
+  couleur seule.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
