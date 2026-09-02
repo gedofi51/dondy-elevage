@@ -75,11 +75,34 @@ describe('getVisibleNavEntries', () => {
     const visible = getVisibleNavEntries([]);
     expect(visible.some((entry) => entry.type === 'link' && entry.href === '/previsions')).toBe(false);
   });
+
+  // Anomalies (Lot 4) — permission unique (ALERTS_READ), pas anyPermission.
+  it('shows "Anomalies" when ALERTS_READ is present', () => {
+    const visible = getVisibleNavEntries([PERMISSIONS.ALERTS_READ]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/anomalies')).toBe(true);
+  });
+
+  it('hides "Anomalies" when ALERTS_READ is absent', () => {
+    const visible = getVisibleNavEntries([]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/anomalies')).toBe(false);
+  });
+
+  // Comparaison (Lot 4) — anyPermission sur 3 domaines (Broiler/Layer/
+  // Incubation) : reste atteignable pour un rôle qui n'a accès qu'à un seul.
+  it('shows "Comparaison" when only one of its three anyPermission domains is present', () => {
+    const visible = getVisibleNavEntries([PERMISSIONS.INCUBATION_BATCHES_READ]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/comparaison')).toBe(true);
+  });
+
+  it('hides "Comparaison" when none of its three anyPermission domains is present', () => {
+    const visible = getVisibleNavEntries([]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/comparaison')).toBe(false);
+  });
 });
 
 describe('flatNavItems', () => {
-  it('contains exactly the 17 real routes (10 top-level links/categories flattened)', () => {
-    expect(flatNavItems).toHaveLength(17);
+  it('contains exactly the 19 real routes (12 top-level links/categories flattened)', () => {
+    expect(flatNavItems).toHaveLength(19);
   });
 
   it('preserves the order of navItems, expanding categories in place', () => {

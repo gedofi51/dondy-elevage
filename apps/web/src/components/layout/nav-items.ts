@@ -7,6 +7,7 @@ import {
   Egg,
   EggFried,
   Feather,
+  GitCompare,
   Landmark,
   LayoutDashboard,
   LineChart,
@@ -16,6 +17,7 @@ import {
   ShoppingCart,
   Sprout,
   Thermometer,
+  TriangleAlert,
   Users,
   Wallet,
   Wrench,
@@ -71,6 +73,32 @@ export const navItems: NavEntry[] = [
       PERMISSIONS.BROILER_BATCHES_READ,
       PERMISSIONS.LAYER_BATCHES_READ,
       PERMISSIONS.TREASURY_READ,
+    ],
+  },
+  // Anomalies (Lot 4) — consulte directement le moteur d'alertes générique
+  // existant (GET /alerts?typePrefix=), ALERTS_READ suffit (même
+  // permission que le reste du moteur d'alertes, aucune permission
+  // dédiée — voir DETTE_TECHNIQUE.md Lot 4).
+  {
+    type: 'link',
+    label: 'Anomalies',
+    href: '/anomalies',
+    icon: TriangleAlert,
+    permission: PERMISSIONS.ALERTS_READ,
+  },
+  // Comparaison (Lot 4) — sélection manuelle de bandes/couveuses, écran
+  // dédié séparé d'Anomalies (détection automatique vs exploration
+  // manuelle, décision Lot 4). anyPermission : reste atteignable pour un
+  // rôle qui n'a accès qu'à un seul des 3 types comparables.
+  {
+    type: 'link',
+    label: 'Comparaison',
+    href: '/comparaison',
+    icon: GitCompare,
+    anyPermission: [
+      PERMISSIONS.BROILER_BATCHES_READ,
+      PERMISSIONS.LAYER_BATCHES_READ,
+      PERMISSIONS.INCUBATION_BATCHES_READ,
     ],
   },
   {
