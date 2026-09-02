@@ -13,12 +13,21 @@ import {
   computeRevenueFcfa,
   computeTotalExpensesFcfa,
 } from '../broiler-batches/calculations/broiler-finance.calculations';
+import {
+  buildLayerForecast,
+  FORECAST_WINDOW_DAYS,
+  type LayerForecast,
+} from './calculations/layer-forecast.calculations';
 import type { CreateLayerBatchDto } from './dto/create-layer-batch.dto';
 import type { UpdateLayerBatchDto } from './dto/update-layer-batch.dto';
 
 const CODE_PREFIX_BASE = 'PON';
 const CODE_DIGITS = 3;
 const MAX_CODE_RETRIES = 3;
+/** Prévisions production (Lot 3) — REFORME/CLOTURE/ANNULEE (cycle
+ * terminé) exclus de GET /layer-batches/previsions, même principe que
+ * PROJECTABLE_BROILER_STATUSES — voir DETTE_TECHNIQUE.md. */
+const PROJECTABLE_LAYER_STATUSES: LayerBatchStatus[] = ['ELEVAGE', 'PONTE'];
 /** Ventes non annulées uniquement — même logique que CONFIRMED_SALE_STATUSES
  * côté SalesService/BroilerBatchesService, dupliquée localement (constante
  * simple, cohérent avec le style déjà en place dans ce codebase). */
@@ -184,6 +193,45 @@ export class LayerBatchesService {
       orderBy: { createdAt: 'desc' },
     });
     return Promise.all(batches.map((batch) => this.attachComputedFields(batch)));
+  }
+
+  /**
+   * Prévisions production (Lot 3) — GET /layer-batches/previsions. Une
+   * requête par lot (même précédent que findAll()/computeCurrentHeadcount
+   * ci-dessus). Délégation à buildLayerForecast() (pure, testée
+   * séparément) pour l'arithmétique.
+   */
+  async findAllForecast(actingUser: AccessTokenPayload): Promise<LayerForecast[]> {
+    const batches = await this.prisma.layerBatch.findMany({
+      where: { farmId: actingUser.farmId, status: { in: PROJECTABLE_LAYER_STATUSES } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const now = new Date();
+    const windowStart = new Date(now);
+    windowStart.setUTCDate(windowStart.getUTCDate() - FORECAST_WINDOW_DAYS);
+
+    return Promise.all(
+      batches.map(async (batch) => {
+        const [currentHeadcount, agg] = await Promise.all([
+          this.computeCurrentHeadcount(batch.id, batch.initialQuantity),
+          this.prisma.layerDailyRecord.aggregate({
+            where: { batchId: batch.id, date: { gte: windowStart } },
+            _sum: { eggsLaid: true },
+            _count: { _all: true },
+          }),
+        ]);
+
+        return buildLayerForecast(
+          {
+            batchId: batch.id,
+            totalEggsLaidInWindow: agg._sum.eggsLaid ?? 0,
+            recordDaysInWindow: agg._count._all,
+            currentHeadcount,
+          },
+          now,
+        );
+      }),
+    );
   }
 
   /** Usage interne (update/remove/annuler/clôturer) : pas de champs calculés. */

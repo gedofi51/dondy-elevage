@@ -12,6 +12,7 @@ import {
   type TreasuryJournal,
   type TreasurySummary,
 } from './treasury.service';
+import type { TreasuryForecast } from './calculations/treasury-forecast.calculations';
 import { GetTreasuryPeriodQueryDto } from './dto/get-treasury-period.query.dto';
 
 @Controller('treasury')
@@ -47,5 +48,11 @@ export class TreasuryController {
     @Query() query: GetTreasuryPeriodQueryDto,
   ): Promise<TreasurySummary> {
     return this.treasuryService.getSummary(user, query);
+  }
+
+  @Get('previsions')
+  @RequirePermissions(PERMISSIONS.TREASURY_READ)
+  async getForecast(@CurrentUser() user: AccessTokenPayload): Promise<TreasuryForecast> {
+    return this.treasuryService.getForecast(user);
   }
 }

@@ -52,3 +52,38 @@ export interface TreasurySummary {
   profitabilityRate: number;
   netTreasuryFcfa: number;
 }
+
+export type TreasuryForecastDataStatus = 'SUFFISANT' | 'INSUFFISANT';
+
+export interface TreasuryForecastProjection {
+  revenueFcfa: number;
+  totalExpensesFcfa: number;
+  grossMarginFcfa: number;
+  profitabilityRate: number;
+  /** Projection fin de période — négatif = besoin de trésorerie prévu. */
+  netTreasuryFcfa: number;
+}
+
+/**
+ * Prévisions finance (Lot 3) — GET /treasury/previsions. Période
+ * implicite = mois calendaire courant (pas de query params, contrairement
+ * à /journal et /summary). `realized` = TreasurySummary du 1er du mois à
+ * aujourd'hui (même définition réelle que /summary, jamais dupliquée).
+ * `projected` = extrapolation linéaire (règle de trois) sur le reste du
+ * mois — `null` tant que dataStatus = INSUFFISANT (comparatif prévu/
+ * réalisé sans persistance, voir DETTE_TECHNIQUE.md Lot 3).
+ */
+export interface TreasuryForecast {
+  periodStart: string;
+  periodEnd: string;
+  daysElapsed: number;
+  daysTotal: number;
+  dataStatus: TreasuryForecastDataStatus;
+  realized: {
+    revenueFcfa: number;
+    totalExpensesFcfa: number;
+    netTreasuryFcfa: number;
+  };
+  projected: TreasuryForecastProjection | null;
+  calculatedAt: string;
+}

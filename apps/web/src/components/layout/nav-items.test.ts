@@ -62,11 +62,24 @@ describe('getVisibleNavEntries', () => {
     const visible = getVisibleNavEntries([]);
     expect(visible.some((entry) => entry.type === 'link' && entry.href === '/pointage')).toBe(false);
   });
+
+  // Prévisions (Lot 3) — anyPermission sur 3 domaines (Broiler/Layer/
+  // Treasury) : reste atteignable pour un rôle qui n'a accès qu'à un seul
+  // des deux volets de l'écran (Production ou Finance).
+  it('shows "Prévisions" when only one of its three anyPermission domains is present', () => {
+    const visible = getVisibleNavEntries([PERMISSIONS.TREASURY_READ]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/previsions')).toBe(true);
+  });
+
+  it('hides "Prévisions" when none of its three anyPermission domains is present', () => {
+    const visible = getVisibleNavEntries([]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/previsions')).toBe(false);
+  });
 });
 
 describe('flatNavItems', () => {
-  it('contains exactly the 16 real routes (9 top-level links/categories flattened)', () => {
-    expect(flatNavItems).toHaveLength(16);
+  it('contains exactly the 17 real routes (10 top-level links/categories flattened)', () => {
+    expect(flatNavItems).toHaveLength(17);
   });
 
   it('preserves the order of navItems, expanding categories in place', () => {

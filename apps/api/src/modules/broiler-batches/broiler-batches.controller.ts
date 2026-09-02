@@ -23,6 +23,7 @@ import {
   type BatchClosureSummary,
   type BroilerBatchWithComputed,
 } from './broiler-batches.service';
+import type { BroilerForecast } from './calculations/broiler-forecast.calculations';
 import { CreateBroilerBatchDto } from './dto/create-broiler-batch.dto';
 import { UpdateBroilerBatchDto } from './dto/update-broiler-batch.dto';
 
@@ -45,6 +46,14 @@ export class BroilerBatchesController {
   @RequirePermissions(PERMISSIONS.BROILER_BATCHES_READ)
   async findAll(@CurrentUser() user: AccessTokenPayload): Promise<BroilerBatchWithComputed[]> {
     return this.broilerBatchesService.findAll(user);
+  }
+
+  // Déclarée AVANT @Get(':id') — Nest matche par ordre de déclaration,
+  // même précaution que ItemsController.previsions (Lot 2).
+  @Get('previsions')
+  @RequirePermissions(PERMISSIONS.BROILER_BATCHES_READ)
+  async findAllForecast(@CurrentUser() user: AccessTokenPayload): Promise<BroilerForecast[]> {
+    return this.broilerBatchesService.findAllForecast(user);
   }
 
   @Get(':id')

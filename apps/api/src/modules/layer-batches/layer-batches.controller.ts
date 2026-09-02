@@ -23,6 +23,7 @@ import {
   type LayerBatchClosureSummary,
   type LayerBatchWithComputed,
 } from './layer-batches.service';
+import type { LayerForecast } from './calculations/layer-forecast.calculations';
 import { CreateLayerBatchDto } from './dto/create-layer-batch.dto';
 import { UpdateLayerBatchDto } from './dto/update-layer-batch.dto';
 
@@ -45,6 +46,13 @@ export class LayerBatchesController {
   @RequirePermissions(PERMISSIONS.LAYER_BATCHES_READ)
   async findAll(@CurrentUser() user: AccessTokenPayload): Promise<LayerBatchWithComputed[]> {
     return this.layerBatchesService.findAll(user);
+  }
+
+  // Déclarée AVANT @Get(':id') — même précaution que BroilerBatchesController.
+  @Get('previsions')
+  @RequirePermissions(PERMISSIONS.LAYER_BATCHES_READ)
+  async findAllForecast(@CurrentUser() user: AccessTokenPayload): Promise<LayerForecast[]> {
+    return this.layerBatchesService.findAllForecast(user);
   }
 
   @Get(':id')

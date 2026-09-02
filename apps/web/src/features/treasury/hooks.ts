@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import type {
   PayableBySupplier,
   ReceivableByCustomer,
+  TreasuryForecast,
   TreasuryJournal,
   TreasurySummary,
 } from '@dondy-elevage/shared-types';
@@ -43,5 +44,15 @@ export function useTreasurySummary(from: string, to: string) {
     queryKey: ['treasury', 'summary', { from, to }],
     queryFn: () => apiFetch<TreasurySummary>('/treasury/summary', { searchParams: { from, to } }),
     enabled: !!from && !!to,
+  });
+}
+
+/** Prévisions finance (Lot 3) — période implicite = mois courant, pas de
+ * paramètre (voir TreasuryService.getForecast). */
+export function useTreasuryForecast() {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['treasury', 'previsions'],
+    queryFn: () => apiFetch<TreasuryForecast>('/treasury/previsions'),
   });
 }

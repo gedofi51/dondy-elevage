@@ -3,6 +3,7 @@ import type {
   BatchClosureSummary,
   BroilerBatchWithComputed,
   BroilerDailyRecord,
+  BroilerForecast,
   BroilerHealthEvent,
   BroilerMortality,
   CreateBroilerBatchInput,
@@ -42,6 +43,45 @@ export function useBatchProfitability(id: string) {
     queryFn: () => apiFetch<BatchClosureSummary>(`/broiler-batches/${id}/profitability`),
     enabled: !!id,
   });
+}
+
+/** Prévisions production (Lot 3) — uniquement les bandes en cours de
+ * cycle (voir PROJECTABLE_BROILER_STATUSES côté service). */
+export function useBroilerBatchForecasts() {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['broiler-batches', 'previsions'],
+    queryFn: () => apiFetch<BroilerForecast[]>('/broiler-batches/previsions'),
+  });
+}
+
+export interface BroilerBatchWithForecast {
+  batch: BroilerBatchWithComputed;
+  forecast: BroilerForecast;
+}
+
+/** Jointure côté client entre useBroilerBatches() (réel, déjà en cache) et
+ * useBroilerBatchForecasts() (prévisionnel) — même patron que
+ * useItemsWithForecast (Lot 2). Contrairement à Items (une prévision par
+ * article, tous inclus), on itère ici sur les PRÉVISIONS (déjà filtrées
+ * aux bandes en cours de cycle côté service) et non sur toutes les
+ * bandes — une bande VENDUE/CLOTUREE n'a simplement pas de ligne. */
+export function useBroilerBatchesWithForecast(): {
+  data: BroilerBatchWithForecast[] | undefined;
+  isLoading: boolean;
+} {
+  const batchesQuery = useBroilerBatches();
+  const forecastsQuery = useBroilerBatchForecasts();
+
+  const batchById = new Map((batchesQuery.data ?? []).map((b) => [b.id, b]));
+  const data = forecastsQuery.data
+    ?.map((forecast) => {
+      const batch = batchById.get(forecast.batchId);
+      return batch ? { batch, forecast } : null;
+    })
+    .filter((row): row is BroilerBatchWithForecast => row !== null);
+
+  return { data, isLoading: batchesQuery.isLoading || forecastsQuery.isLoading };
 }
 
 export function useCreateBroilerBatch() {
