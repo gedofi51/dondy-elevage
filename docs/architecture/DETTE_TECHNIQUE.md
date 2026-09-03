@@ -2683,7 +2683,7 @@ Deux zones grises signalées avant développement (prompt Lot 4, points 3 et
   (`features/incubation-batches/kpi.ts`) — aucune route ne les expose
   (dette déjà documentée Phase 13), duplication assumée, pas nouvelle.
 
-### Fragilité découverte (non introduite par ce lot) — cleanup e2e en exécution parallèle
+### ~~Fragilité découverte (non introduite par ce lot) — cleanup e2e en exécution parallèle~~ — corrigé (correctif CI indépendant, voir "✅ Corrigé")
 
 `npx jest --config ./test/jest-e2e.json` (parallèle, commande utilisée par
 la CI) échoue occasionnellement — pas sur une assertion (324/324 toujours
@@ -2704,7 +2704,9 @@ ce qui a rendu la collision plus probable à observer, sans en être la
 cause structurelle. Non corrigé ici (changerait la configuration CI
 partagée, hors mandat de ce lot) — signalé pour arbitrage : passer la CI
 en `--runInBand` (plus lent, mais déterministe) ou accepter un retry
-automatique sur échec de cleanup.
+automatique sur échec de cleanup. **Arbitrage rendu et appliqué avant le
+Lot 5 IA** : `--runInBand` retenu — voir "✅ Corrigé" pour le détail du
+correctif.
 
 ## ✅ Corrigé
 
@@ -3339,7 +3341,28 @@ session authentifiée jusqu'au tableau de bord), et la suite e2e complète
 
 Voir `docker/docker-compose.dev.yml`, `.env.example`, `apps/api/.env.example`.
 
-## Comment utiliser ce document
+### Cleanup e2e en exécution parallèle — CI passée en `--runInBand` (correctif indépendant, avant le Lot 5 IA)
+
+**Clôture de la fragilité signalée pour arbitrage au Lot 4** (voir plus
+haut, section "IA — Détection d'anomalies & Comparaison — Lot 4") :
+arbitrage rendu en faveur de `--runInBand` plutôt qu'un retry automatique
+sur échec de cleanup — un run plus lent mais déterministe est préférable à
+une CI qui masque une vraie contention BDD derrière des relances.
+
+**Correctif** : `apps/api/package.json`, script `test:e2e` — ajout du
+flag `--runInBand` (`jest --config ./test/jest-e2e.json --runInBand`),
+seul point de vérité consommé à la fois par la CI GitHub Actions
+(`npm run test:e2e --workspace=apps/api`, aucune modification du workflow
+nécessaire) et par toute exécution locale — pas de flag dupliqué entre
+`package.json` et `.github/workflows/ci.yml`. Aucun changement de code
+métier.
+
+**Vérifié** avant ouverture de la PR : suite e2e complète, 24 fichiers,
+324/324 tests verts en séquentiel (297 s en local contre ~90 s en
+parallèle — ralentissement attendu et accepté par l'arbitrage), puis CI
+GitHub Actions verte de bout en bout sur la PR dédiée (lint, typecheck,
+tests unitaires 200 web + 302 api, e2e 324/324, build) avant merge sur
+`main`.
 
 - **En fin de mission** : avant de rédiger la section "Risques / dette
   technique" du rapport, relire ce fichier pour vérifier si un point signalé
