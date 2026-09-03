@@ -9,7 +9,12 @@ import { KpiCard } from '@/components/shared/kpi-card';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
-import { useIncubationBatch, useIncubationBatchProfitability } from '@/features/incubation-batches/hooks';
+import {
+  useIncubationBatch,
+  useIncubationBatchPerformanceScore,
+  useIncubationBatchProfitability,
+} from '@/features/incubation-batches/hooks';
+import { PerformanceScoreCard } from '@/features/performance-score/components/performance-score-card';
 import { incubationBatchStatusConfig } from '@/features/incubation-batches/components/incubation-batch-table';
 import {
   computeEmbryonicMortalityRatePercent,
@@ -27,6 +32,7 @@ import { LineageTable } from '@/features/batch-lineage/components/lineage-table'
 export function IncubationBatchDetailView({ batchId }: { batchId: string }) {
   const { data: batch, isLoading } = useIncubationBatch(batchId);
   const { data: profitability } = useIncubationBatchProfitability(batchId);
+  const { data: performanceScore } = useIncubationBatchPerformanceScore(batchId);
   const { data: breederBatch } = useBreederBatch(batch?.breederBatchId ?? '');
   const { data: incubator } = useIncubator(batch?.incubatorId ?? '');
   const { data: lineageRows, isLoading: lineageLoading } = useBatchLineageByIncubation(batchId);
@@ -132,6 +138,8 @@ export function IncubationBatchDetailView({ batchId }: { batchId: string }) {
           </CardContent>
         </Card>
       ) : null}
+
+      {performanceScore ? <PerformanceScoreCard score={performanceScore} /> : null}
 
       <div className="flex flex-col gap-3">
         <h2 className="font-heading text-lg font-semibold text-primary">Filiation</h2>

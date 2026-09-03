@@ -13,10 +13,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
 import {
   useLayerBatch,
+  useLayerBatchPerformanceScore,
   useLayerBatchProfitability,
   useLayerDailyRecords,
   useLayerHealthEvents,
 } from '@/features/layer-batches/hooks';
+import { PerformanceScoreCard } from '@/features/performance-score/components/performance-score-card';
 import { useEggStockLots } from '@/features/egg-stock/hooks';
 import { useSalesByLayerBatch } from '@/features/sales/hooks';
 import { layerBatchStatusConfig } from '@/features/layer-batches/components/layer-batch-table';
@@ -38,6 +40,7 @@ function todayIsoDate(): string {
 export function LayerBatchDetailView({ batchId }: { batchId: string }) {
   const { data: batch, isLoading } = useLayerBatch(batchId);
   const { data: profitability } = useLayerBatchProfitability(batchId);
+  const { data: performanceScore } = useLayerBatchPerformanceScore(batchId);
   const { data: dailyRecords, isLoading: dailyLoading } = useLayerDailyRecords(batchId);
   const { data: healthEvents, isLoading: healthLoading } = useLayerHealthEvents(batchId);
   const { data: eggStockLots, isLoading: eggStockLoading } = useEggStockLots(batchId);
@@ -168,6 +171,8 @@ export function LayerBatchDetailView({ batchId }: { batchId: string }) {
           </CardContent>
         </Card>
       ) : null}
+
+      {performanceScore ? <PerformanceScoreCard score={performanceScore} /> : null}
 
       <Tabs defaultValue="suivi">
         <TabsList>

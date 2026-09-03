@@ -11,15 +11,32 @@ import {
 } from './calculations/incubation-dates.calculations';
 import { computeCostPerChickHatchedFcfa } from './calculations/incubation-profitability.calculations';
 import {
+  computeFertilityRatePercent,
+  computeHatchRatePercent,
+} from './calculations/incubation-kpi.calculations';
+import {
   computeGrossMarginFcfa,
   computeProfitabilityRate,
   computeRevenueFcfa,
   computeTotalExpensesFcfa,
 } from '../broiler-batches/calculations/broiler-finance.calculations';
+import {
+  buildIncubationPerformanceScore,
+  type BatchPerformanceScore,
+} from './calculations/incubation-performance-score.calculations';
+import { PerformanceScoreSettingsService } from '../../common/performance-score/performance-score-settings.service';
+import {
+  coefficientsFromDto,
+  type PerformanceScoreCoefficients,
+} from '../../common/calculations/performance-score.util';
 import type { CreateIncubationBatchDto } from './dto/create-incubation-batch.dto';
 import type { UpdateIncubationBatchDto } from './dto/update-incubation-batch.dto';
+import type { UpdateIncubationPerformanceCoefficientsDto } from './dto/update-incubation-performance-coefficients.dto';
 
 const CODE_PREFIX_BASE = 'INC';
+/** Lot 5 (score de performance) — même convention `<domaine>.<nom>` que
+ * les seuils d'alerte existants. */
+const PERFORMANCE_COEFFICIENTS_SETTING_KEY = 'incubation.performance_score_coefficients';
 const CODE_DIGITS = 3;
 /** Phase 8 : couvre à la fois les collisions de code (P2002) et les
  * échecs de sérialisation liés au verrou FOR UPDATE (P2034) — une
@@ -53,6 +70,15 @@ export interface IncubationBatchProfitability {
   grossMarginFcfa: number;
   profitabilityRate: number;
   costPerChickHatchedFcfa: number;
+  /** Lot 5 (score de performance) — jamais exposés par l'API avant ce lot
+   * (dette Phase 13, jusqu'ici recalculés côté client uniquement). `null`
+   * tant que `chicksHatched` n'est pas renseigné (post-éclosion
+   * uniquement — même restriction que la Comparaison Lot 4, qui limite le
+   * couvoir aux lots `ECLOS`), jamais une valeur inventée avant l'éclosion. */
+  performance: {
+    hatchRatePercent: number | null;
+    fertilityRatePercent: number | null;
+  };
 }
 
 @Injectable()
@@ -61,6 +87,7 @@ export class IncubationBatchesService {
     private readonly prisma: PrismaService,
     private readonly auditLogService: AuditLogService,
     private readonly breederBatchesService: BreederBatchesService,
+    private readonly performanceScoreSettings: PerformanceScoreSettingsService,
   ) {}
 
   private async generateBatchCode(farmId: string, year: number): Promise<string> {
@@ -331,6 +358,9 @@ export class IncubationBatchesService {
     const revenueFcfa = computeRevenueFcfa(sales.map((sale) => sale.netAmountFcfa));
     const grossMarginFcfa = computeGrossMarginFcfa(revenueFcfa, totalExpensesFcfa);
 
+    const hasHatchData = batch.chicksHatched !== null;
+    const fertileEggs = hasHatchData ? batch.eggCount - (batch.eggsInfertile ?? 0) : null;
+
     return {
       totalExpensesFcfa,
       revenueFcfa,
@@ -340,7 +370,59 @@ export class IncubationBatchesService {
         totalExpensesFcfa,
         batch.chicksHatched ?? 0,
       ),
+      performance: {
+        hatchRatePercent: hasHatchData
+          ? computeHatchRatePercent(batch.chicksHatched!, batch.eggCount)
+          : null,
+        fertilityRatePercent:
+          hasHatchData && fertileEggs !== null
+            ? computeFertilityRatePercent(fertileEggs, batch.eggCount)
+            : null,
+      },
     };
+  }
+
+  /** Score de performance (Lot 5) — réutilise `getProfitability` pour ses
+   * composantes brutes (hatch/fertility rate), déjà `null` avant
+   * l'éclosion. */
+  async getPerformanceScore(
+    actingUser: AccessTokenPayload,
+    id: string,
+  ): Promise<BatchPerformanceScore> {
+    const [profitability, coefficients] = await Promise.all([
+      this.getProfitability(actingUser, id),
+      this.performanceScoreSettings.getCoefficients(
+        actingUser.farmId,
+        PERFORMANCE_COEFFICIENTS_SETTING_KEY,
+      ),
+    ]);
+    return buildIncubationPerformanceScore(
+      {
+        hatchRatePercent: profitability.performance.hatchRatePercent,
+        fertilityRatePercent: profitability.performance.fertilityRatePercent,
+      },
+      coefficients,
+    );
+  }
+
+  async getPerformanceCoefficients(
+    actingUser: AccessTokenPayload,
+  ): Promise<PerformanceScoreCoefficients> {
+    return this.performanceScoreSettings.getCoefficients(
+      actingUser.farmId,
+      PERFORMANCE_COEFFICIENTS_SETTING_KEY,
+    );
+  }
+
+  async updatePerformanceCoefficients(
+    actingUser: AccessTokenPayload,
+    dto: UpdateIncubationPerformanceCoefficientsDto,
+  ): Promise<PerformanceScoreCoefficients> {
+    return this.performanceScoreSettings.setCoefficients(
+      actingUser.farmId,
+      PERFORMANCE_COEFFICIENTS_SETTING_KEY,
+      coefficientsFromDto(dto),
+    );
   }
 
   private async setStatus(

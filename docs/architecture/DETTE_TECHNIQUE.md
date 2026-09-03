@@ -2708,6 +2708,136 @@ automatique sur échec de cleanup. **Arbitrage rendu et appliqué avant le
 Lot 5 IA** : `--runInBand` retenu — voir "✅ Corrigé" pour le détail du
 correctif.
 
+## IA — Score de performance — Lot 5
+
+Investigation préalable (rapport livré avant le code, arbitrage rendu par
+le porteur de projet sur les 6 points ouverts) :
+
+1. **Aucun score/performance composite existant** — recherche
+   `prevision|forecast|score|performance|rating|note` : seule la
+   rentabilité financière (`profitabilityRate = marge/charges`) et les
+   prévisions (Lot 3) existaient. GMQ, IC, taux de mortalité, taux de
+   ponte, taux d'éclosion existaient comme fonctions pures séparées,
+   jamais combinées.
+2. **Indicateurs bruts** — Chair : mortalité cumulée et IC déjà exposés
+   (`GET /:id/profitability`) ; GMQ moyen sur tout le cycle absent
+   (seul un GMQ *tendance*, 2 dernières pesées, existait pour le Lot 3)
+   mais dérivable des champs déjà exposés
+   (`finalAverageWeightG / cycleDurationDays`), pas un vrai gap.
+   Pondeuses : taux de ponte déjà exposé, **mortalité cumulée jamais
+   branchée** (`computeCumulativeMortalityRate` existait, réutilisé
+   tel quel côté Chair uniquement) — gap réel comblé ce lot. Couvoir :
+   taux d'éclosion/fécondité jamais exposés par l'API (dette Phase 13,
+   recalculés côté client) — exposés ce lot via
+   `IncubationBatchProfitability.performance`, `null` avant l'éclosion
+   (`chicksHatched` non renseigné) — même restriction "ÉCLOS
+   uniquement" que la Comparaison Lot 4.
+3. **`Setting` réutilisé tel quel** (`value: Json`, aucune migration) —
+   une clé par type de bande portant un objet
+   `{ [composante]: { weight, target? } }`, seule extension du pattern
+   existant (objet plutôt que scalaire). **Premier vrai chemin
+   d'ÉCRITURE de tout le projet vers `Setting`** — jusqu'ici, tous les
+   seuils (mortalité, ponte...) n'étaient que lus, jamais modifiables
+   via l'API.
+4. **RBAC** — lecture du score : réutilise le `_READ` de chaque entité
+   (`BROILER_BATCHES_READ`/`LAYER_BATCHES_READ`/`INCUBATION_BATCHES_READ`),
+   même pattern que `/:id/profitability`. Administration des
+   coefficients : `PERMISSIONS.FARMS_UPDATE` — déjà décrite comme
+   "Modifier les informations/**paramètres** de la ferme", seule
+   permission du catalogue détenue uniquement par Propriétaire/
+   Administrateur (+ Super Admin) — aucune permission dédiée créée.
+5. **Emplacement** : plusieurs options valables, arbitré par le porteur
+   de projet — **fiche de bande individuelle** (décomposition complète)
+   **et** `/comparaison` (ligne supplémentaire dans `ComparisonTable`),
+   pas de colonne liste ni d'écran dédié.
+6. **Décomposition** : le format texte `Alert.message` (Lot 4) est pensé
+   pour un évènement déclenché une fois — mal adapté à un score vivant,
+   recalculé à la demande, comparable entre bandes. Retenu : objet
+   structuré typé (valeur brute + cible + poids + contribution par
+   composante), rendu en tableau — même esprit de transparence, format
+   adapté au numérique.
+
+### Mathématiques du score
+
+`apps/api/src/common/calculations/performance-score.util.ts` — mutualisé
+entre Chair/Pondeuses/Couvoir dès ce lot (3 usages, doctrine "mutualiser
+au 2e/3e usage" déjà appliquée à `opaque-token.util.ts`) :
+
+- **Composante en taux 0-100 naturel** (mortalité, ponte, éclosion,
+  fécondité) : contribution = le taux lui-même si "plus haut = meilleur",
+  ou son complément à 100 si "plus bas = meilleur" (mortalité) — jamais
+  de cible à configurer.
+- **Composante sans échelle naturelle** (IC, GMQ) : contribution
+  relative à une CIBLE fournie par l'appelant. **Aucune cible
+  zootechnique par défaut n'est codée en dur** — le cahier des charges
+  ne documente aucune valeur cible, en inventer une aurait été
+  exactement le "chiffre inventé" que le projet s'interdit. Sans cible
+  configurée (`Setting`), la composante reste dans la décomposition
+  (valeur brute visible si calculable) mais contribution `null` —
+  exclue du score, jamais remplacée par 0.
+- **Score final** = moyenne pondérée des contributions disponibles,
+  poids **renormalisés sur les seules composantes utilisables** (une
+  composante absente ne pénalise ni n'avantage silencieusement le
+  score — même principe que le Lot 4 : un signal manquant ne se moyenne
+  jamais sur une valeur absente). `scoreOn100 = null` (jamais 0) si
+  aucune composante n'est utilisable.
+- **Poids par défaut** : répartition égale tant qu'aucun coefficient
+  n'est configuré (1/3 pour les 3 composantes Chair, 1/2 pour les 2
+  composantes Pondeuses/Couvoir) — seul défaut défendable sans
+  hypothèse métier arbitraire.
+
+### API
+
+- `GET /:type-batches/:id/performance-score` — réutilise
+  `getProfitability`/`computeClosureSummary` pour ses composantes
+  brutes (aucune requête dupliquée), gaté `*_READ`.
+- `GET`/`PUT /:type-batches/performance-coefficients` (farm-wide, pas
+  par bande) — lecture `*_READ`, écriture `FARMS_UPDATE`. Corps de
+  requête à **champs nommés** (`mortality`/`ic`/`gmq`, etc.) plutôt
+  qu'une map dynamique `Record<string, ...>` : les composantes sont
+  fixes et connues par type, `class-validator` les valide
+  individuellement et `forbidNonWhitelisted` (main.ts) rejette déjà
+  toute clé inconnue en 400 sans code supplémentaire — cohérent avec la
+  doctrine "pas de mécanisme générique" déjà observée ailleurs (aucun
+  module `Settings` générique créé).
+- `PerformanceScoreSettingsService` (`common/performance-score/`,
+  `@Global()` comme `AuditLogModule`/`PrismaModule`) — lecture/écriture
+  `Setting` mutualisée entre les 3 types, agnostique du type de bande.
+  **`setCoefficients` remplace tout l'objet `value`** (pas un merge) :
+  le formulaire d'administration doit toujours soumettre l'état complet
+  (préremplissage systématique depuis le `GET`), jamais un correctif
+  partiel — documenté dans `packages/shared-types/src/performance-score.ts`.
+
+### Frontend
+
+- `PerformanceScoreCard` (`features/performance-score/`) — composant
+  partagé aux 3 types (même forme de réponse) : score total + tableau
+  de décomposition (composante/valeur/cible/poids/contribution côte à
+  côte), état "pas assez de données" explicite si `dataStatus =
+  INSUFFISANT`, date de calcul systématiquement affichée.
+- Formulaire d'administration des coefficients — un composant par type
+  (champs différents, pas de généralisation forcée), monté uniquement
+  sous `<Can permission={PERMISSIONS.FARMS_UPDATE}>` sur `/comparaison`
+  (décision point 5). Poids toujours préremplis (valeur enregistrée, ou
+  défaut 1/3 ou 1/2 affiché en clair) ; cible IC/GMQ laissée vide =
+  composante exclue, jamais une valeur par défaut inventée côté client
+  non plus.
+- `layer-comparison.tsx` gagne au passage une ligne "Taux de mortalité
+  cumulé" (donnée nouvellement exposée par ce lot, absente de la
+  comparaison Pondeuses jusqu'ici) — extension mineure, cohérente avec
+  la ligne équivalente déjà présente côté Chair.
+
+### Vérifié manuellement
+
+Ferme de test dédiée (créée puis nettoyée après vérification) — score
+Chair (mortalité seule calculable sans cible IC/GMQ configurée, "—"
+explicite plutôt qu'un chiffre inventé), Pondeuses (mortalité + ponte,
+poids 50/50), Couvoir (éclosion + fécondité, poids 50/50) ; cycle complet
+d'administration des coefficients (préremplissage → saisie d'une cible IC
+→ enregistrement → PUT 200 avec le payload attendu → relecture de la
+fiche bande confirmant la cible désormais affichée) vérifié en conditions
+réelles via le navigateur, pas seulement en test automatisé.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

@@ -12,12 +12,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
 import {
+  useBatchPerformanceScore,
   useBatchProfitability,
   useBroilerBatch,
   useDailyRecords,
   useHealthEvents,
   useMortalities,
 } from '@/features/broiler-batches/hooks';
+import { PerformanceScoreCard } from '@/features/performance-score/components/performance-score-card';
 import { useSalesByBatch } from '@/features/sales/hooks';
 import { broilerBatchStatusConfig } from '@/features/broiler-batches/components/broiler-batch-table';
 import { DailyRecordsTable } from '@/features/broiler-batches/components/daily-records-table';
@@ -35,6 +37,7 @@ import { QrCodePanel } from '@/features/qr-codes/components/qr-code-panel';
 export function BroilerBatchDetailView({ batchId }: { batchId: string }) {
   const { data: batch, isLoading } = useBroilerBatch(batchId);
   const { data: profitability } = useBatchProfitability(batchId);
+  const { data: performanceScore } = useBatchPerformanceScore(batchId);
   const { data: dailyRecords, isLoading: dailyLoading } = useDailyRecords(batchId);
   const { data: mortalities, isLoading: mortalityLoading } = useMortalities(batchId);
   const { data: healthEvents, isLoading: healthLoading } = useHealthEvents(batchId);
@@ -169,6 +172,8 @@ export function BroilerBatchDetailView({ batchId }: { batchId: string }) {
           </CardContent>
         </Card>
       ) : null}
+
+      {performanceScore ? <PerformanceScoreCard score={performanceScore} /> : null}
 
       {/* Filiation "aval" (§6.5, Phase 13) — uniquement pertinent pour une
           bande née d'une orientation de poussins, jamais pour un achat

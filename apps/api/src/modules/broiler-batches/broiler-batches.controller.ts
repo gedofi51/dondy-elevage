@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -17,6 +18,7 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PERMISSIONS } from '../../common/rbac/permissions.constants';
+import type { PerformanceScoreCoefficients } from '../../common/calculations/performance-score.util';
 import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
 import {
   BroilerBatchesService,
@@ -24,8 +26,10 @@ import {
   type BroilerBatchWithComputed,
 } from './broiler-batches.service';
 import type { BroilerForecast } from './calculations/broiler-forecast.calculations';
+import type { BatchPerformanceScore } from './calculations/broiler-performance-score.calculations';
 import { CreateBroilerBatchDto } from './dto/create-broiler-batch.dto';
 import { UpdateBroilerBatchDto } from './dto/update-broiler-batch.dto';
+import { UpdateBroilerPerformanceCoefficientsDto } from './dto/update-broiler-performance-coefficients.dto';
 
 @Controller('broiler-batches')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -54,6 +58,29 @@ export class BroilerBatchesController {
   @RequirePermissions(PERMISSIONS.BROILER_BATCHES_READ)
   async findAllForecast(@CurrentUser() user: AccessTokenPayload): Promise<BroilerForecast[]> {
     return this.broilerBatchesService.findAllForecast(user);
+  }
+
+  // Déclarées AVANT @Get(':id') — même précaution que 'previsions'
+  // ci-dessus (Nest matche par ordre de déclaration).
+  @Get('performance-coefficients')
+  @RequirePermissions(PERMISSIONS.BROILER_BATCHES_READ)
+  async getPerformanceCoefficients(
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<PerformanceScoreCoefficients> {
+    return this.broilerBatchesService.getPerformanceCoefficients(user);
+  }
+
+  // Lot 5 (score de performance) : administration des coefficients (poids,
+  // cibles GMQ/IC) réservée à FARMS_UPDATE — permission déjà détenue
+  // uniquement par Propriétaire/Administrateur, aucune permission dédiée
+  // créée (voir DETTE_TECHNIQUE.md Lot 5, investigation point 4).
+  @Put('performance-coefficients')
+  @RequirePermissions(PERMISSIONS.FARMS_UPDATE)
+  async updatePerformanceCoefficients(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body() dto: UpdateBroilerPerformanceCoefficientsDto,
+  ): Promise<PerformanceScoreCoefficients> {
+    return this.broilerBatchesService.updatePerformanceCoefficients(user, dto);
   }
 
   @Get(':id')
@@ -114,5 +141,14 @@ export class BroilerBatchesController {
     @Param('id') id: string,
   ): Promise<BatchClosureSummary> {
     return this.broilerBatchesService.getProfitability(user, id);
+  }
+
+  @Get(':id/performance-score')
+  @RequirePermissions(PERMISSIONS.BROILER_BATCHES_READ)
+  async getPerformanceScore(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+  ): Promise<BatchPerformanceScore> {
+    return this.broilerBatchesService.getPerformanceScore(user, id);
   }
 }

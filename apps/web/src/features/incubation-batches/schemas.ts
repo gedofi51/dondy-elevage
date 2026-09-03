@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { INCUBATION_BATCH_EDITABLE_STATUSES } from '@dondy-elevage/shared-types';
+import { performanceCoefficientWeightSchema } from '@/features/performance-score/schemas';
 
 // Miroir de CreateIncubationBatchDto (§6.3) — breederBatchId/eggCount ne
 // sont pas modifiables après création (filiation et quantité figées),
@@ -32,3 +33,16 @@ export const updateIncubationBatchSchema = z.object({
 });
 export type UpdateIncubationBatchFormInput = z.input<typeof updateIncubationBatchSchema>;
 export type UpdateIncubationBatchFormValues = z.output<typeof updateIncubationBatchSchema>;
+
+// Score de performance (Lot 5) — pas de cible (éclosion/fécondité sont déjà
+// des taux 0-100 naturels), voir features/performance-score/schemas.ts.
+export const incubationPerformanceCoefficientsSchema = z.object({
+  hatchRateWeight: performanceCoefficientWeightSchema,
+  fertilityRateWeight: performanceCoefficientWeightSchema,
+});
+export type IncubationPerformanceCoefficientsFormInput = z.input<
+  typeof incubationPerformanceCoefficientsSchema
+>;
+export type IncubationPerformanceCoefficientsFormValues = z.output<
+  typeof incubationPerformanceCoefficientsSchema
+>;

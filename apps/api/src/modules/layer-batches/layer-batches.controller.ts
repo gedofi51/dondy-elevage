@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -17,6 +18,7 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { PERMISSIONS } from '../../common/rbac/permissions.constants';
+import type { PerformanceScoreCoefficients } from '../../common/calculations/performance-score.util';
 import type { AccessTokenPayload } from '../auth/jwt-payload.interface';
 import {
   LayerBatchesService,
@@ -24,8 +26,10 @@ import {
   type LayerBatchWithComputed,
 } from './layer-batches.service';
 import type { LayerForecast } from './calculations/layer-forecast.calculations';
+import type { BatchPerformanceScore } from './calculations/layer-performance-score.calculations';
 import { CreateLayerBatchDto } from './dto/create-layer-batch.dto';
 import { UpdateLayerBatchDto } from './dto/update-layer-batch.dto';
+import { UpdateLayerPerformanceCoefficientsDto } from './dto/update-layer-performance-coefficients.dto';
 
 @Controller('layer-batches')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -53,6 +57,24 @@ export class LayerBatchesController {
   @RequirePermissions(PERMISSIONS.LAYER_BATCHES_READ)
   async findAllForecast(@CurrentUser() user: AccessTokenPayload): Promise<LayerForecast[]> {
     return this.layerBatchesService.findAllForecast(user);
+  }
+
+  // Déclarées AVANT @Get(':id') — même précaution que 'previsions'.
+  @Get('performance-coefficients')
+  @RequirePermissions(PERMISSIONS.LAYER_BATCHES_READ)
+  async getPerformanceCoefficients(
+    @CurrentUser() user: AccessTokenPayload,
+  ): Promise<PerformanceScoreCoefficients> {
+    return this.layerBatchesService.getPerformanceCoefficients(user);
+  }
+
+  @Put('performance-coefficients')
+  @RequirePermissions(PERMISSIONS.FARMS_UPDATE)
+  async updatePerformanceCoefficients(
+    @CurrentUser() user: AccessTokenPayload,
+    @Body() dto: UpdateLayerPerformanceCoefficientsDto,
+  ): Promise<PerformanceScoreCoefficients> {
+    return this.layerBatchesService.updatePerformanceCoefficients(user, dto);
   }
 
   @Get(':id')
@@ -113,5 +135,14 @@ export class LayerBatchesController {
     @Param('id') id: string,
   ): Promise<LayerBatchClosureSummary> {
     return this.layerBatchesService.getProfitability(user, id);
+  }
+
+  @Get(':id/performance-score')
+  @RequirePermissions(PERMISSIONS.LAYER_BATCHES_READ)
+  async getPerformanceScore(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param('id') id: string,
+  ): Promise<BatchPerformanceScore> {
+    return this.layerBatchesService.getPerformanceScore(user, id);
   }
 }

@@ -2,10 +2,17 @@
 
 import { useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
-import type { IncubationBatchProfitability, IncubationBatchWithComputed } from '@dondy-elevage/shared-types';
+import type {
+  BatchPerformanceScore,
+  IncubationBatchProfitability,
+  IncubationBatchWithComputed,
+} from '@dondy-elevage/shared-types';
+import { PERMISSIONS } from '@dondy-elevage/shared-types';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Can } from '@/components/shared/permission-gate';
 import { useApiFetch } from '@/lib/api/use-api-fetch';
 import { useIncubationBatches } from '@/features/incubation-batches/hooks';
+import { IncubationPerformanceCoefficientsForm } from '@/features/incubation-batches/components/performance-coefficients-form';
 import {
   computeFertileEggs,
   computeFertilityRatePercent,
@@ -37,7 +44,14 @@ function useIncubationComparisonData(ids: string[]) {
       queryFn: () => apiFetch<IncubationBatchProfitability>(`/incubation-batches/${id}/profitability`),
     })),
   });
-  return { batchResults, profitabilityResults };
+  const scoreResults = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ['incubation-batches', id, 'performance-score'],
+      queryFn: () =>
+        apiFetch<BatchPerformanceScore>(`/incubation-batches/${id}/performance-score`),
+    })),
+  });
+  return { batchResults, profitabilityResults, scoreResults };
 }
 
 /**
@@ -47,11 +61,15 @@ function useIncubationComparisonData(ids: string[]) {
  * seulement à l'issue de l'éclosion), donc rien à comparer. Taux
  * d'éclosion/fécondité recalculés côté client (aucune route ne les
  * expose, voir kpi.ts — même duplication assumée que la fiche couvoir).
+ * Score de performance (Lot 5) : même restriction ÉCLOS, héritée
+ * naturellement (les deux composantes du score sont `null` avant
+ * l'éclosion, voir IncubationBatchesService.getPerformanceScore).
  */
 export function IncubationComparison() {
   const { data: batches } = useIncubationBatches();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const { batchResults, profitabilityResults } = useIncubationComparisonData(selectedIds);
+  const { batchResults, profitabilityResults, scoreResults } =
+    useIncubationComparisonData(selectedIds);
 
   function toggle(id: string) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -64,11 +82,15 @@ export function IncubationComparison() {
     label: hatchedBatches.find((b) => b.id === id)?.code ?? id,
   }));
 
-  const isLoading = batchResults.some((r) => r.isLoading) || profitabilityResults.some((r) => r.isLoading);
+  const isLoading =
+    batchResults.some((r) => r.isLoading) ||
+    profitabilityResults.some((r) => r.isLoading) ||
+    scoreResults.some((r) => r.isLoading);
   const allLoaded =
     selectedIds.length >= 2 &&
     batchResults.every((r) => r.data) &&
-    profitabilityResults.every((r) => r.data);
+    profitabilityResults.every((r) => r.data) &&
+    scoreResults.every((r) => r.data);
 
   const rows: ComparisonRow[] = allLoaded
     ? [
@@ -117,6 +139,15 @@ export function IncubationComparison() {
           label: 'Coût par poussin',
           values: profitabilityResults.map((r) => formatFcfa(r.data!.costPerChickHatchedFcfa)),
         },
+        {
+          key: 'performance-score',
+          label: 'Score de performance',
+          values: scoreResults.map((r) =>
+            r.data!.scoreOn100 !== null
+              ? `${r.data!.scoreOn100.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} / 100`
+              : '—',
+          ),
+        },
       ]
     : [];
 
@@ -136,6 +167,10 @@ export function IncubationComparison() {
       ) : (
         <ComparisonTable columns={columns} rows={rows} />
       )}
+
+      <Can permission={PERMISSIONS.FARMS_UPDATE}>
+        <IncubationPerformanceCoefficientsForm />
+      </Can>
     </div>
   );
 }

@@ -2,10 +2,13 @@
 
 import { useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
-import type { LayerBatchClosureSummary } from '@dondy-elevage/shared-types';
+import type { BatchPerformanceScore, LayerBatchClosureSummary } from '@dondy-elevage/shared-types';
+import { PERMISSIONS } from '@dondy-elevage/shared-types';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Can } from '@/components/shared/permission-gate';
 import { useApiFetch } from '@/lib/api/use-api-fetch';
 import { useLayerBatches } from '@/features/layer-batches/hooks';
+import { LayerPerformanceCoefficientsForm } from '@/features/layer-batches/components/performance-coefficients-form';
 import { EntitySelector } from './entity-selector';
 import { ComparisonTable, type ComparisonColumn, type ComparisonRow } from './comparison-table';
 
@@ -27,12 +30,25 @@ function useLayerProfitabilities(ids: string[]) {
   });
 }
 
+/** Score de performance (Lot 5) — même queryKey que
+ * useLayerBatchPerformanceScore (features/layer-batches/hooks). */
+function useLayerPerformanceScores(ids: string[]) {
+  const apiFetch = useApiFetch();
+  return useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ['layer-batches', id, 'performance-score'],
+      queryFn: () => apiFetch<BatchPerformanceScore>(`/layer-batches/${id}/performance-score`),
+    })),
+  });
+}
+
 /** Comparaison — Pondeuses (Lot 4). Réutilise GET /:id/profitability
  * (déjà exposé), même décision que Broiler. */
 export function LayerComparison() {
   const { data: batches } = useLayerBatches();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const results = useLayerProfitabilities(selectedIds);
+  const scoreResults = useLayerPerformanceScores(selectedIds);
 
   function toggle(id: string) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -44,8 +60,11 @@ export function LayerComparison() {
     label: batches?.find((b) => b.id === id)?.code ?? id,
   }));
 
-  const isLoading = results.some((r) => r.isLoading);
-  const allLoaded = selectedIds.length >= 2 && results.every((r) => r.data);
+  const isLoading = results.some((r) => r.isLoading) || scoreResults.some((r) => r.isLoading);
+  const allLoaded =
+    selectedIds.length >= 2 &&
+    results.every((r) => r.data) &&
+    scoreResults.every((r) => r.data);
 
   const rows: ComparisonRow[] = allLoaded
     ? [
@@ -70,6 +89,11 @@ export function LayerComparison() {
           values: results.map((r) => formatPercent(r.data!.production.averageLayingRatePercent)),
         },
         {
+          key: 'mortality-rate',
+          label: 'Taux de mortalité cumulé',
+          values: results.map((r) => formatPercent(r.data!.performance.cumulativeMortalityRate)),
+        },
+        {
           key: 'expenses',
           label: 'Charges totales',
           values: results.map((r) => formatFcfa(r.data!.finances.totalExpensesFcfa)),
@@ -89,6 +113,15 @@ export function LayerComparison() {
           label: 'Coût par œuf',
           values: results.map((r) => formatFcfa(r.data!.finances.costPerEggFcfa)),
         },
+        {
+          key: 'performance-score',
+          label: 'Score de performance',
+          values: scoreResults.map((r) =>
+            r.data!.scoreOn100 !== null
+              ? `${r.data!.scoreOn100.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} / 100`
+              : '—',
+          ),
+        },
       ]
     : [];
 
@@ -104,6 +137,10 @@ export function LayerComparison() {
       ) : (
         <ComparisonTable columns={columns} rows={rows} />
       )}
+
+      <Can permission={PERMISSIONS.FARMS_UPDATE}>
+        <LayerPerformanceCoefficientsForm />
+      </Can>
     </div>
   );
 }

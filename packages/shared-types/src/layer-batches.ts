@@ -189,8 +189,10 @@ export interface LayerForecast {
 /** Renvoyé par GET /:id/profitability (lecture pure, à tout moment sur un
  * lot actif) ET par la réponse de POST /:id/cloturer (même forme) — un
  * seul type pour les deux usages. Structure différente de
- * BatchClosureSummary (Broiler) : pas de section performance/GMQ/FCR
- * (aucune notion équivalente pour les pondeuses), section stock en plus. */
+ * BatchClosureSummary (Broiler) : pas de GMQ/IC (aucune notion équivalente
+ * pour les pondeuses), section stock en plus. `performance` limitée à la
+ * mortalité cumulée (ajoutée Lot 5, score de performance — jamais exposée
+ * avant ce lot, voir DETTE_TECHNIQUE.md). */
 export interface LayerBatchClosureSummary {
   production: {
     initialQuantity: number;
@@ -200,6 +202,9 @@ export interface LayerBatchClosureSummary {
     cumulativeEggsSold: number;
     averageLayingRatePercent: number;
     daysTracked: number;
+  };
+  performance: {
+    cumulativeMortalityRate: number;
   };
   stock: {
     /** Non bloquant pour la clôture — signalé si non nul. */

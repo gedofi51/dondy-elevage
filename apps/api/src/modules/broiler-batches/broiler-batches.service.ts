@@ -28,8 +28,18 @@ import {
   buildBroilerForecast,
   type BroilerForecast,
 } from './calculations/broiler-forecast.calculations';
+import {
+  buildBroilerPerformanceScore,
+  type BatchPerformanceScore,
+} from './calculations/broiler-performance-score.calculations';
+import { PerformanceScoreSettingsService } from '../../common/performance-score/performance-score-settings.service';
+import {
+  coefficientsFromDto,
+  type PerformanceScoreCoefficients,
+} from '../../common/calculations/performance-score.util';
 import type { CreateBroilerBatchDto } from './dto/create-broiler-batch.dto';
 import type { UpdateBroilerBatchDto } from './dto/update-broiler-batch.dto';
+import type { UpdateBroilerPerformanceCoefficientsDto } from './dto/update-broiler-performance-coefficients.dto';
 
 /** Prévisions production (Lot 3) — statuts pour lesquels une projection a
  * un sens : BROUILLON/PLANIFIEE (cycle pas encore démarré, pas de
@@ -43,6 +53,11 @@ const PROJECTABLE_BROILER_STATUSES: BroilerBatchStatus[] = [
   'PRETE_A_VENDRE',
   'EN_VENTE',
 ];
+
+/** Lot 5 (score de performance) — clé `Setting`, même convention
+ * `<domaine>.<nom>` que les seuils d'alerte existants (voir
+ * broiler-alerts.cron.ts, MORTALITY_THRESHOLD_SETTING_KEY). */
+const PERFORMANCE_COEFFICIENTS_SETTING_KEY = 'broiler.performance_score_coefficients';
 
 const DAILY_CYCLE_LENGTH = 45;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -99,6 +114,7 @@ export class BroilerBatchesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogService: AuditLogService,
+    private readonly performanceScoreSettings: PerformanceScoreSettingsService,
   ) {}
 
   private computeAcquisitionFigures(
@@ -553,6 +569,60 @@ export class BroilerBatchesService {
     const existing = await this.getRaw(actingUser, id);
     const computed = await this.attachComputedFields(existing);
     return this.computeClosureSummary(existing, computed);
+  }
+
+  /**
+   * Score de performance (Lot 5) — réutilise `computeClosureSummary`
+   * (même source que `/profitability`) pour ses composantes brutes, pas de
+   * requêtes dupliquées. Consultable sur une bande active, même principe
+   * que `getProfitability`.
+   */
+  async getPerformanceScore(
+    actingUser: AccessTokenPayload,
+    id: string,
+  ): Promise<BatchPerformanceScore> {
+    const [summary, coefficients] = await Promise.all([
+      this.getProfitability(actingUser, id),
+      this.performanceScoreSettings.getCoefficients(
+        actingUser.farmId,
+        PERFORMANCE_COEFFICIENTS_SETTING_KEY,
+      ),
+    ]);
+    return buildBroilerPerformanceScore(
+      {
+        cumulativeMortalityRate: summary.performance.cumulativeMortalityRate,
+        finalAverageWeightG: summary.performance.finalAverageWeightG,
+        totalFeedConsumptionKg: summary.performance.totalFeedConsumptionKg,
+        startedQuantity: summary.production.startedQuantity,
+        cycleDurationDays: summary.production.cycleDurationDays,
+      },
+      coefficients,
+    );
+  }
+
+  /** Lecture des coefficients configurés (`Setting`, objet vide si jamais
+   * configuré — le score applique alors les poids par défaut, voir
+   * buildBroilerPerformanceScore). Même permission que la lecture du score
+   * lui-même (BROILER_BATCHES_READ) — seule l'écriture est restreinte
+   * (FARMS_UPDATE, voir le contrôleur). */
+  async getPerformanceCoefficients(
+    actingUser: AccessTokenPayload,
+  ): Promise<PerformanceScoreCoefficients> {
+    return this.performanceScoreSettings.getCoefficients(
+      actingUser.farmId,
+      PERFORMANCE_COEFFICIENTS_SETTING_KEY,
+    );
+  }
+
+  async updatePerformanceCoefficients(
+    actingUser: AccessTokenPayload,
+    dto: UpdateBroilerPerformanceCoefficientsDto,
+  ): Promise<PerformanceScoreCoefficients> {
+    return this.performanceScoreSettings.setCoefficients(
+      actingUser.farmId,
+      PERFORMANCE_COEFFICIENTS_SETTING_KEY,
+      coefficientsFromDto(dto),
+    );
   }
 
   private async setStatus(
