@@ -1,6 +1,11 @@
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { BatchClosureSummary, BroilerBatchWithComputed } from '@dondy-elevage/shared-types';
+import type {
+  BatchClosureSummary,
+  BatchPerformanceScore,
+  BroilerBatchWithComputed,
+} from '@dondy-elevage/shared-types';
 import { BroilerComparison } from './broiler-comparison';
 
 const useBroilerBatchesMock = vi.fn();
@@ -12,10 +17,30 @@ vi.mock('@/lib/api/use-api-fetch', () => ({
   useApiFetch: () => vi.fn(),
 }));
 
+// <Can permission={FARMS_UPDATE}> (Lot 5, formulaire de coefficients) exige
+// AuthProvider — mock direct de `Can`, même patron que
+// attendance-register.test.tsx. Désactivé par défaut : le formulaire
+// d'administration (useQuery, jamais testé avec un vrai QueryClientProvider
+// dans ce dépôt) reste démonté ici — sa couverture vit dans
+// broiler-batches/components/performance-coefficients-form.test.tsx.
+let canEnabled = false;
+vi.mock('@/components/shared/permission-gate', () => ({
+  Can: ({ children }: { children: ReactNode }) => (canEnabled ? <>{children}</> : null),
+}));
+
 // Même patron que attendance-register.test.tsx : mock direct de
 // useQueries (aucun précédent de vrai QueryClientProvider dans ce dépôt
-// pour un composant basé sur useQueries).
-let queriesResult: Array<{ data: BatchClosureSummary | undefined; isLoading: boolean }> = [];
+// pour un composant basé sur useQueries). Les deux appels (rentabilité et
+// score de performance, Lot 5) partagent le même tableau — makeSummary()
+// porte donc aussi `scoreOn100` (lu inconditionnellement lors de la
+// construction de la ligne "Score de performance"), pour rester un objet
+// valide des deux points de vue plutôt que de désynchroniser les deux
+// appels comme incubation-comparison.test.tsx (pas nécessaire ici : aucun
+// test de ce fichier ne porte sur la valeur du score elle-même).
+let queriesResult: Array<{
+  data: (BatchClosureSummary & Pick<BatchPerformanceScore, 'scoreOn100'>) | undefined;
+  isLoading: boolean;
+}> = [];
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>();
   return { ...actual, useQueries: () => queriesResult };
@@ -54,12 +79,15 @@ function makeBatch(overrides: Partial<BroilerBatchWithComputed> = {}): BroilerBa
   };
 }
 
-function makeSummary(overrides: Partial<BatchClosureSummary> = {}): BatchClosureSummary {
+function makeSummary(
+  overrides: Partial<BatchClosureSummary & Pick<BatchPerformanceScore, 'scoreOn100'>> = {},
+): BatchClosureSummary & Pick<BatchPerformanceScore, 'scoreOn100'> {
   return {
     production: { receivedQuantity: 1000, startedQuantity: 1000, cumulativeMortality: 20, soldCount: 0, cycleDurationDays: 33 },
     performance: { cumulativeMortalityRate: 2, finalAverageWeightG: 1800, totalFeedConsumptionKg: 500, feedConversionRatio: 1.8 },
     finances: { totalExpensesFcfa: 500_000, revenueFcfa: 0, grossMarginFcfa: -500_000, profitabilityRate: -100, costPerChickProducedFcfa: 500, costPerChickSoldFcfa: 0 },
     coherence: { dailyRecordMortalityTotal: 20, detailedMortalityTotal: 20, isCoherent: true },
+    scoreOn100: 82,
     ...overrides,
   };
 }
@@ -67,6 +95,7 @@ function makeSummary(overrides: Partial<BatchClosureSummary> = {}): BatchClosure
 beforeEach(() => {
   vi.clearAllMocks();
   queriesResult = [];
+  canEnabled = false;
 });
 
 describe('BroilerComparison', () => {

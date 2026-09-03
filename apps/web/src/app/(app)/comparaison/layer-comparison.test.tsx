@@ -1,6 +1,11 @@
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import type { LayerBatchClosureSummary, LayerBatchWithComputed } from '@dondy-elevage/shared-types';
+import type {
+  BatchPerformanceScore,
+  LayerBatchClosureSummary,
+  LayerBatchWithComputed,
+} from '@dondy-elevage/shared-types';
 import { LayerComparison } from './layer-comparison';
 
 const useLayerBatchesMock = vi.fn();
@@ -12,7 +17,23 @@ vi.mock('@/lib/api/use-api-fetch', () => ({
   useApiFetch: () => vi.fn(),
 }));
 
-let queriesResult: Array<{ data: LayerBatchClosureSummary | undefined; isLoading: boolean }> = [];
+// <Can permission={FARMS_UPDATE}> (Lot 5, formulaire de coefficients) exige
+// AuthProvider — mock direct de `Can`, même patron que
+// attendance-register.test.tsx/broiler-comparison.test.tsx. Désactivé par
+// défaut : sa couverture vit dans
+// layer-batches/components/performance-coefficients-form.test.tsx.
+let canEnabled = false;
+vi.mock('@/components/shared/permission-gate', () => ({
+  Can: ({ children }: { children: ReactNode }) => (canEnabled ? <>{children}</> : null),
+}));
+
+// Deux appels useQueries (rentabilité, score de performance Lot 5)
+// partagent le même tableau — makeSummary() porte donc aussi `scoreOn100`,
+// voir broiler-comparison.test.tsx pour le même choix.
+let queriesResult: Array<{
+  data: (LayerBatchClosureSummary & Pick<BatchPerformanceScore, 'scoreOn100'>) | undefined;
+  isLoading: boolean;
+}> = [];
 vi.mock('@tanstack/react-query', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@tanstack/react-query')>();
   return { ...actual, useQueries: () => queriesResult };
@@ -40,7 +61,9 @@ function makeBatch(overrides: Partial<LayerBatchWithComputed> = {}): LayerBatchW
   };
 }
 
-function makeSummary(overrides: Partial<LayerBatchClosureSummary> = {}): LayerBatchClosureSummary {
+function makeSummary(
+  overrides: Partial<LayerBatchClosureSummary & Pick<BatchPerformanceScore, 'scoreOn100'>> = {},
+): LayerBatchClosureSummary & Pick<BatchPerformanceScore, 'scoreOn100'> {
   return {
     production: {
       initialQuantity: 1000,
@@ -51,9 +74,11 @@ function makeSummary(overrides: Partial<LayerBatchClosureSummary> = {}): LayerBa
       averageLayingRatePercent: 90,
       daysTracked: 30,
     },
+    performance: { cumulativeMortalityRate: 2 },
     stock: { remainingEggStock: 1500 },
     finances: { totalExpensesFcfa: 300_000, revenueFcfa: 400_000, grossMarginFcfa: 100_000, costPerEggFcfa: 15 },
     coherence: { lastRecordedHenCount: 990, computedHeadcount: 990, isCoherent: true },
+    scoreOn100: 82,
     ...overrides,
   };
 }
@@ -61,6 +86,7 @@ function makeSummary(overrides: Partial<LayerBatchClosureSummary> = {}): LayerBa
 beforeEach(() => {
   vi.clearAllMocks();
   queriesResult = [];
+  canEnabled = false;
 });
 
 describe('LayerComparison', () => {

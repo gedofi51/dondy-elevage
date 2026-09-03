@@ -1,11 +1,13 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   BatchClosureSummary,
+  BatchPerformanceScore,
   BroilerBatchWithComputed,
   BroilerDailyRecord,
   BroilerForecast,
   BroilerHealthEvent,
   BroilerMortality,
+  BroilerPerformanceCoefficients,
   CreateBroilerBatchInput,
   CreateHealthEventInput,
   CreateMortalityInput,
@@ -42,6 +44,55 @@ export function useBatchProfitability(id: string) {
     queryKey: ['broiler-batches', id, 'profitability'],
     queryFn: () => apiFetch<BatchClosureSummary>(`/broiler-batches/${id}/profitability`),
     enabled: !!id,
+  });
+}
+
+/** Score de performance (Lot 5) — même disponibilité que la rentabilité
+ * (bande active ou clôturée), voir useBatchProfitability ci-dessus. */
+export function useBatchPerformanceScore(id: string) {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['broiler-batches', id, 'performance-score'],
+    queryFn: () => apiFetch<BatchPerformanceScore>(`/broiler-batches/${id}/performance-score`),
+    enabled: !!id,
+  });
+}
+
+/** Coefficients du score (Lot 5) — objet vide tant qu'aucun n'a été
+ * configuré (le score applique alors les poids par défaut). */
+export function useBroilerPerformanceCoefficients() {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['broiler-batches', 'performance-coefficients'],
+    queryFn: () =>
+      apiFetch<BroilerPerformanceCoefficients>('/broiler-batches/performance-coefficients'),
+  });
+}
+
+/** Écriture réservée à FARMS_UPDATE côté API — le formulaire appelant doit
+ * toujours soumettre l'objet complet (mortality+ic+gmq), jamais un
+ * correctif partiel : PUT remplace tout le coefficient enregistré (voir
+ * PerformanceScoreCoefficients côté shared-types). Invalide aussi tous les
+ * scores déjà en cache (nouveaux poids -> nouvelle contribution/score). */
+export function useUpdateBroilerPerformanceCoefficients() {
+  const apiFetch = useApiFetch();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: BroilerPerformanceCoefficients) =>
+      apiFetch<BroilerPerformanceCoefficients>('/broiler-batches/performance-coefficients', {
+        method: 'PUT',
+        body: input,
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['broiler-batches', 'performance-coefficients'], data);
+      // Un nouveau poids change potentiellement le score de TOUTES les
+      // bandes déjà en cache — predicate plutôt qu'une queryKey précise
+      // (on ne connaît pas ici la liste des id consultés).
+      queryClient.invalidateQueries({
+        predicate: (q) =>
+          q.queryKey[0] === 'broiler-batches' && q.queryKey.includes('performance-score'),
+      });
+    },
   });
 }
 

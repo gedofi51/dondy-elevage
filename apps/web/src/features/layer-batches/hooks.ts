@@ -1,5 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  BatchPerformanceScore,
   CreateLayerBatchInput,
   CreateLayerDailyRecordInput,
   CreateLayerHealthEventInput,
@@ -8,6 +9,7 @@ import type {
   LayerDailyRecord,
   LayerForecast,
   LayerHealthEvent,
+  LayerPerformanceCoefficients,
   UpdateLayerBatchInput,
   UpdateLayerDailyRecordInput,
 } from '@dondy-elevage/shared-types';
@@ -41,6 +43,45 @@ export function useLayerBatchProfitability(id: string) {
     queryKey: ['layer-batches', id, 'profitability'],
     queryFn: () => apiFetch<LayerBatchClosureSummary>(`/layer-batches/${id}/profitability`),
     enabled: !!id,
+  });
+}
+
+/** Score de performance (Lot 5) — voir
+ * broiler-batches/hooks.ts::useBatchPerformanceScore. */
+export function useLayerBatchPerformanceScore(id: string) {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['layer-batches', id, 'performance-score'],
+    queryFn: () => apiFetch<BatchPerformanceScore>(`/layer-batches/${id}/performance-score`),
+    enabled: !!id,
+  });
+}
+
+export function useLayerPerformanceCoefficients() {
+  const apiFetch = useApiFetch();
+  return useQuery({
+    queryKey: ['layer-batches', 'performance-coefficients'],
+    queryFn: () =>
+      apiFetch<LayerPerformanceCoefficients>('/layer-batches/performance-coefficients'),
+  });
+}
+
+export function useUpdateLayerPerformanceCoefficients() {
+  const apiFetch = useApiFetch();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: LayerPerformanceCoefficients) =>
+      apiFetch<LayerPerformanceCoefficients>('/layer-batches/performance-coefficients', {
+        method: 'PUT',
+        body: input,
+      }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(['layer-batches', 'performance-coefficients'], data);
+      queryClient.invalidateQueries({
+        predicate: (q) =>
+          q.queryKey[0] === 'layer-batches' && q.queryKey.includes('performance-score'),
+      });
+    },
   });
 }
 

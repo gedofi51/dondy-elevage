@@ -2,10 +2,13 @@
 
 import { useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
-import type { BatchClosureSummary } from '@dondy-elevage/shared-types';
+import type { BatchClosureSummary, BatchPerformanceScore } from '@dondy-elevage/shared-types';
+import { PERMISSIONS } from '@dondy-elevage/shared-types';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Can } from '@/components/shared/permission-gate';
 import { useApiFetch } from '@/lib/api/use-api-fetch';
 import { useBroilerBatches } from '@/features/broiler-batches/hooks';
+import { BroilerPerformanceCoefficientsForm } from '@/features/broiler-batches/components/performance-coefficients-form';
 import { EntitySelector } from './entity-selector';
 import { ComparisonTable, type ComparisonColumn, type ComparisonRow } from './comparison-table';
 
@@ -29,6 +32,19 @@ function useBroilerProfitabilities(ids: string[]) {
   });
 }
 
+/** Score de performance (Lot 5) — même queryKey que
+ * useBatchPerformanceScore (features/broiler-batches/hooks), cache
+ * partagé avec la fiche de bande. */
+function useBroilerPerformanceScores(ids: string[]) {
+  const apiFetch = useApiFetch();
+  return useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ['broiler-batches', id, 'performance-score'],
+      queryFn: () => apiFetch<BatchPerformanceScore>(`/broiler-batches/${id}/performance-score`),
+    })),
+  });
+}
+
 /**
  * Comparaison — Poulets de chair (Lot 4). Pas de nouvel endpoint : réutilise
  * GET /:id/profitability (déjà exposé) pour chaque bande sélectionnée —
@@ -38,6 +54,7 @@ export function BroilerComparison() {
   const { data: batches } = useBroilerBatches();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const results = useBroilerProfitabilities(selectedIds);
+  const scoreResults = useBroilerPerformanceScores(selectedIds);
 
   function toggle(id: string) {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -49,8 +66,11 @@ export function BroilerComparison() {
     label: batches?.find((b) => b.id === id)?.code ?? id,
   }));
 
-  const isLoading = results.some((r) => r.isLoading);
-  const allLoaded = selectedIds.length >= 2 && results.every((r) => r.data);
+  const isLoading = results.some((r) => r.isLoading) || scoreResults.some((r) => r.isLoading);
+  const allLoaded =
+    selectedIds.length >= 2 &&
+    results.every((r) => r.data) &&
+    scoreResults.every((r) => r.data);
 
   const rows: ComparisonRow[] = allLoaded
     ? [
@@ -105,6 +125,18 @@ export function BroilerComparison() {
           label: 'Rentabilité',
           values: results.map((r) => formatPercent(r.data!.finances.profitabilityRate)),
         },
+        {
+          key: 'performance-score',
+          label: 'Score de performance',
+          // '—' explicite si INSUFFISANT — jamais un score inventé, même
+          // convention que la colonne "valeur non calculable" du reste du
+          // tableau.
+          values: scoreResults.map((r) =>
+            r.data!.scoreOn100 !== null
+              ? `${r.data!.scoreOn100.toLocaleString('fr-FR', { maximumFractionDigits: 0 })} / 100`
+              : '—',
+          ),
+        },
       ]
     : [];
 
@@ -120,6 +152,12 @@ export function BroilerComparison() {
       ) : (
         <ComparisonTable columns={columns} rows={rows} />
       )}
+
+      {/* Administration des coefficients (Lot 5) — réservée à FARMS_UPDATE,
+          invisible pour tout autre rôle (voir DETTE_TECHNIQUE.md, RBAC). */}
+      <Can permission={PERMISSIONS.FARMS_UPDATE}>
+        <BroilerPerformanceCoefficientsForm />
+      </Can>
     </div>
   );
 }

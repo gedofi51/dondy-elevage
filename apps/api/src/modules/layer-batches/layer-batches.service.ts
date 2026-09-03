@@ -13,15 +13,29 @@ import {
   computeRevenueFcfa,
   computeTotalExpensesFcfa,
 } from '../broiler-batches/calculations/broiler-finance.calculations';
+import { computeCumulativeMortalityRate } from '../broiler-batches/calculations/broiler-headcount.calculations';
 import {
   buildLayerForecast,
   FORECAST_WINDOW_DAYS,
   type LayerForecast,
 } from './calculations/layer-forecast.calculations';
+import {
+  buildLayerPerformanceScore,
+  type BatchPerformanceScore,
+} from './calculations/layer-performance-score.calculations';
+import { PerformanceScoreSettingsService } from '../../common/performance-score/performance-score-settings.service';
+import {
+  coefficientsFromDto,
+  type PerformanceScoreCoefficients,
+} from '../../common/calculations/performance-score.util';
 import type { CreateLayerBatchDto } from './dto/create-layer-batch.dto';
 import type { UpdateLayerBatchDto } from './dto/update-layer-batch.dto';
+import type { UpdateLayerPerformanceCoefficientsDto } from './dto/update-layer-performance-coefficients.dto';
 
 const CODE_PREFIX_BASE = 'PON';
+/** Lot 5 (score de performance) — même convention `<domaine>.<nom>` que
+ * les seuils d'alerte existants. */
+const PERFORMANCE_COEFFICIENTS_SETTING_KEY = 'layer.performance_score_coefficients';
 const CODE_DIGITS = 3;
 const MAX_CODE_RETRIES = 3;
 /** Prévisions production (Lot 3) — REFORME/CLOTURE/ANNULEE (cycle
@@ -46,6 +60,14 @@ export interface LayerBatchClosureSummary {
     cumulativeEggsSold: number;
     averageLayingRatePercent: number;
     daysTracked: number;
+  };
+  /** Lot 5 (score de performance) : réutilise `computeCumulativeMortalityRate`
+   * (broiler-headcount.calculations.ts, fonction générique, déjà utilisée
+   * telle quelle par BroilerBatchesService) — jamais calculée côté
+   * Pondeuses avant ce lot (voir DETTE_TECHNIQUE.md Lot 5, investigation
+   * point 2 : gap réel identifié). */
+  performance: {
+    cumulativeMortalityRate: number;
   };
   stock: {
     /** Non bloquant pour la clôture — signalé si non nul, voir plan Phase 4. */
@@ -74,6 +96,7 @@ export class LayerBatchesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogService: AuditLogService,
+    private readonly performanceScoreSettings: PerformanceScoreSettingsService,
   ) {}
 
   /** Dérivé du dernier code émis pour la ferme+année (PON-AAAA-NNN), avec
@@ -376,6 +399,50 @@ export class LayerBatchesService {
     return this.computeClosureSummary(existing, computed);
   }
 
+  /** Score de performance (Lot 5) — même schéma que
+   * BroilerBatchesService.getPerformanceScore : réutilise
+   * `computeClosureSummary` pour ses composantes brutes. */
+  async getPerformanceScore(
+    actingUser: AccessTokenPayload,
+    id: string,
+  ): Promise<BatchPerformanceScore> {
+    const [summary, coefficients] = await Promise.all([
+      this.getProfitability(actingUser, id),
+      this.performanceScoreSettings.getCoefficients(
+        actingUser.farmId,
+        PERFORMANCE_COEFFICIENTS_SETTING_KEY,
+      ),
+    ]);
+    return buildLayerPerformanceScore(
+      {
+        cumulativeMortalityRate: summary.performance.cumulativeMortalityRate,
+        averageLayingRatePercent: summary.production.averageLayingRatePercent,
+        daysTracked: summary.production.daysTracked,
+      },
+      coefficients,
+    );
+  }
+
+  async getPerformanceCoefficients(
+    actingUser: AccessTokenPayload,
+  ): Promise<PerformanceScoreCoefficients> {
+    return this.performanceScoreSettings.getCoefficients(
+      actingUser.farmId,
+      PERFORMANCE_COEFFICIENTS_SETTING_KEY,
+    );
+  }
+
+  async updatePerformanceCoefficients(
+    actingUser: AccessTokenPayload,
+    dto: UpdateLayerPerformanceCoefficientsDto,
+  ): Promise<PerformanceScoreCoefficients> {
+    return this.performanceScoreSettings.setCoefficients(
+      actingUser.farmId,
+      PERFORMANCE_COEFFICIENTS_SETTING_KEY,
+      coefficientsFromDto(dto),
+    );
+  }
+
   private async setStatus(
     existing: LayerBatch,
     status: LayerBatchStatus,
@@ -426,6 +493,14 @@ export class LayerBatchesService {
     const averageLayingRatePercent =
       dailyRecords.length > 0 ? computeLayingRatePercent(cumulativeEggsLaid, cumulativeHenDays) : 0;
 
+    // Lot 5 : même schéma que BroilerBatchesService (mortalité cumulée /
+    // effectif de départ), jamais branché côté Pondeuses avant ce lot.
+    const cumulativeMortality = dailyRecords.reduce((sum, r) => sum + r.mortalityQuantity, 0);
+    const cumulativeMortalityRate = computeCumulativeMortalityRate(
+      cumulativeMortality,
+      batch.initialQuantity,
+    );
+
     const remainingEggStock = eggStockLots.reduce(
       (sum, lot) => sum + computeLotRemaining(lot.quantityProduced, lot.movements),
       0,
@@ -451,6 +526,7 @@ export class LayerBatchesService {
         averageLayingRatePercent,
         daysTracked: dailyRecords.length,
       },
+      performance: { cumulativeMortalityRate },
       stock: { remainingEggStock },
       finances: { totalExpensesFcfa, revenueFcfa, grossMarginFcfa, costPerEggFcfa },
       coherence: {

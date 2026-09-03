@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { BROILER_BATCH_EDITABLE_STATUSES } from '@dondy-elevage/shared-types';
+import {
+  performanceCoefficientTargetSchema,
+  performanceCoefficientWeightSchema,
+} from '@/features/performance-score/schemas';
 
 export const broilerOriginOptions = ['ACHAT', 'NAISSANCE_INTERNE'] as const;
 export const mortalityCauseOptions = [
@@ -152,3 +156,19 @@ export const createHealthEventSchema = z.object({
 });
 export type CreateHealthEventFormInput = z.input<typeof createHealthEventSchema>;
 export type CreateHealthEventFormValues = z.output<typeof createHealthEventSchema>;
+
+// Score de performance (Lot 5) — voir features/performance-score/schemas.ts
+// pour les briques réutilisées (poids/cible).
+export const broilerPerformanceCoefficientsSchema = z.object({
+  mortalityWeight: performanceCoefficientWeightSchema,
+  icWeight: performanceCoefficientWeightSchema,
+  icTarget: performanceCoefficientTargetSchema,
+  gmqWeight: performanceCoefficientWeightSchema,
+  gmqTarget: performanceCoefficientTargetSchema,
+});
+export type BroilerPerformanceCoefficientsFormInput = z.input<
+  typeof broilerPerformanceCoefficientsSchema
+>;
+export type BroilerPerformanceCoefficientsFormValues = z.output<
+  typeof broilerPerformanceCoefficientsSchema
+>;

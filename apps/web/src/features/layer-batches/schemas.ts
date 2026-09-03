@@ -5,6 +5,9 @@ import {
   healthEventStatusOptions,
   healthEventTypeOptions,
 } from '@/features/broiler-batches/schemas';
+import {
+  performanceCoefficientWeightSchema,
+} from '@/features/performance-score/schemas';
 
 // Base commune création/édition — miroir de CreateLayerBatchDto (§5.1). Le
 // formulaire d'édition suit le même patron que WaterPointForm/BroilerBatchForm
@@ -89,3 +92,16 @@ export const createLayerHealthEventSchema = z.object({
 });
 export type CreateLayerHealthEventFormInput = z.input<typeof createLayerHealthEventSchema>;
 export type CreateLayerHealthEventFormValues = z.output<typeof createLayerHealthEventSchema>;
+
+// Score de performance (Lot 5) — pas de cible (mortalité/ponte sont déjà
+// des taux 0-100 naturels), voir features/performance-score/schemas.ts.
+export const layerPerformanceCoefficientsSchema = z.object({
+  mortalityWeight: performanceCoefficientWeightSchema,
+  layingRateWeight: performanceCoefficientWeightSchema,
+});
+export type LayerPerformanceCoefficientsFormInput = z.input<
+  typeof layerPerformanceCoefficientsSchema
+>;
+export type LayerPerformanceCoefficientsFormValues = z.output<
+  typeof layerPerformanceCoefficientsSchema
+>;

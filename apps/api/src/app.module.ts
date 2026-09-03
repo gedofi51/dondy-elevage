@@ -6,6 +6,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { MailModule } from './mail/mail.module';
 import { AuditLogModule } from './common/audit/audit-log.module';
+import { PerformanceScoreSettingsModule } from './common/performance-score/performance-score-settings.module';
 import { HealthModule } from './common/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -74,6 +75,7 @@ import { AnomalyDetectionModule } from './modules/anomaly-detection/anomaly-dete
     PrismaModule,
     MailModule,
     AuditLogModule,
+    PerformanceScoreSettingsModule,
     HealthModule,
     AuthModule,
     UsersModule,

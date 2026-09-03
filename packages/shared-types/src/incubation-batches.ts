@@ -77,4 +77,10 @@ export interface IncubationBatchProfitability {
   grossMarginFcfa: number;
   profitabilityRate: number;
   costPerChickHatchedFcfa: number;
+  /** Lot 5 (score de performance) — `null` avant l'éclosion (`chicksHatched`
+   * non renseigné), jamais une valeur inventée. */
+  performance: {
+    hatchRatePercent: number | null;
+    fertilityRatePercent: number | null;
+  };
 }
