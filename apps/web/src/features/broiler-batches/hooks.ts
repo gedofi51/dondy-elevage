@@ -258,10 +258,19 @@ const ACTIVE_BATCH_STATUSES = new Set([
  * `enabled` doit être câblé sur BROILER_DAILY_RECORDS_READ par l'appelant
  * — un rôle qui a BROILER_BATCHES_READ mais pas ce code (ex.
  * Vendeur/Caisse) déclencherait sinon un 403 par bande active. */
-export function useTodayMortalityTotal(
+export interface BroilerBatchMortalityToday {
+  batch: BroilerBatchWithComputed;
+  mortality: number;
+}
+
+/** Extrait de useTodayMortalityTotal (Lot Tableau de bord) — même
+ * useQueries, détail par bande exposé pour identifier la bande la plus
+ * touchée (KPI "Mortalité aujourd'hui" et sélection par défaut de la
+ * courbe de croissance) sans dupliquer ce fetch. */
+export function useTodayMortalityByBatch(
   batches: BroilerBatchWithComputed[] | undefined,
   enabled: boolean,
-) {
+): BroilerBatchMortalityToday[] | undefined {
   const apiFetch = useApiFetch();
   const inCycleActiveBatches = enabled
     ? (batches ?? [])
@@ -279,7 +288,19 @@ export function useTodayMortalityTotal(
   });
 
   if (!enabled || batches === undefined || results.some((r) => r.isLoading)) return undefined;
-  return results.reduce((sum, r) => sum + (r.data?.mortalityQuantity ?? 0), 0);
+  return inCycleActiveBatches.map(({ batch }, index) => ({
+    batch,
+    mortality: results[index]?.data?.mortalityQuantity ?? 0,
+  }));
+}
+
+export function useTodayMortalityTotal(
+  batches: BroilerBatchWithComputed[] | undefined,
+  enabled: boolean,
+) {
+  const byBatch = useTodayMortalityByBatch(batches, enabled);
+  if (byBatch === undefined) return undefined;
+  return byBatch.reduce((sum, b) => sum + b.mortality, 0);
 }
 
 export function useCreateHealthEvent(batchId: string) {
