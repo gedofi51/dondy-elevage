@@ -8,8 +8,9 @@ vi.mock('next/navigation', () => ({
 }));
 
 let mockUser: { roles: string[] } | null = { roles: ['Propriétaire / Administrateur'] };
+const logoutMock = vi.fn().mockResolvedValue(undefined);
 vi.mock('@/components/providers/auth-provider', () => ({
-  useAuth: () => ({ user: mockUser }),
+  useAuth: () => ({ user: mockUser, logout: logoutMock }),
 }));
 
 const searchIndex: DashboardSearchEntry[] = [
@@ -69,5 +70,11 @@ describe('DashboardHeader', () => {
     render(<DashboardHeader activeBatchCount={2} searchIndex={[]} alertsCount={0} />);
     expect(screen.getByText('PA')).toBeInTheDocument();
     expect(screen.getByText('Propriétaire / Administrateur')).toBeInTheDocument();
+  });
+
+  it('l’avatar ouvre le menu Compte (fusion avec la barre fil d’ariane — pas de doublon)', async () => {
+    render(<DashboardHeader activeBatchCount={2} searchIndex={[]} alertsCount={0} />);
+    fireEvent.click(screen.getByRole('button', { name: /Propriétaire \/ Administrateur/ }));
+    expect(await screen.findByText('Se déconnecter')).toBeInTheDocument();
   });
 });
