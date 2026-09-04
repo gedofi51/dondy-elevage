@@ -1,31 +1,14 @@
 'use client';
 
-import {
-  Bird,
-  Boxes,
-  Droplets,
-  Egg,
-  EggFried,
-  Feather,
-  HeartPulse,
-  Package,
-  Receipt,
-  ShoppingCart,
-  TrendingUp,
-  TriangleAlert,
-  Wallet,
-  Wrench,
-} from 'lucide-react';
-import { PageHeader } from '@/components/shared/page-header';
+import { Boxes, Droplets, EggFried, Feather, Package, Receipt, ShoppingCart, TrendingUp, Wallet, Wrench } from 'lucide-react';
 import { KpiCard } from '@/components/shared/kpi-card';
-import { AlertBadge } from '@/components/shared/alert-badge';
 import { Can } from '@/components/shared/permission-gate';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
 import { useAuth } from '@/components/providers/auth-provider';
 import { useWaterPoints } from '@/features/water-points/hooks';
 import { useAlerts } from '@/features/alerts/hooks';
-import { useBroilerBatches, useTodayMortalityTotal } from '@/features/broiler-batches/hooks';
-import { useLayerBatches, useTodayEggProductionTotal } from '@/features/layer-batches/hooks';
+import { useBroilerBatches } from '@/features/broiler-batches/hooks';
+import { useLayerBatches } from '@/features/layer-batches/hooks';
 import { useBreederBatches } from '@/features/breeder-batches/hooks';
 import { useIncubationBatches } from '@/features/incubation-batches/hooks';
 import { computeHatchRatePercent } from '@/features/incubation-batches/kpi';
@@ -34,6 +17,12 @@ import { StockForecastWidget } from '@/features/items/components/stock-forecast-
 import { useTreasuryPayables, useTreasurySummary } from '@/features/treasury/hooks';
 import { useAssets } from '@/features/assets/hooks';
 import { useMaintenanceTasks } from '@/features/maintenance/hooks';
+import { DashboardHeader, type DashboardSearchEntry } from '@/features/dashboard/components/dashboard-header';
+import { DashboardPrimaryKpis } from '@/features/dashboard/components/dashboard-kpi-row';
+import { DashboardGrowthChartCard } from '@/features/dashboard/components/dashboard-growth-chart-card';
+import { DashboardBatchesTable } from '@/features/dashboard/components/dashboard-batches-table';
+import { DashboardAlertsPanel } from '@/features/dashboard/components/dashboard-alerts-panel';
+import { DashboardInfrastructurePanel } from '@/features/dashboard/components/dashboard-infrastructure-panel';
 
 const ACTIVE_BROILER_STATUSES = new Set([
   'EN_DEMARRAGE',
@@ -42,7 +31,6 @@ const ACTIVE_BROILER_STATUSES = new Set([
   'PRETE_A_VENDRE',
   'EN_VENTE',
 ]);
-
 const ACTIVE_LAYER_STATUSES = new Set(['ELEVAGE', 'PONTE']);
 const ACTIVE_BREEDER_STATUSES = new Set(['ACTIF', 'REFORME']);
 
@@ -59,104 +47,150 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Tableau de bord — refonte "Agritech Premium" (maquette 1a,
+ * `docs/design/DONDY ELEVAGE - 5 directions.html`). Remaniement de
+ * présentation uniquement : chaque bloc consomme des données déjà
+ * exposées par l'API existante, aucun nouvel endpoint. Palette du mockup
+ * déjà globale depuis la Phase 10 (voir DESIGN_SYSTEM.md) — pas de style
+ * local ici, seule la disposition change.
+ *
+ * Écarts signalés (aucune donnée fictive, voir DETTE_TECHNIQUE.md pour le
+ * détail) : pas de variation hebdomadaire sur "Cheptel actuel", pas de
+ * ligne "Objectif" sur la courbe de croissance, pas de "Poids" réel pour
+ * les lignes Pondeuses du tableau des bandes, "Voir tout" remplacé par
+ * deux liens explicites, avatar utilisateur remplacé par le rôle (aucun
+ * nom d'utilisateur disponible côté API).
+ *
+ * `BroilerBatchKpis`/`LayerBatchKpis` (effectif/mortalité/production par
+ * type, ancien dashboard) retirés : redondants avec les nouvelles cartes
+ * combinées "Cheptel actuel"/"Bandes actives"/"Mortalité aujourd'hui"/
+ * "Production d'œufs" ci-dessous, qui couvrent exactement la même donnée.
+ * Tous les autres indicateurs existants (eau, reproducteurs, couvoir,
+ * stocks en alerte, trésorerie, patrimoine, maintenance) sont conservés
+ * tels quels dans la section "Autres indicateurs".
+ */
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const canReadBroiler = user?.permissions.includes(PERMISSIONS.BROILER_BATCHES_READ) ?? false;
+  const canReadLayer = user?.permissions.includes(PERMISSIONS.LAYER_BATCHES_READ) ?? false;
+  const canReadBreeder = user?.permissions.includes(PERMISSIONS.BREEDER_BATCHES_READ) ?? false;
+  const canReadIncubation = user?.permissions.includes(PERMISSIONS.INCUBATION_BATCHES_READ) ?? false;
+  const canReadAlerts = user?.permissions.includes(PERMISSIONS.ALERTS_READ) ?? false;
+  const canReadAssets = user?.permissions.includes(PERMISSIONS.ASSETS_READ) ?? false;
+
+  const { data: broilerBatches } = useBroilerBatches({ enabled: canReadBroiler });
+  const { data: layerBatches } = useLayerBatches({ enabled: canReadLayer });
+  const { data: breederBatches } = useBreederBatches({ enabled: canReadBreeder });
+  const { data: incubationBatches } = useIncubationBatches({ enabled: canReadIncubation });
+  const { data: alertsData } = useAlerts({ status: 'TRIGGERED', limit: 5, enabled: canReadAlerts });
+  const { data: assets } = useAssets({ enabled: canReadAssets });
   const { data: waterPoints } = useWaterPoints();
-  const activeWaterPoints = waterPoints?.filter((wp) => wp.status === 'ACTIF').length ?? '—';
+
+  const alerts = alertsData?.items ?? [];
+  const activeBatchCount =
+    canReadBroiler && canReadLayer && broilerBatches && layerBatches
+      ? broilerBatches.filter((b) => ACTIVE_BROILER_STATUSES.has(b.status)).length +
+        layerBatches.filter((b) => ACTIVE_LAYER_STATUSES.has(b.status)).length
+      : undefined;
+
+  const searchIndex: DashboardSearchEntry[] = [
+    ...(broilerBatches ?? []).map((b) => ({
+      id: b.id,
+      code: b.code,
+      typeLabel: 'Chair',
+      href: `/poulets-chair/${b.id}`,
+    })),
+    ...(layerBatches ?? []).map((b) => ({
+      id: b.id,
+      code: b.code,
+      typeLabel: 'Pondeuses',
+      href: `/pondeuses/${b.id}`,
+    })),
+    ...(breederBatches ?? []).map((b) => ({
+      id: b.id,
+      code: b.code,
+      typeLabel: 'Reproducteurs',
+      href: `/reproducteurs/${b.id}`,
+    })),
+    ...(incubationBatches ?? []).map((b) => ({
+      id: b.id,
+      code: b.code,
+      typeLabel: 'Couvoir',
+      href: `/couvoir/${b.id}`,
+    })),
+  ];
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Tableau de bord"
-        description="Vue d'ensemble — étoffée module par module au fil des prochaines phases."
+      <DashboardHeader
+        activeBatchCount={activeBatchCount}
+        searchIndex={searchIndex}
+        alertsCount={alerts.length}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <KpiCard label="Points d'eau actifs" value={activeWaterPoints} icon={Droplets} tone="info" />
-        <Can permission={PERMISSIONS.BROILER_BATCHES_READ}>
-          <BroilerBatchKpis />
-        </Can>
-        <Can permission={PERMISSIONS.LAYER_BATCHES_READ}>
-          <LayerBatchKpis />
-        </Can>
-        <Can permission={PERMISSIONS.BREEDER_BATCHES_READ}>
-          <BreederBatchKpi />
-        </Can>
-        <Can permission={PERMISSIONS.INCUBATION_BATCHES_READ}>
-          <IncubationBatchKpis />
-        </Can>
-        <Can permission={PERMISSIONS.ITEMS_READ}>
-          <ItemsStockKpi />
-        </Can>
-        <Can permission={PERMISSIONS.TREASURY_READ}>
-          <PayablesKpi />
-        </Can>
-        <Can permission={PERMISSIONS.TREASURY_READ}>
-          <TreasuryKpis />
-        </Can>
-        <Can permission={PERMISSIONS.ASSETS_READ}>
-          <AssetsKpi />
-        </Can>
-        <Can permission={PERMISSIONS.MAINTENANCE_TASKS_READ}>
-          <MaintenanceKpi />
-        </Can>
+      <DashboardPrimaryKpis />
+
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.55fr_1fr] xl:items-start">
+        <div className="flex flex-col gap-5">
+          {canReadBroiler ? (
+            <DashboardGrowthChartCard broilerBatches={broilerBatches} alerts={alerts} />
+          ) : null}
+          {canReadBroiler || canReadLayer ? (
+            <DashboardBatchesTable
+              broilerBatches={broilerBatches}
+              layerBatches={layerBatches}
+              alerts={alerts}
+            />
+          ) : null}
+        </div>
+
+        <div className="flex flex-col gap-5">
+          <Can permission={PERMISSIONS.ALERTS_READ}>
+            <DashboardAlertsPanel alerts={alerts} />
+          </Can>
+          <Can permission={PERMISSIONS.ASSETS_READ}>
+            <DashboardInfrastructurePanel assets={assets} />
+          </Can>
+          <Can permission={PERMISSIONS.ITEMS_READ}>
+            <StockForecastWidget />
+          </Can>
+        </div>
       </div>
 
-      <Can permission={PERMISSIONS.ALERTS_READ}>
-        <AlertsWidget />
-      </Can>
-
-      <Can permission={PERMISSIONS.ITEMS_READ}>
-        <StockForecastWidget />
-      </Can>
+      <div className="flex flex-col gap-3">
+        <h2 className="font-heading text-lg font-semibold text-primary">Autres indicateurs</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <KpiCard
+            label="Points d'eau actifs"
+            value={waterPoints?.filter((wp) => wp.status === 'ACTIF').length ?? '—'}
+            icon={Droplets}
+            tone="info"
+          />
+          <Can permission={PERMISSIONS.BREEDER_BATCHES_READ}>
+            <BreederBatchKpi />
+          </Can>
+          <Can permission={PERMISSIONS.INCUBATION_BATCHES_READ}>
+            <IncubationBatchKpis />
+          </Can>
+          <Can permission={PERMISSIONS.ITEMS_READ}>
+            <ItemsStockKpi />
+          </Can>
+          <Can permission={PERMISSIONS.TREASURY_READ}>
+            <PayablesKpi />
+          </Can>
+          <Can permission={PERMISSIONS.TREASURY_READ}>
+            <TreasuryKpis />
+          </Can>
+          <Can permission={PERMISSIONS.ASSETS_READ}>
+            <AssetsKpi />
+          </Can>
+          <Can permission={PERMISSIONS.MAINTENANCE_TASKS_READ}>
+            <MaintenanceKpi />
+          </Can>
+        </div>
+      </div>
     </div>
-  );
-}
-
-function BroilerBatchKpis() {
-  const { user } = useAuth();
-  const canReadDailyRecords = user?.permissions.includes(PERMISSIONS.BROILER_DAILY_RECORDS_READ) ?? false;
-  const { data: batches } = useBroilerBatches();
-  const activeBatches = batches?.filter((b) => ACTIVE_BROILER_STATUSES.has(b.status)).length ?? '—';
-  const totalHeadcount = batches?.reduce((sum, b) => sum + b.currentHeadcount, 0) ?? '—';
-  const todayMortality = useTodayMortalityTotal(batches, canReadDailyRecords);
-
-  return (
-    <>
-      <KpiCard label="Bandes de chair actives" value={activeBatches} icon={Bird} tone="info" />
-      <KpiCard label="Effectif vivant (chair)" value={totalHeadcount} unit="sujets" icon={Bird} />
-      <Can permission={PERMISSIONS.BROILER_DAILY_RECORDS_READ}>
-        <KpiCard
-          label="Mortalité du jour (chair)"
-          value={todayMortality ?? '—'}
-          icon={HeartPulse}
-          tone={typeof todayMortality === 'number' && todayMortality > 0 ? 'destructive' : 'default'}
-        />
-      </Can>
-    </>
-  );
-}
-
-function LayerBatchKpis() {
-  const { user } = useAuth();
-  const canReadDailyRecords = user?.permissions.includes(PERMISSIONS.LAYER_DAILY_RECORDS_READ) ?? false;
-  const { data: batches } = useLayerBatches();
-  const activeBatches = batches?.filter((b) => ACTIVE_LAYER_STATUSES.has(b.status)).length ?? '—';
-  const totalHeadcount = batches?.reduce((sum, b) => sum + b.currentHeadcount, 0) ?? '—';
-  const todayEggProduction = useTodayEggProductionTotal(batches, canReadDailyRecords);
-
-  return (
-    <>
-      <KpiCard label="Lots de pondeuses actifs" value={activeBatches} icon={Egg} tone="info" />
-      <KpiCard label="Effectif total (pondeuses)" value={totalHeadcount} unit="poules" icon={Egg} />
-      <Can permission={PERMISSIONS.LAYER_DAILY_RECORDS_READ}>
-        <KpiCard
-          label="Production d’œufs du jour"
-          value={todayEggProduction ?? '—'}
-          unit="œufs"
-          icon={Egg}
-        />
-      </Can>
-    </>
   );
 }
 
@@ -291,31 +325,5 @@ function MaintenanceKpi() {
       icon={Wrench}
       tone={typeof lateTasks === 'number' && lateTasks > 0 ? 'destructive' : 'default'}
     />
-  );
-}
-
-function AlertsWidget() {
-  const { data } = useAlerts({ status: 'TRIGGERED', limit: 5 });
-  const alerts = data?.items ?? [];
-
-  return (
-    <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-      <h2 className="flex items-center gap-2 text-sm font-medium text-foreground">
-        <TriangleAlert className="h-4 w-4 text-warning" aria-hidden="true" />
-        Alertes actives
-      </h2>
-      {alerts.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Aucune alerte active.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {alerts.map((alert) => (
-            <li key={alert.id} className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-foreground">{alert.title}</span>
-              <AlertBadge severity={alert.severity} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
   );
 }
