@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Bell, Search } from 'lucide-react';
 import { useAuth } from '@/components/providers/auth-provider';
 import { Input } from '@/components/ui/input';
+import { AccountMenu } from '@/components/layout/account-menu';
 import { cn } from '@/lib/utils';
 
 export interface DashboardSearchEntry {
@@ -50,7 +51,10 @@ function initialsFromRole(role: string | undefined): string {
  * jamais une recherche factice), cloche de notifications réutilisant le
  * total d'alertes actives déjà récupéré pour AlertsPanel (ancre vers ce
  * panneau, pas un système de notification séparé — aucun n'existe côté
- * backend), badge de compte (voir initialsFromRole ci-dessus).
+ * backend), avatar de compte (initiales/rôle, voir initialsFromRole
+ * ci-dessus) qui ouvre le même `AccountMenu` que `AppTopbar` — cette ligne
+ * remplace entièrement `AppTopbar` sur le Tableau de bord (fusion fil
+ * d'ariane + Compte, voir app-topbar.tsx), pas de second point d'accès.
  */
 export function DashboardHeader({
   activeBatchCount,
@@ -143,12 +147,21 @@ export function DashboardHeader({
           ) : null}
         </a>
 
-        <div className="flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
-            {initialsFromRole(roleLabel)}
-          </span>
-          <span className="hidden text-xs font-medium text-foreground sm:inline">{roleLabel ?? '—'}</span>
-        </div>
+        <AccountMenu
+          trigger={
+            <button
+              type="button"
+              className="flex shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5 hover:bg-muted"
+            >
+              <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+                {initialsFromRole(roleLabel)}
+              </span>
+              <span className="hidden text-xs font-medium text-foreground sm:inline">
+                {roleLabel ?? '—'}
+              </span>
+            </button>
+          }
+        />
       </div>
     </div>
   );
