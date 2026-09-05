@@ -76,4 +76,14 @@ describe('AppSidebar', () => {
     expect(screen.queryByText('Équipements')).not.toBeInTheDocument();
     expect(screen.queryByText('Stocks')).not.toBeInTheDocument();
   });
+
+  it('garde son propre défilement (nav interne overflow-y-auto), indépendant de celui du contenu (Lot 5 — en-tête fixe)', () => {
+    mockPermissions = ALL_PERMISSIONS;
+    pathnameMock.mockReturnValue('/');
+    const { container } = render(<AppSidebar />);
+
+    const nav = container.querySelector('nav');
+    expect(nav).not.toBeNull();
+    expect(nav!.className).toContain('overflow-y-auto');
+  });
 });
