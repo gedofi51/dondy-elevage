@@ -2838,6 +2838,93 @@ d'administration des coefficients (préremplissage → saisie d'une cible IC
 fiche bande confirmant la cible désormais affichée) vérifié en conditions
 réelles via le navigateur, pas seulement en test automatisé.
 
+## Administration — Écran Utilisateurs (création/liste/édition, RBAC)
+
+**Investigation préalable** (avant tout code) : `users.controller.ts` /
+`CreateUserDto` / `UsersService` lus en détail — la question « mot de passe
+saisi par l'admin ou invitation par email » était déjà tranchée côté
+backend, pas un choix à faire ici. `CreateUserDto` n'a **aucun champ
+`password`** (rejeté explicitement en 400 par le
+`ValidationPipe({forbidNonWhitelisted: true})` global si on en envoie un
+quand même — testé en e2e) : `UsersService.create()` appelle
+`AuthService.issueInvitation()`, qui pose
+`emailVerificationTokenHash`/`emailVerificationExpiresAt` et envoie un
+email réel (Mailpit en dev) vers `${APP_URL}/activer-compte?token=...` —
+page déjà existante (`(auth)/activer-compte`), où l'utilisateur choisit
+lui-même son mot de passe via `AuthService.activateAccount()`. Le
+formulaire de création (`user-form.tsx`) ne demande donc que email/nom/
+rôles, jamais de mot de passe, et le bouton est libellé « Envoyer
+l'invitation » plutôt que « Créer » pour refléter fidèlement ce
+fonctionnement à l'utilisateur final.
+
+**Rôles multiples, pas un seul** : `CreateUserDto.roleIds` est
+`string[]` (`@ArrayMinSize(1)`, pas de maximum) — le formulaire utilise
+donc un multi-sélecteur à cases à cocher (`RoleCheckboxGroup`, même
+patron que `EntitySelector` du Lot 4 Équipements) plutôt qu'un `Select`
+à choix unique, pour ne pas restreindre côté UI une capacité réellement
+supportée côté API.
+
+**Garde-fous métier, implémentés côté service (`UsersService.update()`),
+jamais seulement côté front** :
+- Un utilisateur ne peut pas se désactiver lui-même (comparaison
+  `actorId === targetId` avant tout changement de statut vers
+  `INACTIVE`/`SUSPENDED`).
+- Impossible de désactiver le **dernier utilisateur actif de la ferme
+  disposant de `USERS_UPDATE`** — ancré précisément sur cette permission
+  (celle que l'écran lui-même exige), pas sur une notion floue
+  d'« administrateur ». Nouveau helper privé
+  `countOtherActiveUsersWithUsersUpdate()` : relation Prisma imbriquée
+  `UserRole → Role → RolePermission → Permission.code`, filtrée sur
+  `farmId` + `status: ACTIVE`, excluant l'utilisateur ciblé.
+- Isolation `farmId` : `UsersService.findAll()`/`update()` scopés à la
+  ferme de l'acteur, vérifiée en e2e avec deux fermes de test
+  (`farmA`/`farmB`) — un Propriétaire ne voit/ne modifie jamais les
+  utilisateurs d'une autre ferme.
+
+**`UserStatus` — `Actif`/`Inactif`/`Suspendu` proposés au choix de
+l'administrateur** (`editableUserStatusOptions`, `schemas.ts`), reflétant
+fidèlement les 3 statuts « stables » du catalogue backend. Le mandat
+demandait seulement « activer/désactiver » (binaire) ; le formulaire va
+légèrement au-delà en exposant aussi `SUSPENDED`, présent tel quel dans
+`UserStatus` — retrait jugé plus arbitraire que sa conservation, le
+backend ne définissant aucun statut « caché ». **Point de dette
+documenté explicitement** : le guard de connexion
+(`user.status !== 'ACTIVE'`) traite `INACTIVE` et `SUSPENDED` de façon
+strictement identique aujourd'hui (aucune règle métier ne les distingue
+encore) — un Propriétaire voit donc deux options qui produisent
+actuellement le même effet. À corriger le jour où `SUSPENDED` reçoit une
+sémantique propre (ex. suspension temporaire avec date de fin), ou à
+retirer du `Select` si cette distinction ne voit jamais le jour.
+`INVITED` reste exclu des options éditables : état de transition
+automatique (avant activation), jamais un choix administratif direct.
+
+**Navigation — lien direct, pas de catégorie « Administration »** :
+une seule route de premier niveau (`/utilisateurs`) aujourd'hui — règle
+déjà appliquée uniformément depuis la Phase 21 (« une entrée devient
+`NavCategory` seulement si elle agrège ≥2 routes de premier niveau
+réelles ») : `Utilisateurs` reste un `NavLink` direct, gardé par
+`PERMISSIONS.USERS_READ` (déjà défini au catalogue, aucune permission
+nouvelle créée), placé en fin de menu aux côtés de
+`Personnel`/`Pointage` (même registre « gestion interne de la ferme »).
+
+**Bugs de frappe rencontrés et corrigés avant merge** (aucun des deux
+n'affectait le comportement runtime, seulement la compilation) :
+- `StatusTone` importé depuis `status-badge.tsx` alors que ce type
+  (`Tone`) n'y est pas exporté — corrigé en inlinant l'union locale sur
+  `statusTones: Record<UserStatus, ...>`.
+- `onValueChange` du `Select` base-ui a la signature
+  `(value: string | null) => void`, incompatible avec un simple
+  `Dispatch<SetStateAction<string>>` — corrigé en enveloppant chaque
+  handler de filtre (`(value) => setRoleFilter(value ?? ALL)`).
+
+**Vérifié** : backend — 327/327 tests unitaires API, 355/355 e2e API
+(dont 9 nouveaux tests dédiés `users.e2e-spec.ts` : invitation sans mot
+de passe, rejet d'un `password` explicite, isolation farmId à deux
+fermes, garde-fou auto-désactivation, garde-fou dernier
+`USERS_UPDATE` actif). Frontend — 282/282 tests unitaires web (34
+nouveaux/modifiés : liste, formulaire création/édition,
+navigation), `typecheck`/`lint`/`build` propres.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

@@ -98,11 +98,22 @@ describe('getVisibleNavEntries', () => {
     const visible = getVisibleNavEntries([]);
     expect(visible.some((entry) => entry.type === 'link' && entry.href === '/comparaison')).toBe(false);
   });
+
+  // Utilisateurs (Administration) — permission unique (USERS_READ), pas anyPermission.
+  it('shows "Utilisateurs" when USERS_READ is present', () => {
+    const visible = getVisibleNavEntries([PERMISSIONS.USERS_READ]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/utilisateurs')).toBe(true);
+  });
+
+  it('hides "Utilisateurs" when USERS_READ is absent', () => {
+    const visible = getVisibleNavEntries([]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/utilisateurs')).toBe(false);
+  });
 });
 
 describe('flatNavItems', () => {
-  it('contains exactly the 19 real routes (12 top-level links/categories flattened)', () => {
-    expect(flatNavItems).toHaveLength(19);
+  it('contains exactly the 20 real routes (13 top-level links/categories flattened)', () => {
+    expect(flatNavItems).toHaveLength(20);
   });
 
   it('preserves the order of navItems, expanding categories in place', () => {

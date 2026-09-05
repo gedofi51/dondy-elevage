@@ -36,3 +36,4 @@ export * from './payroll';
 export * from './salary-advances';
 export * from './qr-codes';
 export * from './performance-score';
+export * from './roles';
