@@ -18,6 +18,7 @@ import {
   Sprout,
   Thermometer,
   TriangleAlert,
+  UserCog,
   Users,
   Wallet,
   Wrench,
@@ -241,6 +242,18 @@ export const navItems: NavEntry[] = [
     href: '/pointage',
     icon: ClipboardCheck,
     anyPermission: [PERMISSIONS.ATTENDANCE_READ, PERMISSIONS.EMPLOYEE_TASKS_READ],
+  },
+  // Utilisateurs (Administration) — une seule route de premier niveau
+  // aujourd'hui : reste un NavLink direct, même règle que Points d'eau/
+  // Stocks/Achats (pas de catégorie "Administration" pour une entrée
+  // unique) — voir DETTE_TECHNIQUE.md. Placée en dernier, aux côtés de
+  // Personnel/Pointage (même registre "gestion interne de la ferme").
+  {
+    type: 'link',
+    label: 'Utilisateurs',
+    href: '/utilisateurs',
+    icon: UserCog,
+    permission: PERMISSIONS.USERS_READ,
   },
 ];
 

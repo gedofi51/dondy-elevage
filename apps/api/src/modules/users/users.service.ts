@@ -95,6 +95,26 @@ export class UsersService {
     return user;
   }
 
+  /** Nombre d'utilisateurs ACTIFS d'une ferme (hors `excludeUserId`) dont
+   * au moins un rôle porte USERS_UPDATE — la permission qui gère
+   * précisément ce risque (jamais un concept "admin" plus vague inventé
+   * pour l'occasion). */
+  private async countOtherActiveUsersWithUsersUpdate(
+    farmId: string,
+    excludeUserId: string,
+  ): Promise<number> {
+    return this.prisma.user.count({
+      where: {
+        farmId,
+        id: { not: excludeUserId },
+        status: 'ACTIVE',
+        userRoles: {
+          some: { role: { rolePermissions: { some: { permission: { code: PERMISSIONS.USERS_UPDATE } } } } },
+        },
+      },
+    });
+  }
+
   async update(
     actingUser: AccessTokenPayload,
     id: string,
@@ -106,6 +126,34 @@ export class UsersService {
       throw new NotFoundException('Utilisateur introuvable.');
     }
     assertSameFarm(actingUser, existing.farmId);
+
+    // Un changement de statut qui quitte ACTIVE = une désactivation — les
+    // deux garde-fous ci-dessous ne s'appliquent qu'à cette transition
+    // précise (jamais à un simple changement de nom/rôles qui laisse le
+    // compte actif, ni à une réactivation).
+    const isDeactivating =
+      dto.status !== undefined && dto.status !== 'ACTIVE' && existing.status === 'ACTIVE';
+    if (isDeactivating) {
+      if (id === actingUser.sub) {
+        throw new ConflictException('Vous ne pouvez pas désactiver votre propre compte.');
+      }
+
+      const targetHasAdminRights = await this.prisma.userRole.findFirst({
+        where: {
+          userId: id,
+          role: { rolePermissions: { some: { permission: { code: PERMISSIONS.USERS_UPDATE } } } },
+        },
+        select: { id: true },
+      });
+      if (targetHasAdminRights) {
+        const remainingAdmins = await this.countOtherActiveUsersWithUsersUpdate(existing.farmId, id);
+        if (remainingAdmins === 0) {
+          throw new ConflictException(
+            "Impossible de désactiver le dernier utilisateur actif disposant de droits d'administration sur cette ferme.",
+          );
+        }
+      }
+    }
 
     if (dto.roleIds) {
       const roles = await this.prisma.role.findMany({ where: { id: { in: dto.roleIds } } });
