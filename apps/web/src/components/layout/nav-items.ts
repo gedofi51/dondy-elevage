@@ -299,3 +299,25 @@ export function isNavLinkActive(pathname: string, href: string): boolean {
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
+
+/** Titre affiché quand aucune entrée de nav ne correspond à la route
+ * courante (ex. /scanner/[token], résolveur QR sans entrée de menu
+ * propre — voir DETTE_TECHNIQUE.md) — jamais un titre vide, jamais un
+ * titre d'une autre page. */
+const FALLBACK_PAGE_TITLE = 'DONDY ELEVAGE';
+
+/**
+ * Résout le titre de la page courante (en-tête fixe `AppTopbar`) depuis
+ * le même référentiel que la barre latérale — `flatNavItems` +
+ * `isNavLinkActive`, un seul point de vérité pour "quelle page suis-je",
+ * jamais une seconde liste de titres dupliquée à maintenir en parallèle.
+ * Une page fille (ex. /poulets-chair/abc123/vendre) hérite du libellé de
+ * sa section (ici "Poulets de chair"), pas d'un titre par écran distinct
+ * — même granularité que le fil d'ariane existant, jusqu'ici figé à
+ * "Tableau de bord" sur tout l'espace applicatif (régression corrigée
+ * ici, voir DETTE_TECHNIQUE.md).
+ */
+export function resolvePageTitle(pathname: string): string {
+  const match = flatNavItems.find((item) => isNavLinkActive(pathname, item.href));
+  return match?.label ?? FALLBACK_PAGE_TITLE;
+}

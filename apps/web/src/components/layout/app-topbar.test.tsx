@@ -13,13 +13,32 @@ vi.mock('@/components/providers/auth-provider', () => ({
 }));
 
 describe('AppTopbar', () => {
-  it('affiche le fil d’ariane et le bouton Compte sur les écrans autres que le Tableau de bord', async () => {
+  it('affiche le titre de la page courante (pas "Tableau de bord" figé) et le bouton Compte', async () => {
     mockPathname = '/stocks';
     render(<AppTopbar />);
 
-    expect(screen.getByText('Tableau de bord')).toBeInTheDocument();
+    expect(screen.getByText('Stocks')).toBeInTheDocument();
+    expect(screen.queryByText('Tableau de bord')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Compte/ }));
     expect(await screen.findByText('Se déconnecter')).toBeInTheDocument();
+  });
+
+  // Une page différente doit afficher un titre différent — preuve que le
+  // titre suit réellement la route (pas un texte figé quelconque).
+  it('adapte le titre à chaque page (Personnel, Patrimoine)', () => {
+    mockPathname = '/personnel';
+    const { rerender } = render(<AppTopbar />);
+    expect(screen.getByText('Personnel')).toBeInTheDocument();
+
+    mockPathname = '/patrimoine';
+    rerender(<AppTopbar />);
+    expect(screen.getByText('Patrimoine')).toBeInTheDocument();
+  });
+
+  it('affiche le titre de la section parente sur une sous-route (fiche/formulaire)', () => {
+    mockPathname = '/poulets-chair/abc123/vendre';
+    render(<AppTopbar />);
+    expect(screen.getByText('Poulets de chair')).toBeInTheDocument();
   });
 
   it('ne s’affiche pas sur le Tableau de bord (fusionné dans DashboardHeader)', () => {

@@ -2838,6 +2838,56 @@ d'administration des coefficients (préremplissage → saisie d'une cible IC
 fiche bande confirmant la cible désormais affichée) vérifié en conditions
 réelles via le navigateur, pas seulement en test automatisé.
 
+## Refonte Tableau de bord — en-tête fixe généralisé (titre par page)
+
+Chantier "Lots 1-5" (`feature/dashboard-refonte-agritech-premium`,
+`fix/encodage-noms-role`, `feature/dashboard-fusion-entete-compte`,
+`feature/dashboard-entete-fixe-scroll`) mené sans fichier de suivi commis
+au dépôt — aucun `REFONTE_TABLEAU_DE_BORD.md` ni section
+DETTE_TECHNIQUE.md dédiée n'existe pour ces 4 PR (#32-35), constaté en
+préalable à ce lot plutôt que supposé. Cette entrée documente uniquement
+la correction ci-dessous, pas rétroactivement les 4 PR précédentes.
+
+**Bug corrigé** : `AppTopbar` (fil d'ariane + Compte, toutes les pages
+sauf le Tableau de bord) affichait le texte **figé** "Tableau de bord" sur
+**toutes** les autres pages (Stocks, Personnel, Poulets de chair…) —
+reliquat de l'implémentation initiale (Lot 4 du chantier dashboard),
+jamais généralisé depuis.
+
+- **`resolvePageTitle(pathname)`** (nouveau, `nav-items.ts`) — réutilise
+  `flatNavItems`/`isNavLinkActive` (déjà le référentiel de la barre
+  latérale) comme seule source du titre, pas une seconde liste à
+  maintenir en parallèle. Une sous-route (fiche, formulaire) hérite du
+  libellé de sa section (`/poulets-chair/:id/vendre` → "Poulets de
+  chair"), même granularité que le fil d'ariane existant — pas un titre
+  par écran individuel (hors périmètre de cette correction).
+- **Repli explicite** (`'DONDY ELEVAGE'`) pour une route sans entrée de
+  nav (ex. `/scanner/[token]`, résolveur QR) — jamais un titre vide, jamais
+  celui d'une autre page.
+- **Recherche/cloche non étendues aux autres pages** (décision, point
+  explicitement posé par le prompt) : les deux appartiennent à
+  `DashboardHeader` et sont liées à des données que SEUL le Tableau de
+  bord charge déjà (recherche = filtre sur les bandes chargées par cette
+  page ; cloche = total d'alertes déjà récupéré pour son panneau
+  Alertes). Les étendre exigerait que CHAQUE page fournisse sa propre
+  source de recherche/alertes — un chantier à part, pas une extension de
+  cette correction ponctuelle. `AppTopbar` reste donc titre + Compte
+  uniquement, sur toutes les pages hors Tableau de bord.
+- **Tests mis à jour** (`app-topbar.test.tsx`, `app-shell.test.tsx`,
+  `nav-items.test.ts`) — les anciennes assertions vérifiaient
+  littéralement le texte figé "Tableau de bord" sur `/stocks` (donc le
+  bug lui-même) ; remplacées par des assertions sur le titre réel par
+  page, plus des cas nouveaux (page catégorie, sous-route, route hors
+  nav).
+- **Vérifié manuellement** (Browser pane, navigateur réel, utilisateur
+  `lot7-a-proprietaire-administrateur@test.local`) : Stocks, Personnel,
+  Poulets de chair (liste + fiche bande), Tableau de bord — desktop et
+  mobile (375×812), aucune régression sur l'en-tête fusionné du Tableau
+  de bord (Lots 4/5 du chantier dashboard). RBAC non ré-exercée
+  manuellement : `AccountMenu` (contenu du menu Compte) n'est pas touché
+  par cette correction, seul le texte du titre change — aucune surface
+  RBAC nouvelle.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)

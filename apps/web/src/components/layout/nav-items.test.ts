@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { PERMISSIONS } from '@dondy-elevage/shared-types';
-import { flatNavItems, getVisibleNavEntries, isNavLinkActive, navItems } from './nav-items';
+import {
+  flatNavItems,
+  getVisibleNavEntries,
+  isNavLinkActive,
+  navItems,
+  resolvePageTitle,
+} from './nav-items';
 
 describe('getVisibleNavEntries', () => {
   it('always includes links without a permission requirement (ex. Tableau de bord)', () => {
@@ -141,5 +147,30 @@ describe('isNavLinkActive', () => {
 
   it('does not match an unrelated route', () => {
     expect(isNavLinkActive('/achats', '/pondeuses')).toBe(false);
+  });
+});
+
+describe('resolvePageTitle', () => {
+  it('resolves the exact label for a top-level link', () => {
+    expect(resolvePageTitle('/stocks')).toBe('Stocks');
+    expect(resolvePageTitle('/personnel')).toBe('Personnel');
+  });
+
+  it('resolves the leaf label for a category child, not the category label', () => {
+    expect(resolvePageTitle('/poulets-chair')).toBe('Poulets de chair');
+    expect(resolvePageTitle('/patrimoine')).toBe('Patrimoine');
+  });
+
+  it('resolves the parent section label for a nested detail/sub-route', () => {
+    expect(resolvePageTitle('/poulets-chair/abc123/vendre')).toBe('Poulets de chair');
+    expect(resolvePageTitle('/pondeuses/abc123/suivi/2026-08-30')).toBe('Pondeuses');
+  });
+
+  it('falls back to a generic title for a route with no matching nav entry (ex. /scanner)', () => {
+    expect(resolvePageTitle('/scanner/some-token')).toBe('DONDY ELEVAGE');
+  });
+
+  it('resolves "Tableau de bord" for "/" itself (unused in practice — AppTopbar self-nullifies there)', () => {
+    expect(resolvePageTitle('/')).toBe('Tableau de bord');
   });
 });

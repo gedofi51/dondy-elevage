@@ -29,7 +29,7 @@ describe('AppShell', () => {
       </AuthProvider>,
     );
 
-    expect(await screen.findAllByText('Tableau de bord')).not.toHaveLength(0);
+    expect(await screen.findAllByText('Stocks')).not.toHaveLength(0);
     expect(screen.getByRole('button', { name: /Compte/ })).toBeInTheDocument();
     expect(screen.getByText('Contenu de la page')).toBeInTheDocument();
 
