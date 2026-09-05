@@ -20,6 +20,8 @@ const layerBatchBaseFields = {
   ageAtEntryWeeks: z.coerce.number().int('Nombre entier').min(0).optional(),
   ageAtEntryDays: z.coerce.number().int('Nombre entier').min(0).optional(),
   buildingId: z.string().min(1, 'Bâtiment requis'),
+  // Option A (Bâtiments/Blocs) — additif/facultatif, jamais requis.
+  blockId: z.string().optional().or(z.literal('')),
   primaryManagerId: z.string().min(1, 'Responsable requis'),
   observations: z.string().max(2000).optional().or(z.literal('')),
 };

@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BuildingSelect, UserSelect } from '@/components/shared/entity-select';
+import { BlockSelect, BuildingSelect, UserSelect } from '@/components/shared/entity-select';
 import { useCreateBreederBatch, useUpdateBreederBatch } from '../hooks';
 import {
   createBreederBatchSchema,
@@ -39,6 +39,7 @@ function CreateBreederBatchForm() {
   const {
     register,
     control,
+    watch,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<CreateBreederBatchFormInput, unknown, CreateBreederBatchFormValues>({
@@ -46,14 +47,16 @@ function CreateBreederBatchForm() {
     // buildingId/primaryManagerId initialisés à '' : sans valeur par défaut,
     // le Select démarre non contrôlé puis devient contrôlé dès la première
     // sélection — warning base-ui (voir DETTE_TECHNIQUE.md Phase 12).
-    defaultValues: { buildingId: '', primaryManagerId: '' },
+    defaultValues: { buildingId: '', blockId: '', primaryManagerId: '' },
   });
+  const buildingId = watch('buildingId');
 
   async function onSubmit(values: CreateBreederBatchFormValues) {
     try {
       const created = await createMutation.mutateAsync({
         ...values,
         strain: values.strain || undefined,
+        blockId: values.blockId || undefined,
         observations: values.observations || undefined,
       });
       toast.success('Lot créé.');
@@ -101,6 +104,12 @@ function CreateBreederBatchForm() {
       </div>
 
       <BuildingSelect name="buildingId" control={control} error={errors.buildingId?.message} />
+      <BlockSelect
+        name="blockId"
+        control={control}
+        error={errors.blockId?.message}
+        buildingId={buildingId}
+      />
       <UserSelect
         name="primaryManagerId"
         label="Responsable"
@@ -126,6 +135,7 @@ function EditBreederBatchForm({ batch }: { batch: BreederBatchWithComputed }) {
   const {
     register,
     control,
+    watch,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<UpdateBreederBatchFormInput, unknown, UpdateBreederBatchFormValues>({
@@ -136,17 +146,22 @@ function EditBreederBatchForm({ batch }: { batch: BreederBatchWithComputed }) {
       femaleCount: batch.femaleCount,
       maleCount: batch.maleCount,
       buildingId: batch.buildingId,
+      blockId: batch.blockId ?? '',
       primaryManagerId: batch.primaryManagerId,
       observations: batch.observations ?? '',
       status: batch.status as (typeof BREEDER_BATCH_EDITABLE_STATUSES)[number],
     },
   });
+  const buildingId = watch('buildingId');
 
   async function onSubmit(values: UpdateBreederBatchFormValues) {
     try {
       await updateMutation.mutateAsync({
         ...values,
         strain: values.strain || undefined,
+        // '' -> null explicite : un champ vidé doit effacer le bloc en
+        // base, pas être ignoré par le PATCH partiel.
+        blockId: values.blockId || null,
         observations: values.observations || undefined,
       });
       toast.success('Lot modifié.');
@@ -194,6 +209,12 @@ function EditBreederBatchForm({ batch }: { batch: BreederBatchWithComputed }) {
       </div>
 
       <BuildingSelect name="buildingId" control={control} error={errors.buildingId?.message} />
+      <BlockSelect
+        name="blockId"
+        control={control}
+        error={errors.blockId?.message}
+        buildingId={buildingId}
+      />
       <UserSelect
         name="primaryManagerId"
         label="Responsable"

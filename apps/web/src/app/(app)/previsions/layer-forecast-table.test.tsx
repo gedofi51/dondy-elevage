@@ -20,6 +20,7 @@ function makeBatch(overrides: Partial<LayerBatchWithComputed> = {}): LayerBatchW
     ageAtEntryWeeks: 18,
     ageAtEntryDays: null,
     buildingId: 'building-1',
+    blockId: null,
     primaryManagerId: 'user-1',
     status: 'PONTE',
     observations: null,

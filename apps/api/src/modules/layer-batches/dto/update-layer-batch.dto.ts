@@ -38,6 +38,12 @@ export class UpdateLayerBatchDto {
   @IsUUID('4')
   buildingId?: string;
 
+  /** Option A (Bâtiments/Blocs) — `null` explicite accepté (efface le
+   * bloc). */
+  @IsOptional()
+  @IsUUID('4')
+  blockId?: string | null;
+
   @IsOptional()
   @IsUUID('4')
   primaryManagerId?: string;

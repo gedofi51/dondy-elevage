@@ -29,6 +29,7 @@ function makeBatch(overrides: Partial<BroilerBatchWithComputed> = {}): BroilerBa
     transportCostFcfa: 0,
     otherCostsFcfa: 0,
     buildingId: 'building-1',
+    blockId: null,
     primaryManagerId: 'user-1',
     plannedSaleDate: '2026-09-15T00:00:00.000Z',
     status: 'EN_CROISSANCE',

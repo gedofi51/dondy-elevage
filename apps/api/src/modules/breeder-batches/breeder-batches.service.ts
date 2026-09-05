@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, type BreederBatch, type BreederBatchStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
@@ -57,6 +62,25 @@ export class BreederBatchesService {
       if (!manager || manager.farmId !== farmId) {
         throw new NotFoundException('Responsable introuvable.');
       }
+    }
+  }
+
+  /** Option A (Bâtiments/Blocs) — voir le commentaire équivalent dans
+   * BroilerBatchesService. */
+  private async assertBlockBelongsToBuilding(
+    farmId: string,
+    blockId: string | null | undefined,
+    effectiveBuildingId: string,
+  ): Promise<void> {
+    if (!blockId) {
+      return;
+    }
+    const block = await this.prisma.block.findUnique({ where: { id: blockId } });
+    if (!block || block.farmId !== farmId) {
+      throw new NotFoundException('Bloc introuvable.');
+    }
+    if (block.buildingId !== effectiveBuildingId) {
+      throw new BadRequestException("Le bloc sélectionné n'appartient pas au bâtiment choisi.");
     }
   }
 
@@ -129,6 +153,7 @@ export class BreederBatchesService {
       buildingId: dto.buildingId,
       primaryManagerId: dto.primaryManagerId,
     });
+    await this.assertBlockBelongsToBuilding(actingUser.farmId, dto.blockId, dto.buildingId);
 
     const constitutionDate = new Date(dto.constitutionDate);
 
@@ -145,6 +170,7 @@ export class BreederBatchesService {
             femaleCount: dto.femaleCount,
             maleCount: dto.maleCount,
             buildingId: dto.buildingId,
+            blockId: dto.blockId,
             primaryManagerId: dto.primaryManagerId,
             observations: dto.observations,
             createdBy: actingUser.sub,
@@ -214,6 +240,11 @@ export class BreederBatchesService {
       buildingId: dto.buildingId,
       primaryManagerId: dto.primaryManagerId,
     });
+    await this.assertBlockBelongsToBuilding(
+      actingUser.farmId,
+      dto.blockId,
+      dto.buildingId ?? existing.buildingId,
+    );
 
     const updated = await this.prisma.breederBatch.update({
       where: { id },

@@ -22,6 +22,8 @@ export interface BreederBatch {
   femaleCount: number;
   maleCount: number;
   buildingId: string;
+  /** Option A (Bâtiments/Blocs) — additif/facultatif. */
+  blockId: string | null;
   primaryManagerId: string;
   status: BreederBatchStatus;
   observations: string | null;
@@ -43,6 +45,7 @@ export interface CreateBreederBatchInput {
   femaleCount: number;
   maleCount: number;
   buildingId: string;
+  blockId?: string;
   primaryManagerId: string;
   observations?: string;
 }
@@ -53,6 +56,7 @@ export interface UpdateBreederBatchInput {
   femaleCount?: number;
   maleCount?: number;
   buildingId?: string;
+  blockId?: string | null;
   primaryManagerId?: string;
   status?: BreederBatchStatus;
   observations?: string;

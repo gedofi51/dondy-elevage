@@ -24,6 +24,8 @@ export interface LayerBatch {
   ageAtEntryWeeks: number | null;
   ageAtEntryDays: number | null;
   buildingId: string;
+  /** Option A (Bâtiments/Blocs) — additif/facultatif. */
+  blockId: string | null;
   primaryManagerId: string;
   status: LayerBatchStatus;
   observations: string | null;
@@ -45,6 +47,7 @@ export interface CreateLayerBatchInput {
   ageAtEntryWeeks?: number;
   ageAtEntryDays?: number;
   buildingId: string;
+  blockId?: string;
   primaryManagerId: string;
   observations?: string;
 }
@@ -56,6 +59,7 @@ export interface UpdateLayerBatchInput {
   ageAtEntryWeeks?: number;
   ageAtEntryDays?: number;
   buildingId?: string;
+  blockId?: string | null;
   primaryManagerId?: string;
   status?: LayerBatchStatus;
   observations?: string;

@@ -70,6 +70,8 @@ export interface BroilerBatch {
   transportCostFcfa: number;
   otherCostsFcfa: number;
   buildingId: string;
+  /** Option A (Bâtiments/Blocs) — additif/facultatif. */
+  blockId: string | null;
   primaryManagerId: string;
   plannedSaleDate: string;
   status: BroilerBatchStatus;
@@ -103,6 +105,7 @@ export interface CreateBroilerBatchInput {
   transportCostFcfa?: number;
   otherCostsFcfa?: number;
   buildingId: string;
+  blockId?: string;
   primaryManagerId: string;
   /** Défaut serveur = arrivalDate + 44 jours si omis. */
   plannedSaleDate?: string;
@@ -123,6 +126,7 @@ export interface UpdateBroilerBatchInput {
   transportCostFcfa?: number;
   otherCostsFcfa?: number;
   buildingId?: string;
+  blockId?: string | null;
   primaryManagerId?: string;
   plannedSaleDate?: string;
   status?: BroilerBatchStatus;

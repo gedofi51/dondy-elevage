@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BuildingSelect, UserSelect } from '@/components/shared/entity-select';
+import { BlockSelect, BuildingSelect, UserSelect } from '@/components/shared/entity-select';
 import { useSuppliers } from '@/features/suppliers/hooks';
 import { useCreateBroilerBatch, useUpdateBroilerBatch } from '../hooks';
 import {
@@ -120,10 +120,12 @@ function CreateBroilerBatchForm() {
       origin: 'NAISSANCE_INTERNE',
       deadOnArrivalQuantity: 0,
       buildingId: '',
+      blockId: '',
       primaryManagerId: '',
     },
   });
   const origin = watch('origin');
+  const buildingId = watch('buildingId');
 
   async function onSubmit(values: CreateBroilerBatchFormValues) {
     try {
@@ -133,6 +135,7 @@ function CreateBroilerBatchForm() {
         breed: values.breed || undefined,
         supplierId: values.supplierId || undefined,
         invoiceNumber: values.invoiceNumber || undefined,
+        blockId: values.blockId || undefined,
         plannedSaleDate: values.plannedSaleDate || undefined,
         observations: values.observations || undefined,
       });
@@ -248,6 +251,12 @@ function CreateBroilerBatchForm() {
         control={control}
         error={errors.buildingId?.message}
       />
+      <BlockSelect
+        name="blockId"
+        control={control}
+        error={errors.blockId?.message}
+        buildingId={buildingId}
+      />
       <UserSelect
         name="primaryManagerId"
         label="Responsable"
@@ -300,6 +309,7 @@ function EditBroilerBatchForm({ batch }: { batch: BroilerBatchWithComputed }) {
       transportCostFcfa: batch.transportCostFcfa,
       otherCostsFcfa: batch.otherCostsFcfa,
       buildingId: batch.buildingId,
+      blockId: batch.blockId ?? '',
       primaryManagerId: batch.primaryManagerId,
       plannedSaleDate: batch.plannedSaleDate.slice(0, 10),
       observations: batch.observations ?? '',
@@ -307,6 +317,7 @@ function EditBroilerBatchForm({ batch }: { batch: BroilerBatchWithComputed }) {
     },
   });
   const origin = watch('origin');
+  const buildingId = watch('buildingId');
 
   async function onSubmit(values: UpdateBroilerBatchFormValues) {
     try {
@@ -316,6 +327,10 @@ function EditBroilerBatchForm({ batch }: { batch: BroilerBatchWithComputed }) {
         breed: values.breed || undefined,
         supplierId: values.supplierId || undefined,
         invoiceNumber: values.invoiceNumber || undefined,
+        // '' -> null explicite (pas undefined) : un champ vidé dans le
+        // Select doit effacer le bloc en base, pas être ignoré par le PATCH
+        // partiel (voir UpdateBroilerBatchDto.blockId, `null` accepté).
+        blockId: values.blockId || null,
         plannedSaleDate: values.plannedSaleDate || undefined,
         observations: values.observations || undefined,
       });
@@ -430,6 +445,12 @@ function EditBroilerBatchForm({ batch }: { batch: BroilerBatchWithComputed }) {
         name="buildingId"
         control={control}
         error={errors.buildingId?.message}
+      />
+      <BlockSelect
+        name="blockId"
+        control={control}
+        error={errors.blockId?.message}
+        buildingId={buildingId}
       />
       <UserSelect
         name="primaryManagerId"

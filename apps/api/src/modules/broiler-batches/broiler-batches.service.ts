@@ -249,6 +249,28 @@ export class BroilerBatchesService {
     }
   }
 
+  /** Option A (Bâtiments/Blocs) — vérifie que le bloc appartient à la
+   * ferme ET au bâtiment effectif (celui du DTO en création, ou celui déjà
+   * enregistré si non modifié en édition — voir les deux appelants).
+   * `blockId` falsy (undefined/null/'') = pas de vérification, valeur
+   * ignorée ou effacée. */
+  private async assertBlockBelongsToBuilding(
+    farmId: string,
+    blockId: string | null | undefined,
+    effectiveBuildingId: string,
+  ): Promise<void> {
+    if (!blockId) {
+      return;
+    }
+    const block = await this.prisma.block.findUnique({ where: { id: blockId } });
+    if (!block || block.farmId !== farmId) {
+      throw new NotFoundException('Bloc introuvable.');
+    }
+    if (block.buildingId !== effectiveBuildingId) {
+      throw new BadRequestException("Le bloc sélectionné n'appartient pas au bâtiment choisi.");
+    }
+  }
+
   /**
    * `tx` optionnel : permet à un appelant (OrientationService, Phase 5) de
    * faire participer la création de cette bande + ses 45 journées à une
@@ -286,6 +308,7 @@ export class BroilerBatchesService {
       primaryManagerId: dto.primaryManagerId,
       supplierId: dto.supplierId,
     });
+    await this.assertBlockBelongsToBuilding(actingUser.farmId, dto.blockId, dto.buildingId);
 
     const arrivalDate = new Date(dto.arrivalDate);
     const code = await this.generateBatchCode(actingUser.farmId, arrivalDate.getFullYear());
@@ -312,6 +335,7 @@ export class BroilerBatchesService {
           transportCostFcfa: dto.transportCostFcfa ?? 0,
           otherCostsFcfa: dto.otherCostsFcfa ?? 0,
           buildingId: dto.buildingId,
+          blockId: dto.blockId,
           primaryManagerId: dto.primaryManagerId,
           plannedSaleDate,
           observations: dto.observations,
@@ -445,6 +469,11 @@ export class BroilerBatchesService {
       primaryManagerId: dto.primaryManagerId,
       supplierId: dto.supplierId,
     });
+    await this.assertBlockBelongsToBuilding(
+      actingUser.farmId,
+      dto.blockId,
+      dto.buildingId ?? existing.buildingId,
+    );
 
     const updated = await this.prisma.broilerBatch.update({
       where: { id },
