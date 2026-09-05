@@ -6,20 +6,22 @@ import { AuthProvider } from '@/components/providers/auth-provider';
 // AppTopbar utilise useRouter (next/navigation) pour la redirection après
 // déconnexion et usePathname pour savoir s'il doit s'effacer sur le
 // Tableau de bord (fusionné dans DashboardHeader, voir app-topbar.tsx) ;
-// AppSidebar utilise usePathname (Phase 21, état actif/dépli des
-// catégories) — ni l'un ni l'autre n'est fonctionnel hors d'une app
-// Next.js montée, à mocker pour ce test de rendu isolé (aucune navigation
-// n'y est exercée). Route non-Tableau de bord volontairement choisie ici
-// pour vérifier le fil d'ariane "normal" (non-régression) — le
-// comportement spécifique à `/` est couvert par app-topbar.test.tsx.
+// AppShell lui-même utilise usePathname pour adapter le modèle de
+// défilement de `<main>` (Lot 5 — en-tête fixe/bordure) ; AppSidebar
+// utilise usePathname (Phase 21, état actif/dépli des catégories) — aucun
+// n'est fonctionnel hors d'une app Next.js montée, à mocker pour ce test
+// de rendu isolé (aucune navigation n'y est exercée). `let` (plutôt qu'une
+// constante) pour pouvoir faire varier la route d'un test à l'autre.
+let mockPathname = '/stocks';
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
-  usePathname: () => '/stocks',
+  usePathname: () => mockPathname,
 }));
 
 describe('AppShell', () => {
-  it('renders the navigation and the page content, with the shared topbar (fil d’ariane + Compte) on a non-dashboard route', async () => {
-    render(
+  it('sur un écran normal (non-régression) : fil d’ariane + Compte, et `<main>` défile lui-même (padding + overflow-y-auto)', async () => {
+    mockPathname = '/stocks';
+    const { container } = render(
       <AuthProvider>
         <AppShell>
           <p>Contenu de la page</p>
@@ -30,5 +32,30 @@ describe('AppShell', () => {
     expect(await screen.findAllByText('Tableau de bord')).not.toHaveLength(0);
     expect(screen.getByRole('button', { name: /Compte/ })).toBeInTheDocument();
     expect(screen.getByText('Contenu de la page')).toBeInTheDocument();
+
+    const main = container.querySelector('main');
+    expect(main).not.toBeNull();
+    expect(main!.className).toContain('overflow-y-auto');
+    expect(main!.className).toContain('p-4');
+  });
+
+  it('sur le Tableau de bord ("/") : pas de fil d’ariane dupliqué, `<main>` ne défile plus lui-même (la page isole sa propre zone défilante)', async () => {
+    mockPathname = '/';
+    const { container } = render(
+      <AuthProvider>
+        <AppShell>
+          <p>Contenu de la page</p>
+        </AppShell>
+      </AuthProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: /Compte/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Contenu de la page')).toBeInTheDocument();
+
+    const main = container.querySelector('main');
+    expect(main).not.toBeNull();
+    expect(main!.className).toContain('overflow-hidden');
+    expect(main!.className).not.toContain('overflow-y-auto');
+    expect(main!.className).not.toContain('p-4');
   });
 });

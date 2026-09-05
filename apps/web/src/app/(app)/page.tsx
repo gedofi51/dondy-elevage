@@ -122,72 +122,82 @@ export default function DashboardPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <DashboardHeader
-        activeBatchCount={activeBatchCount}
-        searchIndex={searchIndex}
-        alertsCount={alerts.length}
-      />
-
-      <DashboardPrimaryKpis />
-
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.55fr_1fr] xl:items-start">
-        <div className="flex flex-col gap-5">
-          {canReadBroiler ? (
-            <DashboardGrowthChartCard broilerBatches={broilerBatches} alerts={alerts} />
-          ) : null}
-          {canReadBroiler || canReadLayer ? (
-            <DashboardBatchesTable
-              broilerBatches={broilerBatches}
-              layerBatches={layerBatches}
-              alerts={alerts}
-            />
-          ) : null}
-        </div>
-
-        <div className="flex flex-col gap-5">
-          <Can permission={PERMISSIONS.ALERTS_READ}>
-            <DashboardAlertsPanel alerts={alerts} />
-          </Can>
-          <Can permission={PERMISSIONS.ASSETS_READ}>
-            <DashboardInfrastructurePanel assets={assets} />
-          </Can>
-          <Can permission={PERMISSIONS.ITEMS_READ}>
-            <StockForecastWidget />
-          </Can>
-        </div>
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Hors du flux défilant ci-dessous (comme AppTopbar sur les autres
+          écrans) — jamais un enfant "sticky" du contenu : c'est la seule
+          façon que l'ascenseur ne couvre jamais cette ligne (voir
+          app-shell.tsx). */}
+      <div className="shrink-0 border-b border-border bg-background p-4 md:p-6">
+        <DashboardHeader
+          activeBatchCount={activeBatchCount}
+          searchIndex={searchIndex}
+          alertsCount={alerts.length}
+        />
       </div>
 
-      <div className="flex flex-col gap-3">
-        <h2 className="font-heading text-lg font-semibold text-primary">Autres indicateurs</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <KpiCard
-            label="Points d'eau actifs"
-            value={waterPoints?.filter((wp) => wp.status === 'ACTIF').length ?? '—'}
-            icon={Droplets}
-            tone="info"
-          />
-          <Can permission={PERMISSIONS.BREEDER_BATCHES_READ}>
-            <BreederBatchKpi />
-          </Can>
-          <Can permission={PERMISSIONS.INCUBATION_BATCHES_READ}>
-            <IncubationBatchKpis />
-          </Can>
-          <Can permission={PERMISSIONS.ITEMS_READ}>
-            <ItemsStockKpi />
-          </Can>
-          <Can permission={PERMISSIONS.TREASURY_READ}>
-            <PayablesKpi />
-          </Can>
-          <Can permission={PERMISSIONS.TREASURY_READ}>
-            <TreasuryKpis />
-          </Can>
-          <Can permission={PERMISSIONS.ASSETS_READ}>
-            <AssetsKpi />
-          </Can>
-          <Can permission={PERMISSIONS.MAINTENANCE_TASKS_READ}>
-            <MaintenanceKpi />
-          </Can>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-20 md:p-6 md:pb-6">
+        <div className="flex flex-col gap-6">
+          <DashboardPrimaryKpis />
+
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.55fr_1fr] xl:items-start">
+            <div className="flex flex-col gap-5">
+              {canReadBroiler ? (
+                <DashboardGrowthChartCard broilerBatches={broilerBatches} alerts={alerts} />
+              ) : null}
+              {canReadBroiler || canReadLayer ? (
+                <DashboardBatchesTable
+                  broilerBatches={broilerBatches}
+                  layerBatches={layerBatches}
+                  alerts={alerts}
+                />
+              ) : null}
+            </div>
+
+            <div className="flex flex-col gap-5">
+              <Can permission={PERMISSIONS.ALERTS_READ}>
+                <DashboardAlertsPanel alerts={alerts} />
+              </Can>
+              <Can permission={PERMISSIONS.ASSETS_READ}>
+                <DashboardInfrastructurePanel assets={assets} />
+              </Can>
+              <Can permission={PERMISSIONS.ITEMS_READ}>
+                <StockForecastWidget />
+              </Can>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <h2 className="font-heading text-lg font-semibold text-primary">Autres indicateurs</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <KpiCard
+                label="Points d'eau actifs"
+                value={waterPoints?.filter((wp) => wp.status === 'ACTIF').length ?? '—'}
+                icon={Droplets}
+                tone="info"
+              />
+              <Can permission={PERMISSIONS.BREEDER_BATCHES_READ}>
+                <BreederBatchKpi />
+              </Can>
+              <Can permission={PERMISSIONS.INCUBATION_BATCHES_READ}>
+                <IncubationBatchKpis />
+              </Can>
+              <Can permission={PERMISSIONS.ITEMS_READ}>
+                <ItemsStockKpi />
+              </Can>
+              <Can permission={PERMISSIONS.TREASURY_READ}>
+                <PayablesKpi />
+              </Can>
+              <Can permission={PERMISSIONS.TREASURY_READ}>
+                <TreasuryKpis />
+              </Can>
+              <Can permission={PERMISSIONS.ASSETS_READ}>
+                <AssetsKpi />
+              </Can>
+              <Can permission={PERMISSIONS.MAINTENANCE_TASKS_READ}>
+                <MaintenanceKpi />
+              </Can>
+            </div>
+          </div>
         </div>
       </div>
     </div>
