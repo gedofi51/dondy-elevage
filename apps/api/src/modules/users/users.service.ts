@@ -109,7 +109,9 @@ export class UsersService {
         id: { not: excludeUserId },
         status: 'ACTIVE',
         userRoles: {
-          some: { role: { rolePermissions: { some: { permission: { code: PERMISSIONS.USERS_UPDATE } } } } },
+          some: {
+            role: { rolePermissions: { some: { permission: { code: PERMISSIONS.USERS_UPDATE } } } },
+          },
         },
       },
     });
@@ -146,7 +148,10 @@ export class UsersService {
         select: { id: true },
       });
       if (targetHasAdminRights) {
-        const remainingAdmins = await this.countOtherActiveUsersWithUsersUpdate(existing.farmId, id);
+        const remainingAdmins = await this.countOtherActiveUsersWithUsersUpdate(
+          existing.farmId,
+          id,
+        );
         if (remainingAdmins === 0) {
           throw new ConflictException(
             "Impossible de désactiver le dernier utilisateur actif disposant de droits d'administration sur cette ferme.",
