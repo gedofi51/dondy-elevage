@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, type LayerBatch, type LayerBatchStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
@@ -132,6 +137,25 @@ export class LayerBatchesService {
     }
   }
 
+  /** Option A (Bâtiments/Blocs) — voir le commentaire équivalent dans
+   * BroilerBatchesService. */
+  private async assertBlockBelongsToBuilding(
+    farmId: string,
+    blockId: string | null | undefined,
+    effectiveBuildingId: string,
+  ): Promise<void> {
+    if (!blockId) {
+      return;
+    }
+    const block = await this.prisma.block.findUnique({ where: { id: blockId } });
+    if (!block || block.farmId !== farmId) {
+      throw new NotFoundException('Bloc introuvable.');
+    }
+    if (block.buildingId !== effectiveBuildingId) {
+      throw new BadRequestException("Le bloc sélectionné n'appartient pas au bâtiment choisi.");
+    }
+  }
+
   private async computeCurrentHeadcount(batchId: string, initialQuantity: number): Promise<number> {
     const dailyAgg = await this.prisma.layerDailyRecord.aggregate({
       where: { batchId },
@@ -159,6 +183,7 @@ export class LayerBatchesService {
       buildingId: dto.buildingId,
       primaryManagerId: dto.primaryManagerId,
     });
+    await this.assertBlockBelongsToBuilding(actingUser.farmId, dto.blockId, dto.buildingId);
 
     const entryDate = new Date(dto.entryDate);
 
@@ -176,6 +201,7 @@ export class LayerBatchesService {
             ageAtEntryWeeks: dto.ageAtEntryWeeks,
             ageAtEntryDays: dto.ageAtEntryDays,
             buildingId: dto.buildingId,
+            blockId: dto.blockId,
             primaryManagerId: dto.primaryManagerId,
             observations: dto.observations,
             createdBy: actingUser.sub,
@@ -283,6 +309,11 @@ export class LayerBatchesService {
       buildingId: dto.buildingId,
       primaryManagerId: dto.primaryManagerId,
     });
+    await this.assertBlockBelongsToBuilding(
+      actingUser.farmId,
+      dto.blockId,
+      dto.buildingId ?? existing.buildingId,
+    );
 
     const updated = await this.prisma.layerBatch.update({
       where: { id },

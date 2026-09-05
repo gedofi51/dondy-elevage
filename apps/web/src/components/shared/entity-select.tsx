@@ -1,10 +1,12 @@
 'use client';
 
-import { Controller, type Control, type FieldValues, type Path } from 'react-hook-form';
+import { useEffect, useMemo } from 'react';
+import { Controller, useController, type Control, type FieldValues, type Path } from 'react-hook-form';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useUsers } from '@/features/users/hooks';
 import { useBuildings } from '@/features/buildings/hooks';
+import { useBlocks } from '@/features/blocks/hooks';
 import { useIncubators } from '@/features/incubators/hooks';
 import { useBreederBatches } from '@/features/breeder-batches/hooks';
 import { useSuppliers } from '@/features/suppliers/hooks';
@@ -94,6 +96,80 @@ export function BuildingSelect<T extends FieldValues>({
           </Select>
         )}
       />
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+    </div>
+  );
+}
+
+/** Option A (Bâtiments/Blocs) — filtré par `buildingId` (le bâtiment déjà
+ * choisi dans le même formulaire), jamais affiché avant qu'un bâtiment soit
+ * sélectionné. `useController` (pas `Controller`) : nécessaire pour
+ * l'effet ci-dessous, qui efface le bloc choisi s'il n'appartient plus au
+ * bâtiment courant (bâtiment changé après coup) — jamais avant que la
+ * liste des blocs ait fini de charger, sinon un blockId déjà enregistré
+ * serait effacé à tort le temps du premier rendu (cas de l'édition). */
+export function BlockSelect<T extends FieldValues>({
+  name,
+  control,
+  error,
+  label = 'Bloc',
+  buildingId,
+}: Omit<EntitySelectProps<T>, 'label'> & { label?: string; buildingId: string | undefined }) {
+  const { data: allBlocks } = useBlocks();
+  const blocks = useMemo(
+    () => (allBlocks ?? []).filter((b) => b.buildingId === buildingId),
+    [allBlocks, buildingId],
+  );
+  const blocksById = new Map(blocks.map((b) => [b.id, b]));
+  const { field } = useController({ name, control });
+
+  useEffect(() => {
+    if (allBlocks === undefined) return;
+    if (field.value && !blocksById.has(field.value)) {
+      field.onChange('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildingId, allBlocks]);
+
+  const placeholder = !buildingId
+    ? "Sélectionnez d'abord un bâtiment"
+    : blocks.length === 0
+      ? 'Aucun bloc pour ce bâtiment'
+      : 'Sélectionner…';
+  // Sentinel pour l'option "Aucun" — un `SelectItem value=""` serait
+  // indiscernable d'une valeur absente pour base-ui (même contrainte que
+  // le filtre ALL='__ALL__' de la liste Utilisateurs). Sans cette option
+  // explicite dans SelectContent, il serait impossible de revenir à "pas de
+  // bloc" une fois un bloc choisi — seul un champ jamais rempli resterait
+  // vide.
+  const NONE = '__NONE__';
+
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={name}>{label} (optionnel)</Label>
+      <Select
+        value={field.value || NONE}
+        onValueChange={(value) => field.onChange(value === NONE ? '' : value)}
+        disabled={!buildingId || blocks.length === 0}
+      >
+        <SelectTrigger id={name}>
+          <SelectValue placeholder={placeholder}>
+            {(value: string) => {
+              if (value === NONE || !value) return 'Aucun (bâtiment entier)';
+              const block = blocksById.get(value);
+              return block ? (block.code ? `${block.name} (${block.code})` : block.name) : value;
+            }}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NONE}>Aucun (bâtiment entier)</SelectItem>
+          {blocks.map((b) => (
+            <SelectItem key={b.id} value={b.id}>
+              {b.code ? `${b.name} (${b.code})` : b.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </div>
   );

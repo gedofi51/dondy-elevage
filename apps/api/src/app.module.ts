@@ -13,6 +13,7 @@ import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { FarmsModule } from './modules/farms/farms.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
+import { BlocksModule } from './modules/blocks/blocks.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { DocumentsModule } from './modules/documents/documents.module';
@@ -82,6 +83,7 @@ import { AnomalyDetectionModule } from './modules/anomaly-detection/anomaly-dete
     RolesModule,
     FarmsModule,
     BuildingsModule,
+    BlocksModule,
     SuppliersModule,
     CustomersModule,
     DocumentsModule,

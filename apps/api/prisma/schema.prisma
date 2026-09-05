@@ -41,6 +41,7 @@ model Farm {
   users                       User[]
   roles                       Role[]
   buildings                   Building[]
+  blocks                      Block[]
   auditLogs                   AuditLog[]
   settingsEntries             Setting[]
   suppliers                   Supplier[]
@@ -260,9 +261,45 @@ model Building {
   breederBatches BreederBatch[]
   chickBatches   ChickBatch[]
   employees      Employee[]
+  blocks         Block[]
 
   @@index([farmId])
   @@map("buildings")
+}
+
+/// Sous-unité optionnelle d'un Bâtiment (Option A retenue à l'issue de
+/// l'investigation Bâtiments/Blocs, voir DETTE_TECHNIQUE.md) : rattachement
+/// additif — buildingId reste la FK obligatoire sur BroilerBatch/LayerBatch/
+/// BreederBatch, blockId s'ajoute en complément facultatif sur ces trois
+/// modèles uniquement (ChickBatch/Employee non concernés par ce lot, voir
+/// DETTE_TECHNIQUE.md). farmId propre en plus de la FK buildingId — même
+/// convention que MaintenanceTask vis-à-vis d'Asset (jamais uniquement
+/// dérivé de la relation parente). Pas de champ capacity : même statut
+/// purement informatif que Building.capacity aurait eu ici, aucun service
+/// ne vérifie de plafond — inutile de le dupliquer avant qu'un besoin réel
+/// apparaisse.
+model Block {
+  id     String @id @default(uuid())
+  farmId String
+
+  buildingId String
+
+  name String
+  code String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+
+  farm           Farm           @relation(fields: [farmId], references: [id])
+  building       Building       @relation(fields: [buildingId], references: [id])
+  broilerBatches BroilerBatch[]
+  layerBatches   LayerBatch[]
+  breederBatches BreederBatch[]
+
+  @@index([farmId])
+  @@index([buildingId])
+  @@map("blocks")
 }
 
 /// Append-only par convention applicative : jamais de mise à jour du contenu
@@ -530,6 +567,13 @@ model BroilerBatch {
   otherCostsFcfa    Int @default(0)
 
   buildingId       String
+  /// Bloc (Option A, investigation Bâtiments/Blocs) : rattachement additif
+  /// et facultatif — buildingId reste la FK obligatoire, blockId n'affine
+  /// que la précision quand un bloc existe. onDelete: SetNull sur la
+  /// relation ci-dessous : supprimer un bloc ne doit jamais bloquer ni
+  /// entraîner de suppression en cascade, seulement effacer cette
+  /// précision optionnelle.
+  blockId          String?
   primaryManagerId String
   /// Défaut = arrivalDate + 44 jours à la création, modifiable ensuite. Les
   /// jalons calendaires (J1..J46+) restent TOUJOURS calculés depuis
@@ -546,6 +590,7 @@ model BroilerBatch {
   farm           Farm                 @relation(fields: [farmId], references: [id])
   supplier       Supplier?            @relation(fields: [supplierId], references: [id])
   building       Building             @relation(fields: [buildingId], references: [id])
+  block          Block?               @relation(fields: [blockId], references: [id], onDelete: SetNull)
   primaryManager User                 @relation("BroilerBatchPrimaryManager", fields: [primaryManagerId], references: [id])
   dailyRecords   BroilerDailyRecord[]
   mortalities    BroilerMortality[]
@@ -980,6 +1025,9 @@ model LayerBatch {
   ageAtEntryDays  Int?
 
   buildingId       String
+  /// Bloc (Option A, additif/facultatif) — voir le commentaire équivalent
+  /// sur BroilerBatch.blockId.
+  blockId          String?
   primaryManagerId String
 
   status       LayerBatchStatus @default(ELEVAGE)
@@ -991,6 +1039,7 @@ model LayerBatch {
 
   farm           Farm               @relation(fields: [farmId], references: [id])
   building       Building           @relation(fields: [buildingId], references: [id])
+  block          Block?             @relation(fields: [blockId], references: [id], onDelete: SetNull)
   primaryManager User               @relation("LayerBatchPrimaryManager", fields: [primaryManagerId], references: [id])
   dailyRecords   LayerDailyRecord[]
   healthEvents   LayerHealthEvent[]
@@ -1240,6 +1289,9 @@ model BreederBatch {
   maleCount        Int
 
   buildingId       String
+  /// Bloc (Option A, additif/facultatif) — voir le commentaire équivalent
+  /// sur BroilerBatch.blockId.
+  blockId          String?
   primaryManagerId String
 
   status       BreederBatchStatus @default(ACTIF)
@@ -1251,6 +1303,7 @@ model BreederBatch {
 
   farm              Farm                 @relation(fields: [farmId], references: [id])
   building          Building             @relation(fields: [buildingId], references: [id])
+  block             Block?               @relation(fields: [blockId], references: [id], onDelete: SetNull)
   primaryManager    User                 @relation("BreederBatchPrimaryManager", fields: [primaryManagerId], references: [id])
   dailyRecords      BreederDailyRecord[]
   incubationBatches IncubationBatch[]

@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Bird,
   Boxes,
+  Building2,
   ClipboardCheck,
   Droplets,
   Egg,
@@ -108,6 +109,19 @@ export const navItems: NavEntry[] = [
     href: '/points-eau',
     icon: Droplets,
     permission: PERMISSIONS.WATER_POINTS_READ,
+  },
+  // Bâtiments (lot Bâtiments/Blocs) — une seule route de premier niveau
+  // aujourd'hui (/batiments) : reste un NavLink direct, même règle que
+  // Points d'eau/Stocks/Achats. Placé juste avant « Élevage » : référentiel
+  // support (bâtiments + blocs) consulté au moment de créer une bande, pas
+  // un module d'élevage en soi — aussi utilisé par Personnel, donc pas
+  // nesté dans la catégorie Élevage (voir DETTE_TECHNIQUE.md).
+  {
+    type: 'link',
+    label: 'Bâtiments',
+    href: '/batiments',
+    icon: Building2,
+    permission: PERMISSIONS.BUILDINGS_READ,
   },
   {
     type: 'category',

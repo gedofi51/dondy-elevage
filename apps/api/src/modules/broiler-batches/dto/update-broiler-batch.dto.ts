@@ -69,6 +69,13 @@ export class UpdateBroilerBatchDto {
   @IsUUID('4')
   buildingId?: string;
 
+  /** Option A (Bâtiments/Blocs) — `null` explicite accepté (efface le
+   * bloc), `@IsOptional()` de class-validator saute la validation pour
+   * null/undefined. */
+  @IsOptional()
+  @IsUUID('4')
+  blockId?: string | null;
+
   @IsOptional()
   @IsUUID('4')
   primaryManagerId?: string;

@@ -10,6 +10,7 @@ export * from './sales';
 export * from './alerts';
 export * from './broiler-batches';
 export * from './buildings';
+export * from './blocks';
 export * from './suppliers';
 export * from './items';
 export * from './layer-batches';

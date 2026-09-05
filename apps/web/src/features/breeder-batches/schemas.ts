@@ -9,6 +9,8 @@ const breederBatchBaseFields = {
   femaleCount: z.coerce.number().int('Nombre entier').min(1, 'Doit être au moins 1'),
   maleCount: z.coerce.number().int('Nombre entier').min(0),
   buildingId: z.string().min(1, 'Bâtiment requis'),
+  // Option A (Bâtiments/Blocs) — additif/facultatif, jamais requis.
+  blockId: z.string().optional().or(z.literal('')),
   primaryManagerId: z.string().min(1, 'Responsable requis'),
   observations: z.string().max(2000).optional().or(z.literal('')),
 };

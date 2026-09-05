@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { BuildingSelect, UserSelect } from '@/components/shared/entity-select';
+import { BlockSelect, BuildingSelect, UserSelect } from '@/components/shared/entity-select';
 import { useCreateLayerBatch, useUpdateLayerBatch } from '../hooks';
 import {
   createLayerBatchSchema,
@@ -40,6 +40,7 @@ function CreateLayerBatchForm() {
   const {
     register,
     control,
+    watch,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<CreateLayerBatchFormInput, unknown, CreateLayerBatchFormValues>({
@@ -49,14 +50,16 @@ function CreateLayerBatchForm() {
     // puis devient contrôlé dès la première sélection — base-ui avertit
     // (et React déconseille) ce changement de mode en cours de vie du
     // composant. Trouvé en vérification manuelle.
-    defaultValues: { buildingId: '', primaryManagerId: '' },
+    defaultValues: { buildingId: '', blockId: '', primaryManagerId: '' },
   });
+  const buildingId = watch('buildingId');
 
   async function onSubmit(values: CreateLayerBatchFormValues) {
     try {
       const created = await createMutation.mutateAsync({
         ...values,
         strain: values.strain || undefined,
+        blockId: values.blockId || undefined,
         observations: values.observations || undefined,
       });
       toast.success('Lot créé.');
@@ -106,6 +109,12 @@ function CreateLayerBatchForm() {
       </div>
 
       <BuildingSelect name="buildingId" control={control} error={errors.buildingId?.message} />
+      <BlockSelect
+        name="blockId"
+        control={control}
+        error={errors.blockId?.message}
+        buildingId={buildingId}
+      />
       <UserSelect
         name="primaryManagerId"
         label="Responsable"
@@ -131,6 +140,7 @@ function EditLayerBatchForm({ batch }: { batch: LayerBatchWithComputed }) {
   const {
     register,
     control,
+    watch,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<UpdateLayerBatchFormInput, unknown, UpdateLayerBatchFormValues>({
@@ -142,17 +152,22 @@ function EditLayerBatchForm({ batch }: { batch: LayerBatchWithComputed }) {
       ageAtEntryWeeks: batch.ageAtEntryWeeks ?? undefined,
       ageAtEntryDays: batch.ageAtEntryDays ?? undefined,
       buildingId: batch.buildingId,
+      blockId: batch.blockId ?? '',
       primaryManagerId: batch.primaryManagerId,
       observations: batch.observations ?? '',
       status: batch.status as (typeof LAYER_BATCH_EDITABLE_STATUSES)[number],
     },
   });
+  const buildingId = watch('buildingId');
 
   async function onSubmit(values: UpdateLayerBatchFormValues) {
     try {
       await updateMutation.mutateAsync({
         ...values,
         strain: values.strain || undefined,
+        // '' -> null explicite : un champ vidé doit effacer le bloc en
+        // base, pas être ignoré par le PATCH partiel.
+        blockId: values.blockId || null,
         observations: values.observations || undefined,
       });
       toast.success('Lot modifié.');
@@ -202,6 +217,12 @@ function EditLayerBatchForm({ batch }: { batch: LayerBatchWithComputed }) {
       </div>
 
       <BuildingSelect name="buildingId" control={control} error={errors.buildingId?.message} />
+      <BlockSelect
+        name="blockId"
+        control={control}
+        error={errors.blockId?.message}
+        buildingId={buildingId}
+      />
       <UserSelect
         name="primaryManagerId"
         label="Responsable"

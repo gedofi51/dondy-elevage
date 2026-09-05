@@ -109,11 +109,22 @@ describe('getVisibleNavEntries', () => {
     const visible = getVisibleNavEntries([]);
     expect(visible.some((entry) => entry.type === 'link' && entry.href === '/utilisateurs')).toBe(false);
   });
+
+  // Bâtiments (lot Bâtiments/Blocs) — permission unique (BUILDINGS_READ).
+  it('shows "Bâtiments" when BUILDINGS_READ is present', () => {
+    const visible = getVisibleNavEntries([PERMISSIONS.BUILDINGS_READ]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/batiments')).toBe(true);
+  });
+
+  it('hides "Bâtiments" when BUILDINGS_READ is absent', () => {
+    const visible = getVisibleNavEntries([]);
+    expect(visible.some((entry) => entry.type === 'link' && entry.href === '/batiments')).toBe(false);
+  });
 });
 
 describe('flatNavItems', () => {
-  it('contains exactly the 20 real routes (13 top-level links/categories flattened)', () => {
-    expect(flatNavItems).toHaveLength(20);
+  it('contains exactly the 21 real routes (14 top-level links/categories flattened)', () => {
+    expect(flatNavItems).toHaveLength(21);
   });
 
   it('preserves the order of navItems, expanding categories in place', () => {
@@ -124,11 +135,11 @@ describe('flatNavItems', () => {
       throw new Error('Élevage devrait être une catégorie avec au moins un enfant');
     }
     const flatIndex = flatNavItems.findIndex((item) => item.href === firstChild.href);
-    // "Points d'eau" (lien direct) précède la catégorie Élevage dans
-    // navItems — son unique enfant aplati doit donc apparaître juste
-    // après lui dans flatNavItems, pas avant.
-    const waterPointsIndex = flatNavItems.findIndex((item) => item.href === '/points-eau');
-    expect(flatIndex).toBe(waterPointsIndex + 1);
+    // "Points d'eau" puis "Bâtiments" (2 liens directs) précèdent la
+    // catégorie Élevage dans navItems — son unique enfant aplati doit donc
+    // apparaître juste après "Bâtiments" dans flatNavItems, pas avant.
+    const buildingsIndex = flatNavItems.findIndex((item) => item.href === '/batiments');
+    expect(flatIndex).toBe(buildingsIndex + 1);
   });
 });
 

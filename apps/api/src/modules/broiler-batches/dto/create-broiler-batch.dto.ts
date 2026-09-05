@@ -65,6 +65,12 @@ export class CreateBroilerBatchDto {
   @IsUUID('4')
   buildingId!: string;
 
+  /** Option A (Bâtiments/Blocs) — facultatif, doit appartenir à
+   * buildingId (vérifié en service). */
+  @IsOptional()
+  @IsUUID('4')
+  blockId?: string;
+
   @IsUUID('4')
   primaryManagerId!: string;
 

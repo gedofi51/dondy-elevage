@@ -2925,6 +2925,102 @@ fermes, garde-fou auto-désactivation, garde-fou dernier
 nouveaux/modifiés : liste, formulaire création/édition,
 navigation), `typecheck`/`lint`/`build` propres.
 
+## Bâtiments/Blocs — Option A (écran Bâtiments de zéro + Blocs additifs)
+
+**Décision produit préalable** (investigation dédiée, rapportée avant tout
+code) : 3 options de modélisation présentées (A — additif/facultatif,
+B — bloc devient le point d'attache réel avec migration de données,
+C — simple champ texte libre sans table dédiée). **Option A retenue** :
+aucune migration de données, `buildingId` reste la FK obligatoire
+inchangée sur les 3 bandes concernées, `blockId` s'ajoute en complément
+strictement facultatif.
+
+**Entités Prisma touchées** (exhaustif, cf. investigation) :
+`BroilerBatch`, `LayerBatch`, `BreederBatch` — `blockId String?` ajouté.
+**Explicitement non touchées ce lot** : `ChickBatch` et `Employee`
+(avaient déjà un `buildingId` optionnel) — reportées à la demande
+explicite du cadrage, pas un oubli. Nouvelle table `Block` : `farmId`
+propre + `buildingId` (FK obligatoire), même convention que
+`MaintenanceTask` vis-à-vis d'`Asset` (jamais uniquement dérivé de la
+relation parente). Migration `20260905170251_add_block_entity` — 100 %
+additive (`ALTER TABLE ... ADD COLUMN` + `CREATE TABLE`), aucune colonne
+existante modifiée, aucun backfill.
+
+**`onDelete: SetNull` sur les 3 relations `blockId`** (décision
+délibérée, pas le défaut implicite laissé au hasard) : supprimer un bloc
+n'est **jamais bloqué** et ne supprime **jamais** les bandes qui
+l'utilisaient — seule leur précision de bloc est effacée, elles restent
+rattachées à leur bâtiment. Cohérent avec la philosophie de l'Option A
+(« additif, jamais contraignant »). Testé explicitement en e2e
+(`blocks.e2e-spec.ts`).
+
+**RBAC — permissions `BUILDINGS_*` réutilisées, aucune permission
+`BLOCKS_*` créée** : un Bloc est une sous-unité d'un Bâtiment, gérée par
+exactement les mêmes rôles (`BlocksController` garde les 4 endpoints avec
+`BUILDINGS_CREATE/READ/UPDATE/DELETE`) — le catalogue RBAC actuel ne
+suggérait aucune granularité différente entre les deux.
+
+**Garde de suppression ajoutée sur `BuildingsService.remove()`**
+(au-delà du périmètre strict de l'Option A, mais nécessaire) : jusqu'à ce
+lot, aucune UI n'exposait de bouton de suppression de bâtiment — le
+service appelait `prisma.building.delete()` sans aucune vérification,
+ce qui aurait remonté une erreur SQL brute (500) dès qu'un bâtiment est
+utilisé par une bande ou un employé (FK `Restrict` implicite). Un vrai
+bouton Supprimer existant désormais sur l'écran Bâtiments, un
+`ConflictException` (409) explicite a été ajouté — même patron que
+`AssetsService.remove()`/`LayerBatchesService.remove()`. Les blocs d'un
+bâtiment supprimé sont, eux, supprimés en cascade explicitement (aucun
+sens hors de leur bâtiment).
+
+**Bug trouvé et corrigé en vérification manuelle** (pas en test
+automatisé — aucun test n'exerçait l'interaction de sélection réelle) :
+la première version de `BlockSelect` n'offrait aucune option "Aucun"
+sélectionnable dans le menu déroulant — une fois un bloc choisi,
+impossible de revenir à "pas de bloc" depuis l'UI (seul un champ jamais
+rempli restait vide). Corrigé avec un sentinel `'__NONE__'` dans
+`SelectContent` (même patron que le filtre `ALL='__ALL__'` de l'écran
+Utilisateurs), mappé vers `''`/`null` à la lecture/écriture.
+
+**`BlockSelect`** (`entity-select.tsx`) : filtré par le `buildingId` déjà
+choisi dans le même formulaire, jamais affiché avant qu'un bâtiment soit
+sélectionné. Utilise `useController` (pas `Controller`) pour un effet qui
+efface le bloc choisi s'il n'appartient plus au bâtiment courant après un
+changement de bâtiment — **jamais avant que la liste des blocs ait fini
+de charger**, sinon un `blockId` déjà enregistré serait effacé à tort le
+temps du premier rendu (cas de l'édition, bug évité en amont, pas
+seulement corrigé).
+
+**Écrans** : `/batiments` (liste, inexistante avant ce lot — nom lien
+vers la fiche, type, capacité, création/édition/suppression),
+`/batiments/[id]` (fiche — informations + section Blocs avec CRUD par
+dialogs, même patron que les plans de maintenance sur la fiche Actif),
+`/batiments/nouveau`, `/batiments/[id]/modifier`. Les 3 formulaires de
+bande concernés (`broiler-batch-form`, `layer-batch-form`,
+`breeder-batch-form`) enrichis d'un `BlockSelect` juste après leur
+`BuildingSelect` existant. `chick-batch-form`/`employee-form` non
+modifiés, vérifiés non-régressés (aucun changement de leur
+`BuildingSelect`).
+
+**Navigation** : nouvelle entrée directe « Bâtiments » (une seule route
+de premier niveau, même règle que Points d'eau/Stocks/Achats), placée
+juste avant la catégorie « Élevage » — référentiel support consulté au
+moment de créer une bande, pas un module d'élevage en soi, et aussi
+utilisé par Personnel (non nesté dans la catégorie Élevage pour cette
+raison).
+
+**Vérifié** : backend — 327/327 unitaires API, 370/370 e2e API (dont 15
+nouveaux tests dédiés `blocks.e2e-spec.ts` : CRUD Block, isolation
+farmId, RBAC, validation bloc↔bâtiment↔ferme sur les 3 types de bande,
+`onDelete: SetNull` vérifié en conditions réelles, garde de suppression
+Building). Frontend — 293/293 tests unitaires web (nouveaux : liste
+Bâtiments, fiche Bâtiment/Blocs, navigation), `typecheck`/`lint`/`build`
+propres. Vérification manuelle navigateur complète : création d'un
+bâtiment → création d'un bloc → sélection du bloc dans un formulaire
+Poulets de chair (création réelle d'une bande) → pré-remplissage
+correct en édition → effacement du bloc via l'option "Aucun" → même
+comportement de filtrage confirmé sur Pondeuses (composant partagé) →
+rendu mobile vérifié sur la fiche Bâtiment.
+
 ## ✅ Corrigé
 
 ### Vérification de disponibilité sans verrou — POULET_CHAIR, POUSSINS, IncubationBatch, OrientationService (ouvert depuis Phase 3/5, corrigé en Phase 8)
